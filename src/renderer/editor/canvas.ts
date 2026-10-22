@@ -20,8 +20,11 @@ import {
   renderSlide,
   scheduleAutoFit,
   syncMediaFrame,
+  syncSlideNumber,
 } from '../player/render.js';
 import { decodeImage } from '../player/imageDecode.js';
+import { cropWindow, fittedImageBox, paintedMediaBox, pannedSourceBox } from '@shared/mediaMask.js';
+import { mediaNaturalSize } from './mediaNatural.js';
 import { DecodedVideoPool, releaseDecodedVideo } from '../player/decodedVideoPool.js';
 import { ungateVideoLoad } from '../player/mediaLoadGate.js';
 import { openSlideLinkInNewTab, slideLinkFromEvent } from '../player/links.js';
@@ -798,6 +801,10 @@ type DragMode =
       elementId: string;
       startCanvas: { x: number; y: number };
       origin: Rect;
+      /** The window the pan shows the picture through (`editingFrame`). */
+      frame: Rect;
+      /** The element as authored, which a pan back to the start restores. */
+      authored: Rect & { sourceBox: Rect | null };
     }
   | { kind: 'marquee'; startCanvas: { x: number; y: number } }
   | {
@@ -1126,6 +1133,12 @@ export class EditorCanvas {
     this.keptSelection.schedule();
     const { deck, slideIndex, selection } = this.store.get();
     const slide = deck.slides[slideIndex];
+    // Crop mode belongs to an object on this slide: leaving the slide, or the
+    // object going away (a delete, an undo, a collaborator), ends it.
+    if (this.maskingId && !slide?.elements.some((el) => el.id === this.maskingId)) {
+      this.maskingId = null;
+      this.onMaskModeChange?.(null);
+    }
     if (!slide) {
       this.slideLayer.replaceChildren();
       this.overlay.replaceChildren();
@@ -1134,6 +1147,11 @@ export class EditorCanvas {
       this.scheduleNextSlideImageWarmup(deck, slideIndex);
       return;
     }
+
+    // The slide number follows the deck, not the slide: turning numbering on,
+    // or a reorder elsewhere, hands back this very slide object.
+    const liveRoot = this.slideLayer.querySelector<HTMLElement>(':scope > .slide');
+    if (liveRoot?.dataset.slideId === slide.id) syncSlideNumber(liveRoot, slide, deck);
 
     // A speaker-note edit hands out a new slide object that draws exactly the
     // same picture. Treat it like the same slide: re-styling every element and
@@ -1185,6 +1203,7 @@ export class EditorCanvas {
         slide,
         (src) => window.api.assetUrl(src),
         {
+          deck,
           context: 'an in-place patch',
           // Live pages deliberately differ from the preview render.
           skipElementIds: [...(this.editingId ? [this.editingId] : []), ...this.liveWebIds],
@@ -1238,7 +1257,7 @@ export class EditorCanvas {
     this.harvestVideos();
     const rendered = renderSlide(
       slide,
-      { resolveSrc: (src) => window.api.assetUrl(src), mediaPreload: 'metadata' },
+      { deck, resolveSrc: (src) => window.api.assetUrl(src), mediaPreload: 'metadata' },
     );
     if (slideChanged) this.adoptWarmedImages(rendered);
     this.slideLayer.replaceChildren(rendered);
@@ -1248,6 +1267,14 @@ export class EditorCanvas {
     // makes the canvas unreadable and burns CPU. Playback is opt-in per video,
     // while native controls remain visible when the element requests them.
     for (const node of this.slideLayer.querySelectorAll<HTMLElement>('[data-element-id]')) {
+      // A picture's outline fits its natural size, known only once it loads.
+      const image = node.querySelector('img');
+      if (image && !image.complete) {
+        image.addEventListener('load', () => {
+          const current = this.store.slide;
+          if (current) this.drawOverlay(this.store.get().deck, current.elements, this.store.get().selection);
+        }, { once: true });
+      }
       const video = node.querySelector('video');
       if (!video) continue;
       const badge = document.createElement('span');
@@ -1668,7 +1695,7 @@ export class EditorCanvas {
     // Layout identity lives on the rendered slide root. A preset change usually
     // keeps the same elements, so it takes this fast path rather than rebuilding
     // the DOM; keep the root class in sync as well as the element geometry.
-    const resolve = { resolveSrc: (src: string) => window.api.assetUrl(src) };
+    const resolve = { deck: this.store.get().deck, resolveSrc: (src: string) => window.api.assetUrl(src) };
     const rendered = this.slideLayer.querySelector<HTMLElement>(':scope > .slide');
     if (rendered) applySlideRootStyles(rendered, slide, resolve);
 
@@ -1840,7 +1867,7 @@ export class EditorCanvas {
     const controls = document.createElement('div');
     controls.className = 'zoom-controls deck-only';
     controls.setAttribute('role', 'group');
-    controls.setAttribute('aria-label', 'Canvas zoom');
+    controls.setAttribute('aria-label', 'Canvas view');
 
     const button = (text: string, label: string, action: () => void) => {
       const node = document.createElement('button');
@@ -1877,8 +1904,32 @@ export class EditorCanvas {
       input,
       button('+', 'Zoom in', () => this.stepZoom(1)),
       button('⌖', 'Re-center slide', () => this.recenter()),
+      this.createGridlinesToggle(button),
     );
     return controls;
+  }
+
+  /**
+   * An alignment grid drawn over the slide in the editor only: it is overlay
+   * chrome, never deck data, so presenting and exporting never see it. The
+   * choice is remembered per browser.
+   */
+  private createGridlinesToggle(button: (text: string, label: string, action: () => void) => HTMLButtonElement): HTMLButtonElement {
+    const KEY = 'deckwerk.gridlines';
+    const show = (shown: boolean) => {
+      this.host.classList.toggle('show-gridlines', shown);
+      toggle.setAttribute('aria-pressed', String(shown));
+    };
+    const toggle = button('Gridlines', 'Gridlines', () => {
+      const shown = !this.host.classList.contains('show-gridlines');
+      show(shown);
+      try { window.localStorage.setItem(KEY, String(shown)); } catch { /* private window */ }
+    });
+    toggle.classList.add('zoom-gridlines');
+    let stored: string | null = null;
+    try { stored = window.localStorage.getItem(KEY); } catch { /* private window */ }
+    show(stored === 'true');
+    return toggle;
   }
 
   /**
@@ -2105,9 +2156,10 @@ export class EditorCanvas {
   /** Selection outlines, handles, snap guides and the marquee. */
   private drawOverlay(
     deck: Deck,
-    elements: SlideElement[],
+    authored: SlideElement[],
     selection: Set<string>,
   ): void {
+    const elements = authored.map((el) => this.editingFrame(el));
     const frag = document.createDocumentFragment();
 
     // While the Build tab is open, number every element a build entry touches
@@ -2301,6 +2353,18 @@ export class EditorCanvas {
         }
         frag.appendChild(box);
         continue;
+      }
+
+      // A crop window's whole outline drags like its edge's midpoint handle.
+      // Added before the handles so the corner and midpoint handles stay on top.
+      if (this.maskingId === el.id) {
+        for (const name of ['n', 'e', 's', 'w']) {
+          const edge = document.createElement('div');
+          edge.className = `handle mask-edge mask-edge-${name}`;
+          edge.dataset.handle = name;
+          edge.dataset.elementId = el.id;
+          box.appendChild(edge);
+        }
       }
 
       // PowerPoint-style multi-selection: every selected object keeps its own
@@ -2680,22 +2744,21 @@ export class EditorCanvas {
     // Resize handle.
     const handle = target.dataset?.handle;
     if (handle && target.dataset.elementId) {
-      const el = slide.elements.find((e) => e.id === target.dataset.elementId);
+      const found = slide.elements.find((e) => e.id === target.dataset.elementId);
+      const el = found && this.editingFrame(found);
       if (el) {
         this.store.beginTransaction(
           this.maskingId === el.id ? `Crop ${el.type}` : 'Move or resize objects',
         );
         if (el.type === 'image' || el.type === 'video') {
-          // Captured once per drag: mask mode shifts this window, a plain
-          // resize scales it with the box.
-          this.maskOrigin = el.sourceBox
-            ? { ...el.sourceBox }
-            : this.maskingId === el.id
-              ? { x: 0, y: 0, w: el.w, h: el.h }
-              : null;
+          // Captured once per crop drag: the picture as painted, which for
+          // uncropped media is where object-fit put it, not the whole box.
+          this.maskOrigin = this.maskingId === el.id
+            ? paintedMediaBox(el, mediaNaturalSize(el.id, this.slideLayer))
+            : null;
         }
         const origins = new Map<string, ResizeOrigin>();
-        for (const selected of this.store.selectedElements()) {
+        for (const selected of this.store.selectedElements().map((e) => this.editingFrame(e))) {
           origins.set(selected.id, {
             x: selected.x,
             y: selected.y,
@@ -2730,22 +2793,26 @@ export class EditorCanvas {
     // the other half of cropping -- the handles size the window, this chooses
     // which part of the picture the window shows.
     if (this.maskingId) {
-      const masked = slide.elements.find((e) => e.id === this.maskingId);
+      const found = slide.elements.find((e) => e.id === this.maskingId);
+      const masked = found && this.editingFrame(found);
       if (
         masked && (masked.type === 'image' || masked.type === 'video') &&
         mediaMaskContainsPoint(masked, point)
       ) {
-        // Uncropped media pans from the implicit full-box crop, so the whole
-        // gesture is one undoable step that restores `sourceBox: null`.
-        this.maskOrigin = masked.sourceBox
-          ? { ...masked.sourceBox }
-          : { x: 0, y: 0, w: masked.w, h: masked.h };
+        // Uncropped media pans from the implicit crop of its painted picture,
+        // so the whole gesture is one undoable step that restores `sourceBox: null`.
+        this.maskOrigin = paintedMediaBox(masked, mediaNaturalSize(masked.id, this.slideLayer));
         this.store.beginTransaction(`Move ${masked.type} in mask`);
         this.drag = {
           kind: 'mask-pan',
           elementId: masked.id,
           startCanvas: point,
           origin: { ...this.maskOrigin },
+          frame: { x: masked.x, y: masked.y, w: masked.w, h: masked.h },
+          authored: {
+            x: found.x, y: found.y, w: found.w, h: found.h,
+            sourceBox: found.type === 'image' || found.type === 'video' ? found.sourceBox : null,
+          },
         };
         return;
       }
@@ -2914,17 +2981,16 @@ export class EditorCanvas {
           if (Math.abs(dx) > Math.abs(dy)) dy = 0;
           else dx = 0;
         }
+        const next = pannedSourceBox(base, drag.frame, dx, dy);
+        const moved = next.x !== Math.round(base.x) || next.y !== Math.round(base.y);
         this.store.commit((deck) => {
           const el = deck.slides[this.store.get().slideIndex].elements.find(
             (e) => e.id === drag.elementId,
           );
           if (!el || (el.type !== 'image' && el.type !== 'video')) return;
-          el.sourceBox = {
-            w: base.w,
-            h: base.h,
-            x: Math.round(base.x + dx),
-            y: Math.round(base.y + dy),
-          };
+          // Back at the start is the element as authored, so a pan that moved
+          // nothing leaves neither an undo step nor a crop behind.
+          Object.assign(el, moved ? { ...drag.frame, sourceBox: next } : drag.authored);
         });
         break;
       }
@@ -2980,7 +3046,9 @@ export class EditorCanvas {
 
         // Option resizes about the element's center:
         // both sides move, and the center is re-pinned after constraints.
-        const centered = ev.altKey;
+        // A crop moves only the edge dragged, so Option does not apply.
+        const cropping = this.maskingId === drag.elementId;
+        const centered = ev.altKey && !cropping;
         let rect: Rect = { ...o };
         if (centered) {
           if (edges.left) {
@@ -3020,7 +3088,6 @@ export class EditorCanvas {
         // circular mask is square by construction, so it never frees: a free
         // drag would stretch it back into an ellipse.
         const media = resizing?.type === 'image' || resizing?.type === 'video';
-        const cropping = this.maskingId === drag.elementId;
         const keepsAspect = drag.origins.get(drag.elementId)?.fit !== 'fill';
         const constrained = media
           ? resizing.maskShape === 'circle' || (cropping ? ev.shiftKey : keepsAspect !== ev.shiftKey)
@@ -3065,6 +3132,13 @@ export class EditorCanvas {
           ]
           : [];
         this.sizeMatches = measured ? sizeGuides(measured, others) : [];
+        if (cropping) {
+          // Cropping, not scaling: the dragged edge moves, the picture stays
+          // put, and the window stops at the picture's edge. `cropWindow`
+          // keeps a rotated picture in place itself.
+          this.applyMaskResize(drag.elementId, r, o, constrained);
+          break;
+        }
         if (radians) {
           // CSS rotates about the box centre, so growing an edge in the local
           // frame swings the whole box around that centre. Move the centre by
@@ -3074,11 +3148,6 @@ export class EditorCanvas {
           const localDy = r.y + r.h / 2 - (o.y + o.h / 2);
           r.x = o.x + o.w / 2 + (localDx * cos - localDy * sin) - r.w / 2;
           r.y = o.y + o.h / 2 + (localDx * sin + localDy * cos) - r.h / 2;
-        }
-        if (this.maskingId === drag.elementId) {
-          // Cropping, not scaling: the window moves, the picture stays put.
-          this.applyMaskResize(drag.elementId, r, drag.origin);
-          break;
         }
         const scaleX = r.w / drag.origin.w;
         const scaleY = r.h / drag.origin.h;
@@ -6883,7 +6952,7 @@ export class EditorCanvas {
    * Turn mask editing on or off for an element.
    *
    * Entering mask mode is not itself an edit. For uncropped media the first
-   * handle drag uses the full element box as its implicit source box, making
+   * handle drag uses the painted picture as its implicit source box, making
    * the entire crop one undoable action that restores `sourceBox: null`.
    */
   toggleMaskMode(elementId: string | null): void {
@@ -6909,9 +6978,9 @@ export class EditorCanvas {
    * Moving an edge changes the element box, and `sourceBox` is shifted by the
    * same amount in the opposite direction so the visible picture does not slide
    * around under the cursor. That is the difference between cropping and
-   * scaling.
+   * scaling. `rect` is in the element's unrotated frame; see `cropWindow`.
    */
-  private applyMaskResize(elementId: string, rect: Rect, origin: Rect): void {
+  private applyMaskResize(elementId: string, rect: Rect, origin: Rect, lockAspect: boolean): void {
     // The offset is measured from where the drag began, so it must be applied
     // to the crop as it was at that moment. Applying it to the *current* crop
     // would re-add the whole delta on every pointermove, and the media would
@@ -6924,20 +6993,20 @@ export class EditorCanvas {
         (e) => e.id === elementId,
       );
       if (!el || (el.type !== 'image' && el.type !== 'video')) return;
-
-      const dx = rect.x - origin.x;
-      const dy = rect.y - origin.y;
-      el.x = Math.round(rect.x);
-      el.y = Math.round(rect.y);
-      el.w = Math.max(8, Math.round(rect.w));
-      el.h = Math.max(8, Math.round(rect.h));
-      el.sourceBox = {
-        w: base.w,
-        h: base.h,
-        x: Math.round(base.x - dx),
-        y: Math.round(base.y - dy),
-      };
+      Object.assign(el, cropWindow(rect, origin, base, el.rot, lockAspect));
     });
+  }
+
+  /**
+   * An element as the editor outlines and drags it. An uncropped `contain`
+   * picture is fitted to the picture it paints, so its outline sits on the
+   * picture and a resize or crop starts from it; the deck keeps its frame
+   * until such a gesture writes one, so looking at a slide never edits it.
+   */
+  private editingFrame<T extends SlideElement>(el: T): T {
+    if (el.type !== 'image' || el.layoutMasterId) return el;
+    const box = fittedImageBox(el, mediaNaturalSize(el.id, this.slideLayer));
+    return box ? { ...el, ...box } : el;
   }
 
   /** Topmost element containing a canvas point. */

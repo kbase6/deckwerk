@@ -5,7 +5,7 @@ import { userInfo } from 'node:os';
 import { basename, dirname, extname, join, resolve, sep } from 'node:path';
 import { BrowserWindow, app, clipboard, ipcMain, screen, shell } from 'electron';
 import type { Display, IpcMainInvokeEvent, WebContents } from 'electron';
-import { parseDeck, type Deck } from '@shared/deck.js';
+import { deckForExport, parseDeck, type Deck } from '@shared/deck.js';
 import type { DeckHistoryDocument } from '@shared/deckHistory.js';
 import {
   CLIPBOARD_FORMAT,
@@ -1226,6 +1226,7 @@ function registerHandlers(): void {
     operationId?: string,
   ): Promise<string | null> => {
     const s = requireSession(event);
+    const deck = deckForExport(s.deck, request.slideIds);
     const target = await showSaveDialog({
       title: 'Export as a standalone web page',
       buttonLabel: 'Export',
@@ -1234,10 +1235,10 @@ function registerHandlers(): void {
     });
     if (target.canceled || !target.filePath) return null;
     const dir = deckFolderPath(target.filePath);
-    await exportDeck(s.dir, s.deck, dir, (message, ratio) => {
+    await exportDeck(s.dir, deck, dir, (message, ratio) => {
       reportOperation(event, operationId, message, ratio);
     }, { quality: request.quality ?? 'original', dropSkipped: true });
-    await writeExportThumbnail(s.dir, s.deck, dir, (message) => {
+    await writeExportThumbnail(s.dir, deck, dir, (message) => {
       reportOperation(event, operationId, message, null);
     });
     return dir;
@@ -1251,6 +1252,7 @@ function registerHandlers(): void {
     const s = requireSession(event);
     const mode = request.mode ?? 'final';
     const includeHidden = request.includeHidden ?? false;
+    const deck = deckForExport(s.deck, request.slideIds, includeHidden);
     const target = await showSaveDialog({
       title: 'Export PDF',
       buttonLabel: 'Export',
@@ -1274,8 +1276,11 @@ function registerHandlers(): void {
       };
       ipcMain.on(IPC.exportPdfReady, listener);
     });
-    const query = `?job=${encodeURIComponent(jobId)}&mode=${mode}&includeHidden=${includeHidden ? '1' : '0'}`;
-    const printWindow = createPdfWindow(query);
+    const query = new URLSearchParams({ job: jobId, mode, includeHidden: includeHidden ? '1' : '0' });
+    // The print page renders from the whole session deck, so numbering stays
+    // the deck's; only the pages are limited to these slides.
+    if (request.slideIds !== undefined) for (const slide of deck.slides) query.append('slide', slide.id);
+    const printWindow = createPdfWindow(`?${query}`);
     // The print page asks for "the" deck the same way any window does, so it
     // has to belong to the document being exported.
     attachWindow(requireOwner(event), printWindow);

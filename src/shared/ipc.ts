@@ -125,8 +125,20 @@ export type AgentSessionState = AgentSessionConnection | { active: false };
 export type { AgentContextDraft, AgentRequest, AgentResponse };
 
 export type PresentationCommand =
-  | { type: 'next' | 'prev' | 'toggleBlank' | 'swapDisplays' | 'exit' }
-  | { type: 'goTo'; slide: number };
+  | { type: 'next' | 'prev' | 'toggleBlank' | 'swapDisplays' | 'exit' | 'toggleLaser' }
+  | { type: 'goTo'; slide: number }
+  /** A laser move over the given slide and step; a null point hides the dot. */
+  | { type: 'laserMove'; slideId?: string; step?: number; point: LaserPoint | null };
+
+/** A point on the slide as a fraction of its width and height, 0–1. */
+export interface LaserPoint { x: number; y: number }
+
+export interface LaserState {
+  enabled: boolean;
+  point: LaserPoint | null;
+  /** The audience display is blanked, so no dot shows. */
+  blanked: boolean;
+}
 
 export interface PresentationState {
   cursor: { slide: number; step: number };
@@ -136,6 +148,7 @@ export interface PresentationState {
   slideStartedAt: number;
   /** Inclusive bounds when presenting a multi-slide rail selection. */
   range?: { start: number; end: number };
+  laser?: LaserState;
 }
 
 export interface DisplayInfo {
@@ -168,11 +181,15 @@ export type WebExportQuality = 'original' | 'balanced' | 'compact';
 
 export interface WebExportRequest {
   quality?: WebExportQuality;
+  /** Export only these slides, in deck order; omitted, the whole deck. */
+  slideIds?: string[];
 }
 
 export interface PdfExportRequest {
   mode?: PdfBuildMode;
   includeHidden?: boolean;
+  /** Export only these slides, in deck order; omitted, the whole deck. */
+  slideIds?: string[];
 }
 
 /**

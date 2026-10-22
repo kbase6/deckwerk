@@ -498,6 +498,22 @@ describe('deck objects become authored HTML', () => {
     expect(html).not.toContain('data-arrow-start');
   });
 
+  it('round-trips the ends chosen for a line', () => {
+    const deck = emptyDeck('Line ends');
+    deck.slides[0].elements = [{
+      id: 'line', type: 'shape', x: 200, y: 300, w: 400, h: 20, rot: 0, z: 2,
+      opacity: 1, class: [], style: { 'stroke-linecap': 'round' }, shape: 'line', fill: null, stroke: '#1d2545',
+      strokeWidth: 8, radius: 0, path: null, pathSize: null, arrowStart: false, arrowEnd: false,
+    }];
+    expect(slideToHtml(parseDeck(deck).slides[0], { w: 1920, h: 1080 })).toContain('stroke-linecap:round');
+    const shape = elementFromNode(node({
+      tag: 'div',
+      dataset: { element: 'shape', shape: 'line', stroke: '#1d2545', strokeWidth: '8' },
+      style: { 'stroke-linecap': 'round' },
+    }), 'line', 2) as Extract<SlideElement, { type: 'shape' }>;
+    expect(shape.style).toEqual({ 'stroke-linecap': 'round' });
+  });
+
   it('round-trips a curly brace and its signed depth', () => {
     const deck = emptyDeck('Braces');
     const brace = {

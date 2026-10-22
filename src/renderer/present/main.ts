@@ -1,12 +1,13 @@
 import '../player/player.css';
 import type { DeckSession } from '@shared/ipc.js';
-import type { PresentationCommand } from '@shared/ipc.js';
+import type { LaserState, PresentationCommand, PresentationState } from '@shared/ipc.js';
 import {
   nextLeavesPresentationRange,
   prevLeavesPresentationRange,
   type PresentationRange,
 } from '@shared/presentationRange.js';
 import { bindPresentKeys } from '../player/keys.js';
+import { createLaserPointer, validLaserPoint, type LaserPointer } from '../player/laserPointer.js';
 import { Player } from '../player/player.js';
 import { eventOnInteractiveWeb, slideLinkFromEvent } from '../player/links.js';
 import { selectionPreventsAdvance } from '../player/presentationPointer.js';
@@ -28,6 +29,43 @@ let themeLink: HTMLStyleElement | null = null;
 const startedAt = Date.now();
 let slideStartedAt = startedAt;
 let timedSlide = -1;
+let laser: LaserPointer | null = null;
+let laserState: LaserState = { enabled: false, point: null, blanked: false };
+let presentationState: PresentationState | null = null;
+
+/** Show the laser here and hand the whole state on to Speaker View. */
+function publishPresentation(): void {
+  laser?.setState(laserState);
+  if (presentationState) window.api.publishPresentState({ ...presentationState, laser: laserState });
+}
+
+function laserContext(): { slideId: string | undefined; step: number | undefined } {
+  const cursor = player?.getCursor();
+  return { slideId: cursor ? session?.deck.slides[cursor.slide]?.id : undefined, step: cursor?.step };
+}
+
+function handleLaser(command: PresentationCommand): void {
+  if (!player) return;
+  if (command.type === 'toggleLaser') {
+    laserState = { ...laserState, enabled: !laserState.enabled, point: null };
+  } else if (command.type === 'laserMove') {
+    // A move made over a slide or step no longer showing is stale.
+    const context = laserContext();
+    if (
+      !laserState.enabled || laserState.blanked
+      || command.slideId !== context.slideId || command.step !== context.step
+    ) return;
+    if (command.point !== null && !validLaserPoint(command.point)) return;
+    laserState = { ...laserState, point: command.point };
+  } else return;
+  publishPresentation();
+}
+
+function toggleBlank(): void {
+  if (!player) return;
+  laserState = { ...laserState, point: null, blanked: player.toggleBlank() };
+  publishPresentation();
+}
 
 async function applyTheme(): Promise<void> {
   const css = await window.api.loadTheme();
@@ -60,13 +98,16 @@ function start(nextSession: DeckSession): void {
         timedSlide = cursor.slide;
         slideStartedAt = Date.now();
       }
-      window.api.publishPresentState({
+      presentationState = {
         cursor,
         steps,
         startedAt,
         slideStartedAt,
         ...(range ? { range } : {}),
-      });
+      };
+      // A new slide or step starts without a dot.
+      laserState = { ...laserState, point: null };
+      publishPresentation();
     },
   });
   // Presenting from a skipped slide would put it on the projector anyway;
@@ -85,12 +126,14 @@ function start(nextSession: DeckSession): void {
       }
     }
   }
+  laser = createLaserPointer({ host: root!, getContext: laserContext, onCommand: handleLaser });
   player.goToSlide(first, { play: true });
 
   bindPresentKeys(window, player, {
     onExit: () => window.close(),
     onNext: advance,
     onPrev: retreat,
+    onBlank: toggleBlank,
     onHome: () => player?.goToSlide(range?.start ?? 0, { play: true }),
   });
 
@@ -133,7 +176,8 @@ window.api.onPresentCommand((command: PresentationCommand) => {
       : command.slide;
     player.goToSlide(target, { play: true });
   }
-  else if (command.type === 'toggleBlank') player.toggleBlank();
+  else if (command.type === 'toggleBlank') toggleBlank();
+  else handleLaser(command);
 });
 
 // Live updates while presenting (editing on a second screen mid-rehearsal).

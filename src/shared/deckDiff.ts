@@ -47,7 +47,7 @@ export function diffDecks(prev: Deck, next: Deck): AgentOperation[] {
 function diffDeckProps(prev: Deck, next: Deck): AgentOperation | null {
   const op: Record<string, unknown> = { op: 'updateDeck' };
   let changed = false;
-  const scalarKeys = ['title', 'theme', 'themePreset', 'morphEasing'] as const;
+  const scalarKeys = ['title', 'theme', 'themePreset', 'morphEasing', 'showSlideNumbers'] as const;
   for (const key of scalarKeys) {
     if (prev[key] !== next[key]) {
       op[key] = next[key];

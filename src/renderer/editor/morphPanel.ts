@@ -530,7 +530,7 @@ export class MorphPanel {
     updateScale();
     const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(updateScale);
     observer?.observe(frame);
-    surface.appendChild(renderSlide(slide, { resolveSrc: (src) => window.api.assetUrl(src), mediaPreload: 'metadata', deferVideoSrc: true }));
+    surface.appendChild(renderSlide(slide, { deck: this.store.get().deck, resolveSrc: (src) => window.api.assetUrl(src), mediaPreload: 'metadata', deferVideoSrc: true }));
     for (const video of surface.querySelectorAll('video')) {
       video.removeAttribute('autoplay');
       video.pause();

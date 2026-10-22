@@ -2,13 +2,13 @@ import { openContextMenu } from './contextMenuPlacement.js';
 import { makeId } from '@shared/geometry.js';
 import { recoverPreviewFrames } from '../player/previewFrameRecovery.js';
 import { freezePreviewVideos, releasePreviewVideos } from '../player/previewPoster.js';
-import { renderSlide } from '../player/render.js';
+import { renderSlide, syncSlideNumber } from '../player/render.js';
 import { applyDeckThemeToNewSlide } from '@shared/themes.js';
 import { LAYOUT_LABELS_BY_ID } from './layoutPreview.js';
 import { LAYOUT_LABELS, applySlideLayout, type SlideLayout } from './slideLayouts.js';
 import { openComments } from './comments.js';
 import { openThreadCount } from '@shared/comments.js';
-import type { Deck, Slide } from '@shared/deck.js';
+import { slideNumbers, type Deck, type Slide } from '@shared/deck.js';
 import { sameSlideDrawing, type EditorStore } from './store.js';
 import { showConfirmDialog } from './confirmDialog.js';
 
@@ -197,6 +197,15 @@ export class SlideRail {
    */
   private onStoreChange(): void {
     const { deck, slideIndex, slideSelection } = this.store.get();
+    // Numbers follow deck order, so a cached thumbnail renumbers in place
+    // when another slide moves, hides or is deleted.
+    const byId = new Map(deck.slides.map((slide) => [slide.id, slide]));
+    const numbers = slideNumbers(deck);
+    for (const [cached, thumb] of this.thumbCache) {
+      const current = byId.get((cached as Slide).id);
+      const root = thumb.querySelector<HTMLElement>('.slide');
+      if (current && root) syncSlideNumber(root, current, deck, numbers.get(current.id) ?? null);
+    }
     const activeSlide = deck.slides[slideIndex];
     if (
       this.collapsedActiveSlideId !== null
@@ -523,7 +532,7 @@ export class SlideRail {
       inner.style.height = `${deck.canvas.h}px`;
       if (slide.background.color) inner.style.background = slide.background.color;
       inner.appendChild(
-        renderSlide(slide, { resolveSrc: (src) => window.api.assetUrl(src), mediaPreload: 'metadata', deferVideoSrc: true }),
+        renderSlide(slide, { deck, resolveSrc: (src) => window.api.assetUrl(src), mediaPreload: 'metadata', deferVideoSrc: true }),
       );
       for (const video of inner.querySelectorAll('video')) {
         video.removeAttribute('autoplay');

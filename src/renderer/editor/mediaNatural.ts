@@ -8,12 +8,12 @@ import type { Size } from '../../shared/mediaMask.js';
  * The deck never stores intrinsic sizes, so mask geometry that has to respect
  * the picture's aspect ratio reads it off the live DOM node instead.
  */
-export function mediaNaturalSize(elementId: string): Size | null {
+export function mediaNaturalSize(elementId: string, root: ParentNode = document): Size | null {
   // `CSS.escape` is absent in some non-browser hosts; ids only ever need the
   // quote and backslash escaped for an attribute selector.
   const escaped = globalThis.CSS?.escape?.(elementId)
     ?? elementId.replace(/["\\]/g, '\\$&');
-  const node = document.querySelector<HTMLElement>(`[data-element-id="${escaped}"]`);
+  const node = root.querySelector<HTMLElement>(`[data-element-id="${escaped}"]`);
   const media = node?.querySelector<HTMLImageElement | HTMLVideoElement>('img, video');
   if (!media) return null;
   const w = media instanceof HTMLVideoElement ? media.videoWidth : media.naturalWidth;

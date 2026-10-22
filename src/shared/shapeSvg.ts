@@ -98,6 +98,15 @@ function lineSvg(el: Shape, stroke: string, paint: string, progress = 1): string
   const startHead = el.arrowStart;
   const endHead = el.arrowEnd || (!el.arrowStart && el.shape === 'arrow');
   const local = el.control ? quadraticControl(el) : null;
+  // Unset, a curve keeps its round ends and a straight line its flat ones.
+  const ends = el.style['stroke-linecap'];
+  const round = ends === 'round' || (ends !== 'butt' && local !== null);
+  // With no head, the stroke's own round cap paints each end once (a dot over
+  // a square end paints a translucent stroke twice). With a head, the shaft
+  // stays square inside the head's tail and an exposed end gets a dot.
+  const capped = round && !startHead && !endHead;
+  if (capped) paint += ' stroke-linecap="round"';
+  else if (ends === 'butt' || ends === 'round') paint += ' stroke-linecap="butt"';
   const start = { x: 0, y: el.h / 2 };
   const end = { x: el.w, y: el.h / 2 };
   const through = local ?? { x: el.w / 2, y: el.h / 2 };
@@ -151,11 +160,13 @@ function lineSvg(el: Shape, stroke: string, paint: string, progress = 1): string
       const c = quadraticBlossom(p0, p1, p2, t0, t1);
       line = `<path d="M ${n(a.x)} ${n(a.y)} Q ${n(c.x)} ${n(c.y)} ${n(b.x)} ${n(b.y)}"`
         + ` stroke-linejoin="round" ${paint}/>`;
+    } else {
+      line = `<line x1="${n(a.x)}" y1="${n(a.y)}" x2="${n(b.x)}" y2="${n(b.y)}" ${paint}/>`;
+    }
+    if (round && !capped) {
       const dot = (p: XY): string => `<circle cx="${n(p.x)}" cy="${n(p.y)}" r="${n(el.strokeWidth / 2)}" fill="${stroke}"/>`;
       if (!startHead) line += dot(a);
       if (!endHead) line += dot(b);
-    } else {
-      line = `<line x1="${n(a.x)}" y1="${n(a.y)}" x2="${n(b.x)}" y2="${n(b.y)}" ${paint}/>`;
     }
   }
   return line + heads.map((d) => `<path class="arrowhead" d="${d}" fill="${stroke}" stroke="none"/>`).join('');

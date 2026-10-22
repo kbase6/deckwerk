@@ -202,7 +202,7 @@ function setupViewport() {
   const store = new EditorStore(emptyDeck('Viewport'), '/tmp/viewport');
   const canvas = new EditorCanvas(host, store);
   const stage = host.querySelector<HTMLElement>('.stage')!;
-  return { canvas, host, stage };
+  return { canvas, host, stage, store };
 }
 
 const stageScale = (stage: HTMLElement): number =>
@@ -212,14 +212,22 @@ describe('canvas zoom viewport', () => {
   beforeEach(() => document.body.replaceChildren());
 
   it('offers compact buttons and accepts a directly edited percentage', () => {
-    const { canvas, host } = setupViewport();
+    const { canvas, host, store } = setupViewport();
     const input = host.querySelector<HTMLInputElement>('.zoom-value')!;
     const buttons = [...host.querySelectorAll<HTMLButtonElement>('.zoom-button')];
 
     expect(input.value).toBe('100%');
     expect(buttons.map((button) => button.getAttribute('aria-label'))).toEqual([
-      'Zoom out', 'Zoom in', 'Re-center slide',
+      'Zoom out', 'Zoom in', 'Re-center slide', 'Gridlines',
     ]);
+    // Gridlines are editor chrome: a class on the host, never deck data.
+    const deckBefore = JSON.stringify(store.get().deck);
+    buttons[3].click();
+    expect(host.classList.contains('show-gridlines')).toBe(true);
+    expect(buttons[3].getAttribute('aria-pressed')).toBe('true');
+    buttons[3].click();
+    expect(host.classList.contains('show-gridlines')).toBe(false);
+    expect(JSON.stringify(store.get().deck)).toBe(deckBefore);
 
     input.value = '175%';
     input.dispatchEvent(new Event('change', { bubbles: true }));
@@ -2124,6 +2132,12 @@ describe('inline text editing', () => {
     const stage = host.querySelector<HTMLElement>('.stage')!;
     stage.getBoundingClientRect = () =>
       ({ left: 0, top: 0, width: 1920, height: 1080 }) as DOMRect;
+    // A picture larger than its window, so it has room to pan: a picture that
+    // only just fills the window cannot move without showing past its edge.
+    store.commit((deck) => {
+      const target = deck.slides[0].elements.find((element) => element.id === 'video-1');
+      if (target?.type === 'video') target.sourceBox = { x: -80, y: -60, w: 800, h: 450 };
+    });
     canvas.toggleMaskMode('video-1');
 
     // Starts inside the 100,300 640x360 window and drags up and left.
@@ -2141,14 +2155,14 @@ describe('inline text editing', () => {
     if (video.type !== 'video') throw new Error('expected video fixture');
     // The window has not moved; the picture inside it has.
     expect(video).toMatchObject({ x: 100, y: 300, w: 640, h: 360 });
-    expect(video.sourceBox).toEqual({ x: -40, y: -25, w: 640, h: 360 });
+    expect(video.sourceBox).toEqual({ x: -120, y: -85, w: 800, h: 450 });
     expect(store.history()[0]?.label).toBe('Move video in mask');
     expect(canvas.maskingElement()).toBe('video-1');
 
-    // One undoable step, back to uncropped.
+    // One undoable step, back to where the picture was.
     store.undo();
     video = store.slide!.elements.find((element) => element.id === 'video-1')!;
-    expect(video.type === 'video' ? video.sourceBox : null).toBeNull();
+    expect(video.type === 'video' ? video.sourceBox : null).toEqual({ x: -80, y: -60, w: 800, h: 450 });
   });
 
   it('finishes mask editing when the user clicks outside the active mask', () => {

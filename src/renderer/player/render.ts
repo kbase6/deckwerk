@@ -1,5 +1,5 @@
 import { curvedShadowClasses } from '@shared/shapeShadow.js';
-import { MIRRORED_TEXT_STYLE_PROPERTIES } from '@shared/deck.js';
+import { MIRRORED_TEXT_STYLE_PROPERTIES, slideNumber } from '@shared/deck.js';
 import type { Deck, MediaEffect, Slide, SlideElement } from '@shared/deck.js';
 import { fitScale } from '@shared/geometry.js';
 import { fitAutoTextElement } from '@shared/autoFit.js';
@@ -51,6 +51,11 @@ export interface RenderOptions {
    * `mediaPreload: 'metadata'`.
    */
   deferVideoSrc?: boolean;
+  /**
+   * The deck the slide belongs to. Only slide numbering needs it; without it
+   * a slide renders unnumbered.
+   */
+  deck?: Pick<Deck, 'canvas' | 'showSlideNumbers' | 'fixedSlideNumbers' | 'slides'>;
 }
 
 export { quadraticPath };
@@ -215,6 +220,7 @@ export function applySlideRootStyles(
   slide: Slide,
   opts: RenderOptions,
 ): void {
+  syncSlideNumber(root, slide, opts.deck);
   root.className = `slide layout-${slide.layout ?? 'freeform'}`;
   if (slide.background.color) root.style.background = slide.background.color;
   else root.style.removeProperty('background');
@@ -227,6 +233,41 @@ export function applySlideRootStyles(
     root.style.removeProperty('background-size');
     root.style.removeProperty('background-position');
   }
+}
+
+/**
+ * Add, update or remove a rendered slide root's number for its deck. Writes
+ * nothing when the number shown is already right, so it can run on every
+ * change; `number` spares the deck walk for a caller that numbered the whole
+ * deck at once (`slideNumbers`).
+ */
+export function syncSlideNumber(
+  root: HTMLElement,
+  slide: Slide,
+  deck: RenderOptions['deck'],
+  number = deck ? slideNumber(deck, slide) : null,
+): void {
+  // Element wrappers carry the author's own classes: a `.slide-number` of
+  // theirs is not this footer.
+  let footer = root.querySelector<HTMLElement>(':scope > .slide-number:not([data-element-id])');
+  if (number === null || !deck) {
+    footer?.remove();
+    return;
+  }
+  const scale = deck.canvas.w / 1920;
+  if (footer?.textContent === String(number) && footer.style.fontSize === `${22 * scale}px`) return;
+  if (!footer) {
+    footer = document.createElement('div');
+    footer.className = 'slide-number role-caption';
+    root.appendChild(footer);
+  }
+  Object.assign(footer.style, {
+    position: 'absolute', right: `${48 * scale}px`, bottom: `${30 * scale}px`,
+    fontSize: `${22 * scale}px`, lineHeight: '1', pointerEvents: 'none',
+    userSelect: 'none', zIndex: '2147483646',
+  });
+  footer.textContent = String(number);
+  footer.setAttribute('aria-label', `Slide ${number}`);
 }
 
 /** Build the positioned wrapper for one element and fill in its type-specific body. */

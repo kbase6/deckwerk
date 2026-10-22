@@ -10,6 +10,7 @@ export interface KeyHandlers {
   onNext?: () => void;
   onPrev?: () => void;
   onHome?: () => void;
+  onBlank?: () => void;
 }
 
 export function bindPresentKeys(
@@ -51,7 +52,8 @@ export function bindPresentKeys(
       case 'b':
       case 'B':
         e.preventDefault();
-        player.toggleBlank();
+        if (handlers.onBlank) handlers.onBlank();
+        else player.toggleBlank();
         break;
       case 'Escape':
         e.preventDefault();

@@ -1,7 +1,7 @@
 import '../player/player.css';
 import '../print/print.css';
 import './print.css';
-import type { Deck } from '@shared/deck.js';
+import { deckForExport, type Deck } from '@shared/deck.js';
 import type { PdfBuildMode } from '@shared/ipc.js';
 import { buildPrintPages, printPageRule } from '../print/pages.js';
 import { waitForPdfDocument } from '../print/readiness.js';
@@ -24,7 +24,7 @@ const mode: PdfBuildMode = params.get('mode') === 'initial' || params.get('mode'
   ? params.get('mode') as PdfBuildMode
   : 'final';
 const includeHidden = params.get('includeHidden') === '1';
-const slideFilter = params.get('slide');
+const slideFilter = params.has('slide') ? new Set(params.getAll('slide')) : null;
 
 const status = document.getElementById('status')!;
 const printButton = document.getElementById('print') as HTMLButtonElement;
@@ -72,6 +72,9 @@ void (async () => {
   if (!deckResponse.ok) throw new Error(`could not load the deck (${deckResponse.status})`);
   const deck = await deckResponse.json() as Deck;
   document.title = `${deck.title} — PDF`;
+  // The deck may have moved on since the dialog: a slide deleted meanwhile, or
+  // only hidden ones left, stops here rather than printing an empty document.
+  deckForExport(deck, slideFilter ? [...slideFilter] : undefined, includeHidden);
 
   const theme = document.createElement('style');
   theme.textContent = rewriteCssAssetUrls(themeCss, assetUrl);

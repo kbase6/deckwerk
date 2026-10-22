@@ -337,7 +337,7 @@ function mountSlide(deck: Deck, slide: Slide, resolveSrc: (src: string) => strin
     position: 'fixed', left: '-100000px', top: '0', width: `${deck.canvas.w}px`,
     height: `${deck.canvas.h}px`, visibility: 'hidden', pointerEvents: 'none',
   });
-  const root = renderSlide(slide, { resolveSrc, mediaPreload: 'metadata' });
+  const root = renderSlide(slide, { deck, resolveSrc, mediaPreload: 'metadata' });
   root.style.width = `${deck.canvas.w}px`;
   root.style.height = `${deck.canvas.h}px`;
   host.appendChild(root);

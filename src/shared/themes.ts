@@ -97,17 +97,22 @@ const SLAB = 'Rockwell, "Roboto Slab", Georgia, "Zilla Slab", "Bookman Old Style
 const SOURCE_SANS =
   '"Source Sans 3", "Source Sans Pro", "Avenir Next", "Segoe UI", system-ui, sans-serif';
 
+// Picked per character: Charter (or, where it is missing, the editorial
+// serifs after it) sets Latin, Shippori Mincho the Japanese none of them
+// carry, so mixed-language text needs no font switch.
+const RESEARCH_SERIF = 'Charter, "Iowan Old Style", "New York", Palatino, Georgia, "Shippori Mincho", serif';
+
 export const THEMES: ThemePreset[] = [
   {
     id: 'basic',
     name: 'Research',
-    description: 'Warm editorial serif, humanist prose, and a restrained clay accent.',
+    description: 'Warm editorial serif throughout, Shippori Mincho for Japanese, and a restrained clay accent.',
     fonts: {
-      title: { family: EDITORIAL_SERIF, size: 108, weight: 700, lineHeight: 1.0, letterSpacing: '-0.03em' },
-      heading: { family: EDITORIAL_SERIF, size: 64, weight: 400, lineHeight: 1.08, letterSpacing: '-0.015em' },
-      body: { family: AVENIR, size: 48, weight: 400, lineHeight: 1.32, letterSpacing: '0' },
-      caption: { family: AVENIR, size: 30, weight: 500, lineHeight: 1.3, letterSpacing: '0.015em', color: '#6b6862' },
-      base: { family: AVENIR, size: 42, weight: 400, lineHeight: 1.34, letterSpacing: '0' },
+      title: { family: RESEARCH_SERIF, size: 108, weight: 700, lineHeight: 1.0, letterSpacing: '-0.03em' },
+      heading: { family: RESEARCH_SERIF, size: 64, weight: 400, lineHeight: 1.08, letterSpacing: '-0.015em' },
+      body: { family: RESEARCH_SERIF, size: 48, weight: 400, lineHeight: 1.32, letterSpacing: '0' },
+      caption: { family: RESEARCH_SERIF, size: 30, weight: 500, lineHeight: 1.3, letterSpacing: '0.015em', color: '#6b6862' },
+      base: { family: RESEARCH_SERIF, size: 42, weight: 400, lineHeight: 1.34, letterSpacing: '0' },
     },
     palette: ['#191918', '#6b6862', '#c96442', '#6a8fab', '#71815d', '#d6a756', '#ece7dd', '#faf9f5'],
     colors: { background: '#faf9f5', text: '#191918', muted: '#6b6862', accent: '#c96442' },

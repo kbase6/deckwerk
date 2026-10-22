@@ -435,7 +435,7 @@ export class Player {
       }
     }
 
-    const rendered = renderSlide(slide, { resolveSrc: this.resolveSrc });
+    const rendered = renderSlide(slide, { deck: this.deck, resolveSrc: this.resolveSrc });
     this.adoptWarmedImages(rendered);
     revealImagesWhenDecoded(rendered);
     this.stage.replaceChildren(rendered);

@@ -505,6 +505,13 @@ export const DeckSchema = z.object({
   }).nullable().default(null),
   /** Deck-wide motion curve for Morph transitions. */
   morphEasing: z.enum(['ease-in-out', 'ease-out', 'linear']).default('ease-in-out'),
+  /** Number every slide except title-layout and hidden ones, from deck order. */
+  showSlideNumbers: z.boolean().default(false),
+  /**
+   * Only on an export of part of a deck: each exported slide's number in the
+   * whole deck, which the slides left out would otherwise shift.
+   */
+  fixedSlideNumbers: z.record(z.string(), z.number()).optional(),
   slides: z.array(SlideSchema).default([]),
 });
 
@@ -597,4 +604,57 @@ export function emptyDeck(title = 'Untitled'): Deck {
     theme: 'theme.css',
     slides: [{ id: 'slide-1', name: 'Slide 1' }],
   });
+}
+
+/**
+ * A slide's number when the deck shows numbers: its place in deck order,
+ * counting neither title-layout nor hidden slides, which carry none. Computed
+ * rather than stored, so it never goes stale when slides move.
+ */
+export function slideNumber(
+  deck: Pick<Deck, 'showSlideNumbers' | 'fixedSlideNumbers' | 'slides'>,
+  slide: Pick<Slide, 'id'>,
+): number | null {
+  return slideNumbers(deck).get(slide.id) ?? null;
+}
+
+/** Every numbered slide's number by id, in one walk of the deck. */
+export function slideNumbers(
+  deck: Pick<Deck, 'showSlideNumbers' | 'fixedSlideNumbers' | 'slides'>,
+): Map<string, number> {
+  const numbers = new Map<string, number>();
+  if (!deck.showSlideNumbers) return numbers;
+  let count = 0;
+  for (const slide of deck.slides) {
+    if (slide.layout === 'title' || slide.skipped) continue;
+    count += 1;
+    numbers.set(slide.id, deck.fixedSlideNumbers?.[slide.id] ?? count);
+  }
+  return numbers;
+}
+
+/**
+ * The deck an export of `slideIds` covers: those slides in deck order, or the
+ * whole deck when none are named, hidden slides left out unless asked for.
+ * Ids arrive over IPC or a URL, so they are checked; a stale or empty
+ * selection is an error rather than a silent export of the whole deck.
+ */
+export function deckForExport(deck: Deck, slideIds: unknown, includeHidden = false): Deck {
+  if (slideIds !== undefined && (!Array.isArray(slideIds) || slideIds.some((id) => typeof id !== 'string'))) {
+    throw new Error('Export slide IDs must be an array of strings');
+  }
+  const wanted = slideIds === undefined ? null : new Set(slideIds as string[]);
+  if (wanted && [...wanted].some((id) => !deck.slides.some((slide) => slide.id === id))) {
+    throw new Error('Some selected slides no longer exist. Select the slides again.');
+  }
+  const slides = deck.slides.filter((slide) => (!wanted || wanted.has(slide.id)) && (includeHidden || !slide.skipped));
+  if (slides.length === 0) throw new Error('No slides to export. Hidden slides are excluded.');
+  if (!wanted) return { ...deck, slides };
+  // Slide 12 exported on its own still says 12.
+  const fixedSlideNumbers: Record<string, number> = {};
+  for (const slide of slides) {
+    const number = slideNumber(deck, slide);
+    if (number !== null) fixedSlideNumbers[slide.id] = number;
+  }
+  return { ...deck, slides, fixedSlideNumbers };
 }

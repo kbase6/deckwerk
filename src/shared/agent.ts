@@ -152,6 +152,7 @@ const UpdateDeckOperation = z.object({
   customThemes: DeckSchema.shape.customThemes.removeDefault().optional(),
   layoutMasters: DeckSchema.shape.layoutMasters.removeDefault().optional(),
   morphEasing: z.enum(['ease-in-out', 'ease-out', 'linear']).optional(),
+  showSlideNumbers: z.boolean().optional(),
 });
 /**
  * Replace every slide property except `elements`, so slide-level edits
@@ -389,6 +390,7 @@ function applyOperation(deck: Deck, operation: AgentOperation): void {
         deck.customThemes = structuredClone(operation.customThemes);
       }
       if (operation.morphEasing !== undefined) deck.morphEasing = operation.morphEasing;
+      if (operation.showSlideNumbers !== undefined) deck.showSlideNumbers = operation.showSlideNumbers;
       return;
     case 'setSlideProperties': {
       const at = requireSlideIndex(deck, operation.slideId);

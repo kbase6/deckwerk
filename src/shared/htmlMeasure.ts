@@ -990,6 +990,8 @@ export function measureSlides(doc: Document): MeasuredSlide[] {
       return {
         ...common,
         rotation: Math.round((rotation + angle) * 100) / 100,
+        // SVG's default cap is flat, which is the deck line's default too.
+        style: style.strokeLinecap === 'round' ? { 'stroke-linecap': 'round' } : {},
         dataset: dataset({
           shape: marker('marker-start') || marker('marker-end') ? 'arrow' : 'line',
           strokeWidth: String(Math.round(thickness * 100) / 100),

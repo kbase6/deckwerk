@@ -33,7 +33,7 @@ import {
 } from '@shared/themes.js';
 import { ARRANGE_LABELS, arrangeSelection } from './arrange.js';
 import { COLOR_LIVE_END, COLOR_LIVE_START, colorField, colorForInput } from './colorPicker.js';
-import { setCircularMask } from '@shared/mediaMask.js';
+import { editableCircularMask, setCircularMask } from '@shared/mediaMask.js';
 import {
   hasTextBox,
   setTextBoxBorder,
@@ -570,6 +570,15 @@ export class Inspector {
     });
     layout.append(layoutLabel, layoutSelect);
     section.content.appendChild(layout);
+    if (!this.editsLayoutMasters) {
+      const numbering = checkboxField('Show slide numbers', this.store.get().deck.showSlideNumbers, (on) => {
+        this.store.commit((deck) => {
+          deck.showSlideNumbers = on;
+        }, { label: on ? 'Show slide numbers' : 'Hide slide numbers' });
+      });
+      numbering.title = 'Applies to the whole deck. Title and hidden slides are excluded from numbering.';
+      section.content.appendChild(numbering);
+    }
 
     const masters = this.store.get().deck.layoutMasters;
     const backgroundValues = slides.map((slide) => (
@@ -1000,6 +1009,19 @@ export class Inspector {
   }
 
 
+  /** Flat or round line ends; unset, a curve draws round and a straight line flat. */
+  private lineEndsField(shapes: Array<Extract<SlideElement, { type: 'shape' }>>): HTMLElement {
+    const current = commonValue(shapes.map((shape) => shape.style['stroke-linecap'] ?? (shape.control ? 'round' : 'butt')));
+    return segmentedSelectField('Ends', [
+      { value: 'butt', title: 'Flat', text: 'Flat' },
+      { value: 'round', title: 'Round', text: 'Round' },
+    ], current ?? '', (value) => this.store.updateSelected((element) => {
+      if (element.type === 'shape' && (element.shape === 'line' || element.shape === 'arrow')) {
+        element.style['stroke-linecap'] = value;
+      }
+    }, { label: 'Change line ends' }));
+  }
+
   /**
    * Arrowhead size: blank follows the line's width (six stroke widths), a
    * number fixes the head's length so a thick line can keep a modest head.
@@ -1385,6 +1407,7 @@ export class Inspector {
       }),
       { step: 0.5 },
     ));
+    if (kind === 'line' || kind === 'arrow') numbers.appendChild(this.lineEndsField(shapes));
     if (kind === 'rect' || kind === 'ellipse') {
       numbers.appendChild(numberField(
         'RADIUS',
@@ -2451,6 +2474,7 @@ export class Inspector {
           }), { unit: 'px' },
         );
         if (stroked) paint.appendChild(width);
+        if (el.shape === 'line' || el.shape === 'arrow') paint.appendChild(this.lineEndsField([el]));
         style.content.appendChild(paint);
         if (!stroked) style.content.appendChild(this.gradientFields([el]));
         if (!stroked) {
@@ -2938,14 +2962,6 @@ function setMediaRadius(
   delete style['border-radius'];
   element.style = style;
   element.borderRadius = Math.max(0, value);
-}
-
-function editableCircularMask(
-  element: Extract<SlideElement, { type: 'image' | 'video' }>,
-): boolean {
-  if (element.maskShape !== undefined) return element.maskShape === 'circle';
-  const radius = cssMediaRadius(element.style['border-radius']);
-  return Boolean(radius && 'maskShape' in radius && radius.maskShape === 'circle');
 }
 
 function setMediaMask(

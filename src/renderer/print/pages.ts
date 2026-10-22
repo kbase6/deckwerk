@@ -22,8 +22,8 @@ export interface PrintPagesOptions {
   deck: Deck;
   mode: PdfBuildMode;
   includeHidden?: boolean;
-  /** Restrict the document to a single slide id. */
-  slideFilter?: string | null;
+  /** Restrict the document to these slide ids. */
+  slideFilter?: ReadonlySet<string> | null;
   resolveSrc: (src: string) => string;
 }
 
@@ -49,7 +49,7 @@ export function buildPrintPages(
   const pages: PrintPage[] = [];
   for (const slide of deck.slides) {
     if (slide.skipped && !includeHidden) continue;
-    if (slideFilter && slide.id !== slideFilter) continue;
+    if (slideFilter && !slideFilter.has(slide.id)) continue;
     for (const step of pdfSteps(slide, mode)) {
       const page = document.createElement('section');
       page.className = 'pdf-page';
@@ -63,7 +63,7 @@ export function buildPrintPages(
       // pins every video to an exact frame under a timeout. 'metadata' would
       // leave the pinned seek racing the network inside that timeout, which
       // showed up as nondeterministic frames in the PDF-vs-player pixel test.
-      stage.appendChild(renderSlide(slide, { resolveSrc }));
+      stage.appendChild(renderSlide(slide, { deck, resolveSrc }));
       const state = resolveState(slide, step);
       applyStaticSlideState(stage, slide, state);
       page.appendChild(stage);

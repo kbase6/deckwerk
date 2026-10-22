@@ -601,7 +601,7 @@ async function startPresentation(speakerView = false): Promise<void> {
 }
 
 async function exportWeb(): Promise<void> {
-  const choice = await showWebExportDialog();
+  const choice = await showWebExportDialog(store.get());
   if (!choice) return;
   try {
     const dir = await runOperation('Preparing web export…', async (operation) => {
@@ -609,7 +609,7 @@ async function exportWeb(): Promise<void> {
       await cssEditor.flush();
       await save();
       operation.update('Waiting for an export folder');
-      return window.api.exportBundle({ quality: choice.quality }, operation.id);
+      return window.api.exportBundle({ quality: choice.quality, slideIds: choice.slideIds }, operation.id);
     });
     if (dir) setStatusMessage(`Exported to ${dir}`);
   } catch (err) {
@@ -618,7 +618,7 @@ async function exportWeb(): Promise<void> {
 }
 
 async function exportPdf(): Promise<void> {
-  const choice = await showPdfExportDialog();
+  const choice = await showPdfExportDialog(store.get());
   if (!choice) return;
   try {
     const result = await runOperation('Preparing PDF export…', async (operation) => {
@@ -628,6 +628,7 @@ async function exportPdf(): Promise<void> {
       operation.update('Waiting for a PDF destination');
       return window.api.exportPdf({
         mode: choice.includeEachBuildStage ? 'every' : 'final',
+        slideIds: choice.slideIds,
       }, operation.id);
     });
     if (result) setStatusMessage(`PDF saved to ${result}`);

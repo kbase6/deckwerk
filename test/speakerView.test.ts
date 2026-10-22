@@ -260,6 +260,18 @@ describe('desktop Speaker View window', () => {
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', cancelable: true }));
     expect(sent.map((command) => command.type)).toEqual(['swapDisplays', 'exit', 'next']);
 
+    // The laser pointer toggles from its button or L, and shows what the
+    // audience window reports.
+    const laser = document.querySelector<HTMLButtonElement>('.speaker-laser')!;
+    laser.click();
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'l', cancelable: true }));
+    expect(sent.slice(3).map((command) => command.type)).toEqual(['toggleLaser', 'toggleLaser']);
+    stateListener!({
+      cursor: { slide: 1, step: 0 }, steps: 1, startedAt: 0, slideStartedAt: 0,
+      laser: { enabled: true, point: { x: 0.5, y: 0.5 }, blanked: false },
+    });
+    expect(laser.getAttribute('aria-pressed')).toBe('true');
+
     vi.unstubAllGlobals();
   });
 });

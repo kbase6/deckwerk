@@ -8,6 +8,7 @@ import {
   createToolbarSplitButton,
 } from '../src/renderer/editor/exportPicker.js';
 import { showPdfExportDialog } from '../src/renderer/editor/pdfExportDialog.js';
+import type { Slide } from '../src/shared/deck.js';
 import { createDeckWerkButton } from '../src/renderer/editor/aboutDialog.js';
 import { showPasteThemeDialog } from '../src/renderer/editor/pasteThemeDialog.js';
 import { refreshResponsiveToolbar } from '../src/renderer/editor/responsiveToolbar.js';
@@ -286,7 +287,12 @@ describe('shared editor controls', () => {
   });
 
   it('uses one in-editor PDF option for build stages', async () => {
-    const result = showPdfExportDialog();
+    const scope = {
+      deck: { slides: [{ id: 'a', skipped: false }, { id: 'b', skipped: true }] as Slide[] },
+      slideIndex: 1,
+      slideSelection: new Set(['a', 'b']),
+    };
+    const result = showPdfExportDialog(scope);
     const dialog = document.querySelector<HTMLElement>('[role="dialog"]')!;
     expect(dialog.getAttribute('aria-labelledby')).toBe('pdf-export-title');
     expect(dialog.textContent).toContain('Include each stage of builds');
@@ -297,6 +303,20 @@ describe('shared editor controls', () => {
       .find((button) => button.textContent === 'Export')!.click();
     await expect(result).resolves.toEqual({ includeEachBuildStage: true });
     expect(document.querySelector('[role="dialog"]')).toBeNull();
+
+    // Limited to some slides: only a hidden current slide leaves nothing to export.
+    const limited = showPdfExportDialog(scope);
+    const slides = document.querySelector<HTMLSelectElement>('[role="dialog"] select')!;
+    const exportButton = [...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')]
+      .find((button) => button.textContent === 'Export')!;
+    slides.value = 'current';
+    slides.dispatchEvent(new window.Event('change'));
+    expect(exportButton.disabled).toBe(true);
+    slides.value = 'selected';
+    slides.dispatchEvent(new window.Event('change'));
+    expect(exportButton.disabled).toBe(false);
+    exportButton.click();
+    await expect(limited).resolves.toEqual({ includeEachBuildStage: false, slideIds: ['a', 'b'] });
 
     const editor = readFileSync(join(process.cwd(), 'src/renderer/editor/main.ts'), 'utf8');
     expect(editor).toContain("mode: choice.includeEachBuildStage ? 'every' : 'final'");

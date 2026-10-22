@@ -1,7 +1,10 @@
 import type { WebExportQuality } from '@shared/ipc.js';
+import { createExportSlideScope, type ExportScopeSource } from './pdfExportDialog.js';
 
 export interface WebExportChoice {
   quality: WebExportQuality;
+  /** The slides to export, in deck order; undefined for the whole deck. */
+  slideIds?: string[];
 }
 
 const QUALITIES: Array<{ value: WebExportQuality; label: string; detail: string }> = [
@@ -27,7 +30,7 @@ const QUALITIES: Array<{ value: WebExportQuality; label: string; detail: string 
 const STORAGE_KEY = 'deckwerk.webExport.quality';
 
 /** Ask how much to compress the media before choosing where the export goes. */
-export function showWebExportDialog(): Promise<WebExportChoice | null> {
+export function showWebExportDialog(source: ExportScopeSource): Promise<WebExportChoice | null> {
   return new Promise((resolve) => {
     const overlay = document.createElement('div');
     overlay.className = 'workflow-overlay';
@@ -74,6 +77,7 @@ export function showWebExportDialog(): Promise<WebExportChoice | null> {
     submit.className = 'primary';
     submit.textContent = 'Export';
     actions.append(cancel, submit);
+    const scope = createExportSlideScope(source, submit);
 
     let finished = false;
     const finish = (choice: WebExportChoice | null): void => {
@@ -84,26 +88,27 @@ export function showWebExportDialog(): Promise<WebExportChoice | null> {
     };
     cancel.addEventListener('click', () => finish(null));
     submit.addEventListener('click', () => {
+      if (submit.disabled) return;
       const quality = select.value as WebExportQuality;
       try {
         localStorage.setItem(STORAGE_KEY, quality);
       } catch {
         // Storage can be unavailable; the choice simply is not remembered.
       }
-      finish({ quality });
+      finish({ quality, slideIds: scope.slideIds() });
     });
     overlay.addEventListener('pointerdown', (event) => {
       if (event.target === overlay) finish(null);
     });
     overlay.addEventListener('keydown', (event) => {
       if (event.key === 'Escape') finish(null);
-      if (event.key === 'Enter' && event.target === select) submit.click();
+      if (event.key === 'Enter' && (event.target === select || event.target === scope.select)) submit.click();
     });
 
-    dialog.append(title, field, detail, actions);
+    dialog.append(title, ...scope.elements, field, detail, actions);
     overlay.appendChild(dialog);
     document.body.appendChild(overlay);
-    select.focus();
+    scope.select.focus();
   });
 }
 

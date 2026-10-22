@@ -9,7 +9,7 @@ const mode = params.get('mode') === 'initial' || params.get('mode') === 'every'
   ? params.get('mode') as 'initial' | 'every'
   : 'final';
 const includeHidden = params.get('includeHidden') === '1';
-const slideFilter = params.get('slide');
+const slideFilter = params.has('slide') ? new Set(params.getAll('slide')) : null;
 const jobId = params.get('job') ?? '';
 
 void (async () => {
@@ -31,6 +31,7 @@ void (async () => {
     slideFilter,
     resolveSrc: window.api.assetUrl,
   });
+  if (pages.length === 0) throw new Error('No slides to export. Select the slides again.');
   await waitForPdfDocument(pages);
   document.documentElement.dataset.ready = 'true';
   window.api.pdfReady(jobId);

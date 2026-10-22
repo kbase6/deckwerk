@@ -690,12 +690,13 @@ async function copyText(text: string): Promise<void> {
  * collaborator currently sees — there is nothing local to flush first.
  */
 async function exportPdf(): Promise<void> {
-  const choice = await showPdfExportDialog();
+  const choice = await showPdfExportDialog(store.get());
   if (!choice) return;
   const query = new URLSearchParams({
     deck: deckId!,
     mode: choice.includeEachBuildStage ? 'every' : 'final',
   });
+  for (const id of choice.slideIds ?? []) query.append('slide', id);
   const tab = window.open(`./print.html?${query.toString()}`, '_blank');
   if (!tab) {
     setStatusMessage('PDF export needs a new tab — allow pop-ups for this site and try again.');

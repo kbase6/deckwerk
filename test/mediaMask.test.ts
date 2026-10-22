@@ -1,8 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
   circularMaskLayout,
+  cropWindow,
+  fittedImageBox,
   paintedMediaBox,
+  pannedSourceBox,
   setCircularMask,
+  type MaskRect,
 } from '../src/shared/mediaMask.js';
 import { parseDeck, emptyDeck, type SlideElement } from '../src/shared/deck.js';
 
@@ -164,5 +168,118 @@ describe('mask fields in the deck format', () => {
     }));
     expect(el.type).toBe('video');
     expect(el.sourceBox).toEqual({ x: 1, y: 2, w: 3, h: 4 });
+  });
+});
+
+/** Where a box-relative picture's centre lands on the slide, rotation included. */
+function pictureCentre(box: MaskRect, rot: number, picture: MaskRect): { x: number; y: number } {
+  const r = (rot * Math.PI) / 180;
+  const lx = picture.x + picture.w / 2 - box.w / 2;
+  const ly = picture.y + picture.h / 2 - box.h / 2;
+  return {
+    x: box.x + box.w / 2 + lx * Math.cos(r) - ly * Math.sin(r),
+    y: box.y + box.h / 2 + lx * Math.sin(r) + ly * Math.cos(r),
+  };
+}
+
+describe('fitting an uncropped picture frame to the picture', () => {
+  it('shrinks a contain frame to the painted picture without moving it', () => {
+    for (const rot of [0, 30, 90, 180]) {
+      const el = image({ rot, style: { 'object-position': 'left top' } });
+      const natural = { w: 1000, h: 1000 };
+      const fitted = fittedImageBox(el, natural)!;
+      expect(fitted).toMatchObject({ w: 400, h: 400, style: {} });
+      const before = pictureCentre(el, rot, paintedMediaBox(el, natural));
+      const after = pictureCentre(fitted, rot, { x: 0, y: 0, w: fitted.w, h: fitted.h });
+      expect(Math.abs(after.x - before.x)).toBeLessThanOrEqual(0.5);
+      expect(Math.abs(after.y - before.y)).toBeLessThanOrEqual(0.5);
+    }
+  });
+
+  it('leaves crops, circles, other fits and already-fitted frames alone', () => {
+    const natural = { w: 1000, h: 1000 };
+    expect(fittedImageBox(image({ sourceBox: { x: 0, y: 0, w: 800, h: 400 } }), natural)).toBeNull();
+    expect(fittedImageBox(image({ maskShape: 'circle' }), natural)).toBeNull();
+    expect(fittedImageBox(image({ fit: 'cover' }), natural)).toBeNull();
+    expect(fittedImageBox(image({ w: 400 }), natural)).toBeNull();
+    expect(fittedImageBox(image({}), null)).toBeNull();
+  });
+
+  it('leaves a frame that paints something of its own, and fits to whole pixels', () => {
+    const natural = { w: 1000, h: 1000 };
+    expect(fittedImageBox(image({ borderWidth: 4 }), natural)).toBeNull();
+    expect(fittedImageBox(image({ borderRadius: 12 }), natural)).toBeNull();
+    expect(fittedImageBox(image({ style: { 'background-color': '#000' } }), natural)).toBeNull();
+    expect(fittedImageBox(image({ style: { 'box-shadow': '0 4px 8px #0004' } }), natural)).toBeNull();
+    const fitted = fittedImageBox(image({ w: 801, h: 400 }), { w: 1024, h: 767 })!;
+    expect(Object.values(fitted).filter((v) => typeof v === 'number').every(Number.isInteger)).toBe(true);
+    expect(fittedImageBox({ ...image({}), ...fitted }, { w: 1024, h: 767 })).toBeNull();
+  });
+});
+
+describe('dragging a crop window', () => {
+  const origin = { x: 100, y: 100, w: 400, h: 200 };
+  const picture = { x: 0, y: 0, w: 400, h: 200 };
+
+  it('moves only the dragged edge and stops at the picture', () => {
+    const inward = cropWindow({ x: 100, y: 100, w: 300, h: 200 }, origin, picture, 0);
+    expect(inward).toEqual({ x: 100, y: 100, w: 300, h: 200, sourceBox: { x: 0, y: 0, w: 400, h: 200 } });
+    const outward = cropWindow({ x: 40, y: 100, w: 460, h: 200 }, origin, picture, 0);
+    expect(outward).toMatchObject({ x: 100, w: 400 });
+    const tiny = cropWindow({ x: 100, y: 100, w: -50, h: 200 }, origin, picture, 0);
+    expect(tiny.w).toBe(8);
+  });
+
+  it('keeps a rotated picture where it was on the slide', () => {
+    for (const rot of [15, 90, 200]) {
+      const cropped = cropWindow({ x: 160, y: 130, w: 250, h: 120 }, origin, picture, rot);
+      const before = pictureCentre(origin, rot, picture);
+      const after = pictureCentre(cropped, rot, cropped.sourceBox);
+      expect(Math.abs(after.x - before.x)).toBeLessThanOrEqual(0.5);
+      expect(Math.abs(after.y - before.y)).toBeLessThanOrEqual(0.5);
+    }
+  });
+
+  it('keeps a locked (circle, Shift) window in proportion at the picture edge', () => {
+    // A circle touching the top and bottom of a landscape picture.
+    const circle = { x: 100, y: 100, w: 270, h: 270 };
+    const wide = { x: -100, y: 0, w: 480, h: 270 };
+    const grown = cropWindow({ x: 100, y: 100, w: 320, h: 320 }, circle, wide, 0, true);
+    expect(grown.w).toBe(grown.h);
+    expect(grown).toMatchObject({ x: 100, y: 100, w: 270 });
+    const fromTopLeft = cropWindow({ x: 50, y: 50, w: 320, h: 320 }, circle, wide, 0, true);
+    expect(fromTopLeft).toMatchObject({ x: 100, y: 100, w: 270, h: 270 });
+  });
+
+  it('never moves an edge the drag leaves alone, even in a letterboxed frame', () => {
+    // An 800x600 contain frame showing 16:9 footage: picture 800x450 at y=75.
+    const frame = { x: 0, y: 0, w: 800, h: 600 };
+    const footage = { x: 0, y: 75, w: 800, h: 450 };
+    expect(cropWindow({ x: 0, y: 0, w: 700, h: 600 }, frame, footage, 0)).toMatchObject({ x: 0, y: 0, w: 700, h: 600 });
+    expect(cropWindow({ x: 0, y: -50, w: 800, h: 650 }, frame, footage, 0)).toMatchObject({ y: 0, h: 600 });
+    expect(cropWindow({ x: 0, y: 100, w: 800, h: 500 }, frame, footage, 0).sourceBox).toEqual({ x: 0, y: -25, w: 800, h: 450 });
+  });
+
+  it('writes whole pixels and leaves the picture where it was', () => {
+    const picture = { x: 37.5, y: 12.25, w: 725, h: 375.5 };
+    for (let i = 0; i < 50; i += 1) {
+      const rect = { x: 100 + i * 1.37, y: 100 + i * 0.91, w: 400 - i * 1.37, h: 200 - i * 0.91 };
+      const cropped = cropWindow(rect, origin, picture, 0);
+      expect([cropped.x, cropped.y, cropped.w, cropped.h].every(Number.isInteger)).toBe(true);
+      expect(Math.abs(cropped.x + cropped.sourceBox.x - (origin.x + picture.x))).toBeLessThanOrEqual(0.5);
+      expect(Math.abs(cropped.y + cropped.sourceBox.y - (origin.y + picture.y))).toBeLessThanOrEqual(0.5);
+    }
+  });
+});
+
+describe('panning a crop', () => {
+  it('stops where the picture would leave its window, without a jump at the start', () => {
+    const picture = { x: -100, y: -50, w: 600, h: 300 };
+    const window = { w: 400, h: 200 };
+    expect(pannedSourceBox(picture, window, 500, -500)).toEqual({ x: 0, y: -100, w: 600, h: 300 });
+    expect(pannedSourceBox(picture, window, 0, 0)).toEqual(picture);
+    // Smaller than its window (letterboxed): stays inside it.
+    expect(pannedSourceBox({ x: 0, y: 75, w: 800, h: 450 }, { w: 800, h: 600 }, 40, 500))
+      .toEqual({ x: 0, y: 150, w: 800, h: 450 });
   });
 });

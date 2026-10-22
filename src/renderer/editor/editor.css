@@ -1594,7 +1594,8 @@ input[type="range"] { accent-color: var(--accent); padding: 0; background: trans
    crowding the narrower five-across row. */
 .text-format-superscript,
 .text-format-subscript { letter-spacing: -0.02em; }
-.text-format-buttons button[aria-pressed="true"] {
+.text-format-buttons button[aria-pressed="true"],
+.zoom-controls .zoom-gridlines[aria-pressed="true"] {
   border-color: var(--accent);
   background: color-mix(in srgb, var(--accent) 24%, var(--panel-2));
   color: var(--text);
@@ -4733,3 +4734,27 @@ button.ghost:hover:not(:disabled) { color: var(--text); background: transparent;
   text-decoration-thickness: 1.5px;
   text-underline-offset: 3px;
 }
+
+/* Crop mode: the whole outline drags like its edge's midpoint handle. */
+.sel-box.masking .mask-edge { border: 0; background: transparent; box-shadow: none; }
+.mask-edge-n, .mask-edge-s { left: calc(5px * var(--inv)); right: calc(5px * var(--inv)); width: auto; cursor: ns-resize; }
+.mask-edge-n { top: calc(-5px * var(--inv)); }
+.mask-edge-s { bottom: calc(-5px * var(--inv)); }
+.mask-edge-e, .mask-edge-w { top: calc(5px * var(--inv)); bottom: calc(5px * var(--inv)); height: auto; cursor: ew-resize; }
+.mask-edge-e { right: calc(-5px * var(--inv)); }
+.mask-edge-w { left: calc(-5px * var(--inv)); }
+
+/* Gridlines: dotted guides every 40 slide pixels, a dot every 6, scaled with
+   the slide; editor chrome only. */
+.canvas-host.show-gridlines .overlay-layer::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    radial-gradient(circle, rgb(128 128 128 / 20%) calc(0.7px * var(--editor-inv-scale, 1)), transparent calc(0.9px * var(--editor-inv-scale, 1))),
+    radial-gradient(circle, rgb(128 128 128 / 20%) calc(0.7px * var(--editor-inv-scale, 1)), transparent calc(0.9px * var(--editor-inv-scale, 1)));
+  background-size: 40px 6px, 6px 40px;
+  background-position: -20px -3px, -3px -20px;
+}
+.zoom-controls .zoom-gridlines { width: auto; padding: 0 10px; }

@@ -1137,6 +1137,7 @@ export const PRESENTATIONAL_STYLE = new Set([
   'padding-top', 'padding-right', 'padding-bottom', 'padding-left',
   'overflow', 'object-position', 'white-space', 'word-break', 'overflow-wrap',
   'writing-mode', 'text-orientation', 'list-style-type', 'list-style-position',
+  'stroke-linecap',
 ]);
 
 /**

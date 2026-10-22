@@ -254,6 +254,7 @@ function applyLenient(
       if (op.customThemes !== undefined) deck.customThemes = structuredClone(op.customThemes);
       if (op.layoutMasters !== undefined) deck.layoutMasters = structuredClone(op.layoutMasters);
       if (op.morphEasing !== undefined) deck.morphEasing = op.morphEasing;
+      if (op.showSlideNumbers !== undefined) deck.showSlideNumbers = op.showSlideNumbers;
       draft.touchProps();
       return;
     }

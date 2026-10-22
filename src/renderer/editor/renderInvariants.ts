@@ -20,7 +20,7 @@
  * disagree about.
  */
 import type { Slide } from '../../shared/deck.js';
-import { renderSlide } from '../player/render.js';
+import { renderSlide, type RenderOptions } from '../player/render.js';
 
 /** Nodes the editor adds on top of a player render; not part of the model. */
 const EDITOR_ONLY_SELECTOR = [
@@ -87,11 +87,11 @@ export function findRenderDivergences(
   slideLayer: HTMLElement,
   slide: Slide,
   resolveSrc: (src: string) => string,
-  options: { skipElementIds?: Iterable<string> } = {},
+  options: { skipElementIds?: Iterable<string>; deck?: RenderOptions['deck'] } = {},
 ): RenderDivergence[] {
   const live = slideLayer.querySelector<HTMLElement>(':scope > .slide');
   if (!live) return [];
-  const fresh = renderSlide(slide, { resolveSrc, mediaPreload: 'metadata' });
+  const fresh = renderSlide(slide, { deck: options.deck, resolveSrc, mediaPreload: 'metadata' });
   const skip = new Set(options.skipElementIds ?? []);
   const divergences: RenderDivergence[] = [];
 
@@ -142,7 +142,7 @@ export function assertNoRenderDivergence(
   slideLayer: HTMLElement,
   slide: Slide,
   resolveSrc: (src: string) => string,
-  options: { skipElementIds?: Iterable<string>; context?: string } = {},
+  options: { skipElementIds?: Iterable<string>; context?: string; deck?: RenderOptions['deck'] } = {},
 ): void {
   const divergences = findRenderDivergences(slideLayer, slide, resolveSrc, options);
   if (divergences.length === 0) return;
@@ -171,7 +171,7 @@ export function reportRenderDivergences(
   slideLayer: HTMLElement,
   slide: Slide,
   resolveSrc: (src: string) => string,
-  options: { skipElementIds?: Iterable<string>; context?: string } = {},
+  options: { skipElementIds?: Iterable<string>; context?: string; deck?: RenderOptions['deck'] } = {},
 ): void {
   if (!reportingEnabled) return;
   let divergences: RenderDivergence[];

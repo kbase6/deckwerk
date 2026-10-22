@@ -6,7 +6,7 @@ import './collab.css';
 import '../lightTheme.css';
 import './mobile.css';
 import { applyUiTheme } from '../uiTheme.js';
-import { emptyDeck, type Deck, type Slide } from '@shared/deck.js';
+import { emptyDeck, slideNumber, type Deck, type Slide } from '@shared/deck.js';
 import { setIdSuffix } from '@shared/geometry.js';
 import { commentThreads, findComment, openThreadCount, type CommentThread } from '@shared/comments.js';
 import { slideTitle } from '@shared/deckDigest.js';
@@ -99,7 +99,7 @@ function toast(text: string): void {
  * playing every clip in somebody's pocket.
  */
 class SlideView {
-  private drawn: { deck: Deck; slide: Slide } | null = null;
+  private drawn: { deck: Deck; slide: Slide; number: number | null } | null = null;
   private stage: HTMLElement | null = null;
 
   constructor(private readonly host: HTMLElement) {
@@ -107,7 +107,12 @@ class SlideView {
   }
 
   show(deck: Deck, slide: Slide | undefined): void {
-    if (this.drawn && this.drawn.slide === slide && this.drawn.deck.canvas === deck.canvas) return;
+    // Its number can change while the slide does not: another slide moved.
+    const number = slide ? slideNumber(deck, slide) : null;
+    if (
+      this.drawn && this.drawn.slide === slide && this.drawn.deck.canvas === deck.canvas
+      && this.drawn.number === number
+    ) return;
     releasePreviewVideos(this.host);
     this.host.replaceChildren();
     this.stage = null;
@@ -115,14 +120,14 @@ class SlideView {
     if (!slide) return;
     const stage = document.createElement('div');
     stage.className = 'stage';
-    stage.append(renderSlide(slide, { resolveSrc, mediaPreload: 'metadata', deferVideoSrc: true }));
+    stage.append(renderSlide(slide, { deck, resolveSrc, mediaPreload: 'metadata', deferVideoSrc: true }));
     this.host.append(stage);
     applyStaticSlideState(stage, slide, resolveState(slide, stepCount(slide) - 1));
     for (const video of stage.querySelectorAll('video')) video.pause();
     revealImagesWhenDecoded(stage);
     freezePreviewVideos(stage);
     this.stage = stage;
-    this.drawn = { deck, slide };
+    this.drawn = { deck, slide, number };
     this.fit();
   }
 

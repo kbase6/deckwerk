@@ -22,6 +22,7 @@ const view = createSpeakerView({
   host: document.getElementById('root')!,
   resolveSrc: (src) => window.api.assetUrl(src),
   onCommand: (command) => window.api.sendPresentCommand(command),
+  laser: true,
 });
 
 async function load(session: DeckSession): Promise<void> {

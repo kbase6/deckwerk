@@ -3,6 +3,8 @@ import { electronBinary, wait } from './support/browserSession.js';
 import {
   FAR,
   IMAGE,
+  LINE_A,
+  LINE_B,
   LIST,
   MOD,
   PARA,
@@ -26,8 +28,11 @@ import { sidebarSelectionProbes } from './support/selectionSession.js';
  * Cmd+B mid-word, undo/redo at random points, Backspace with an element
  * selection, Cmd+A in both contexts, Backspace on a multi-slide rail
  * selection (which must ask first; cancelled, or confirmed and undone), and
- * resizing a selected word from the sidebar's Font size field, and
- * panning and zooming the view with a plain mouse and the keyboard.
+ * resizing a selected word from the sidebar's Font size field,
+ * panning and zooming the view with a plain mouse and the keyboard, the
+ * Props tab's line Ends control on one or both lines, its Show slide numbers
+ * box, the zoom bar's Gridlines toggle, and dragging a crop window by the
+ * whole length of one of its edges.
  *
  * After EVERY step five oracles run: the whole-editor invariant set from
  * selectionSession, keystroke routing via per-step nonce strings, an element
@@ -152,7 +157,8 @@ type OpName =
   | 'type nonce' | 'bold mid-word' | 'escape' | 'click empty' | 'marquee'
   | 'rail hop' | 'undo' | 'redo' | 'undo round-trip' | 'delete selection'
   | 'cmd+a' | 'click with stray hover' | 'rail multi-delete' | 'stack key' | 'spelling fix'
-  | 'size from sidebar' | 'viewport gesture';
+  | 'size from sidebar' | 'viewport gesture' | 'line ends' | 'slide numbers' | 'gridlines'
+  | 'crop edge drag';
 
 interface Violation { seed: number; step: number; op: OpName; oracle: string; detail: string }
 
@@ -246,8 +252,8 @@ describe.skipIf(!electronBinary)('cross-context fuzz over three elements and two
         const errors = await session.drainPageErrors();
         stats.knownStaleEditChrome += errors.filter(isKnownStaleEditChrome).length;
         stats.knownStaleSlideIdentity += errors.filter(isKnownStaleSlideIdentity).length;
-        const realErrors = errors.filter((error) =>
-          !isKnownStaleEditChrome(error) && !isKnownStaleSlideIdentity(error));
+        const realErrors = errors.filter((error) => !isKnownStaleEditChrome(error)
+          && !isKnownStaleSlideIdentity(error));
         if (realErrors.length > 0) {
           flag('pageErrors', realErrors.join(' | '));
           break;
@@ -308,6 +314,28 @@ describe.skipIf(!electronBinary)('directed repros minimised from the fuzz walk',
       errors,
       `stale edit chrome after an unchanged edit (inline style left behind: "${residue}")`,
     ).toEqual([]);
+  });
+
+  // Fixed: crop mode outlived a slide change. A rail hop while an image was
+  // in crop mode left the mode on that image, so the app's own selection
+  // checker reported "cropping xc-image, which is not on the current slide",
+  // and back on the image's slide the next double-click turned the invisible
+  // leftover mode off instead of on. Minimised from fuzz seed 933702 step 14.
+  it('ends crop mode when the slide changes', {
+    timeout: 120_000,
+  }, async () => {
+    await session.reset();
+    await session.drainPageErrors();
+    const masking = () => session.cdp.evaluate<string | null>('window.canvas.maskingElement()');
+    await session.doubleClick(IMAGE);
+    expect(await masking(), 'double-click enters crop mode').toBe(IMAGE);
+    await session.clickRail(1);
+    await wait(300);
+    expect(await masking(), 'crop mode after leaving the slide').toBeNull();
+    expect(await session.drainPageErrors(), 'no selection-invariant report').toEqual([]);
+    await session.clickRail(0);
+    await session.doubleClick(IMAGE);
+    expect(await masking(), 'back on the slide, double-click enters crop mode again').toBe(IMAGE);
   });
 });
 
@@ -408,6 +436,10 @@ function chooseOp(next: () => number, pre: CrossState): OpName {
   add('rail multi-delete', 1);
   add('stack key', 1);
   add('viewport gesture', 2);
+  if (pre.elements.includes(LINE_A) || pre.elements.includes(LINE_B)) add('line ends', 2);
+  add('slide numbers', 1);
+  add('gridlines', 1);
+  if (pre.elements.includes(IMAGE)) add('crop edge drag', 2);
   return pick(next, ops);
 }
 
@@ -628,6 +660,18 @@ async function performOp(
     case 'viewport gesture':
       await viewportGesture(next, pre, flag);
       return 'same';
+    case 'line ends':
+      await lineEnds(next, pre, flag);
+      return 'same';
+    case 'slide numbers':
+      await slideNumbers(flag);
+      return 'same';
+    case 'gridlines':
+      await gridlines(flag);
+      return 'same';
+    case 'crop edge drag':
+      await cropEdgeDrag(next, flag);
+      return 'same';
     case 'rail multi-delete': {
       // Select both slides in the rail with real clicks, then a deletion key.
       // More than one slide must never go without a confirmation: Escape
@@ -790,9 +834,11 @@ async function viewportGesture(
   };
   // Space pans only from the canvas or from nothing in particular; with the
   // rail or a field focused, it is theirs, and a Space drag would be a plain
-  // drag. Mid-edit, Space is a typed space.
+  // drag. Mid-edit, Space is a typed space. A focused control inside the
+  // canvas (the zoom bar's buttons, after a Gridlines click) keeps it too.
   const spaceIsFree = pre.editing === null && await cdp.evaluate<boolean>(`(() => {
     const focus = document.activeElement;
+    if (focus && focus.closest('input, textarea, select, button')) return false;
     return !focus || focus === document.body || Boolean(focus.closest('#canvas'));
   })()`);
   const gestures = ['notch', 'shift wheel', 'middle drag', 'zoom keys', ...(spaceIsFree ? ['space drag'] : [])];
@@ -836,6 +882,305 @@ async function viewportGesture(
   })`);
   if (view.ratio !== ratio) flag('routing', `${gesture} zoomed the page itself: ${ratio} -> ${view.ratio}`);
   if (view.zoom !== '100%') flag('routing', `Ctrl/Cmd+0 after ${gesture} left the canvas at ${view.zoom}`);
+}
+
+/** A real click on the visible node a page-side finder returns, or false if there is none. */
+async function clickFound(finder: string, label: string): Promise<boolean> {
+  const handle = `xc-click-${uniqueToken()}`;
+  const found = await session.cdp.evaluate<boolean>(`(() => {
+    const node = (${finder})();
+    if (!node) return false;
+    node.id = ${JSON.stringify(handle)};
+    return true;
+  })()`);
+  if (found) await session.cdp.click(`#${handle}`, label);
+  return found;
+}
+
+/**
+ * Select one line or both with real clicks and set their ends from the Props
+ * tab's Ends control. Exactly the selected lines take the choice, their svg
+ * draws it, the control shows it, and nothing else on the slide changes.
+ */
+async function lineEnds(
+  next: () => number,
+  pre: CrossState,
+  flag: (oracle: 'routing' | 'census', detail: string) => void,
+): Promise<void> {
+  const { cdp } = session;
+  const lines = [LINE_A, LINE_B].filter((id) => pre.elements.includes(id));
+  const chosen = lines.length > 1 && next() < 0.5 ? lines : [pick(next, lines)];
+  const value = pick(next, ['butt', 'round']);
+  await session.clickEmpty();
+  await session.click(chosen[0]);
+  if (chosen.length > 1) await session.shiftClick(chosen[1]);
+  const selected = (await session.state()).selection;
+  if ([...selected].sort().join() !== [...chosen].sort().join()) {
+    flag('routing', `clicking [${chosen.join(', ')}] selected [${selected.join(', ')}]`);
+    return;
+  }
+  const others = () => cdp.evaluate<string>(`JSON.stringify(window.store.slide.elements
+    .filter((e) => !${JSON.stringify(chosen)}.includes(e.id)))`);
+  const before = await others();
+  const clicked = await clickFound(`() => [...document.querySelectorAll('.editor-inspector .field-segmented')]
+    .find((field) => field.querySelector('span')?.textContent === 'Ends' && field.getClientRects().length > 0)
+    ?.querySelector('.segment-button[data-value="${value}"]')`, `Ends: ${value}`);
+  if (!clicked) {
+    flag('routing', `the Props tab shows no Ends control for [${chosen.join(', ')}]`);
+    return;
+  }
+  await wait(120);
+  if (TRACE) console.log(`  Ends: ${value} on [${chosen.join(', ')}], editing was ${pre.editing}`);
+  const after = await cdp.evaluate<{
+    selection: string[];
+    caps: Record<string, { stored: string | null; drawn: string | null }>;
+    pressed: string | null;
+  }>(`(() => {
+    const caps = {};
+    for (const id of ${JSON.stringify(chosen)}) {
+      const el = window.store.slide.elements.find((e) => e.id === id);
+      const stroke = document.querySelector('.slide-layer [data-element-id="' + id + '"] svg :is(line, path):not(.arrowhead)');
+      // Unset ends are the inspector's own default (round for a curve, flat
+      // for a straight line), and an svg stroke without the attribute is flat:
+      // choosing the value already shown is a no-op that writes nothing.
+      caps[id] = {
+        stored: el ? el.style['stroke-linecap'] ?? (el.control ? 'round' : 'butt') : null,
+        drawn: stroke ? stroke.getAttribute('stroke-linecap') ?? 'butt' : null,
+      };
+    }
+    const field = [...document.querySelectorAll('.editor-inspector .field-segmented')]
+      .find((node) => node.querySelector('span')?.textContent === 'Ends' && node.getClientRects().length > 0);
+    return {
+      selection: [...window.store.get().selection],
+      caps,
+      pressed: field?.querySelector('.segment-button[aria-pressed="true"]')?.dataset.value ?? null,
+    };
+  })()`);
+  for (const [id, cap] of Object.entries(after.caps)) {
+    if (cap.stored !== value) flag('census', `Ends: ${value} stored ${cap.stored} on ${id}`);
+    if (cap.drawn !== value) flag('census', `Ends: ${value} on ${id} draws stroke-linecap ${cap.drawn}`);
+  }
+  if (after.pressed !== value) flag('routing', `after Ends: ${value} the control shows ${after.pressed}`);
+  if ([...after.selection].sort().join() !== [...chosen].sort().join()) {
+    flag('routing', `Ends: ${value} changed the selection to [${after.selection.join(', ')}]`);
+  }
+  const othersAfter = await others();
+  if (othersAfter !== before) {
+    flag('census', `Ends: ${value} changed an unselected object; diff: ${firstDiff(before, othersAfter)}`);
+  }
+}
+
+/**
+ * Toggle Show slide numbers in the Props tab with nothing selected. The deck
+ * flag flips, the box shows it, the slide on the canvas carries exactly the
+ * number the deck gives it (none when off), and no object changes.
+ */
+async function slideNumbers(
+  flag: (oracle: 'routing' | 'census', detail: string) => void,
+): Promise<void> {
+  const { cdp } = session;
+  await session.clickEmpty();
+  const selected = (await session.state()).selection;
+  if (selected.length > 0) {
+    flag('routing', `clicking the empty canvas left [${selected.join(', ')}] selected`);
+    return;
+  }
+  const box = `() => [...document.querySelectorAll('.editor-inspector .field-check')]
+    .find((field) => field.querySelector('span')?.textContent === 'Show slide numbers'
+      && field.getClientRects().length > 0)?.querySelector('input')`;
+  const read = () => cdp.evaluate<{ on: boolean; expected: string | null; shown: string | null; checked: boolean | null }>(`(() => {
+    const state = window.store.get();
+    const deck = state.deck;
+    const current = deck.slides[state.slideIndex];
+    let count = 0;
+    let number = null;
+    if (deck.showSlideNumbers) {
+      for (const slide of deck.slides) {
+        if (slide.layout === 'title' || slide.skipped) continue;
+        count += 1;
+        if (slide.id === current.id) number = String(count);
+      }
+    }
+    const footer = document.querySelector('.slide-layer > .slide > .slide-number:not([data-element-id])');
+    return {
+      on: deck.showSlideNumbers === true,
+      expected: number,
+      shown: footer ? footer.textContent : null,
+      checked: (${box})()?.checked ?? null,
+    };
+  })()`);
+  const before = await read();
+  const objects = await session.deckSnapshot();
+  if (!await clickFound(box, 'Show slide numbers')) {
+    flag('routing', 'the Props tab shows no Show slide numbers box with nothing selected');
+    return;
+  }
+  await wait(150);
+  const after = await read();
+  if (after.on === before.on) flag('census', `Show slide numbers left the deck at ${after.on}`);
+  if (after.checked !== after.on) flag('routing', `Show slide numbers is ${after.checked ? '' : 'un'}checked for a deck at ${after.on}`);
+  if (after.shown !== after.expected) {
+    flag('census', `the slide shows number ${after.shown} where the deck gives it ${after.expected}`);
+  }
+  const objectsAfter = await session.deckSnapshot();
+  if (objectsAfter !== objects) {
+    flag('census', `Show slide numbers changed an object; diff: ${firstDiff(objects, objectsAfter)}`);
+  }
+}
+
+/**
+ * The zoom bar's Gridlines toggle, mid-edit or not, is editor chrome: the
+ * deck, the slide and the selection are exactly as they were, and the button
+ * says what the canvas shows. Like every zoom-bar button (Zoom in, Re-center
+ * slide), a click on it ends a text edit, so the edit itself is not compared.
+ */
+async function gridlines(flag: (oracle: 'routing' | 'census', detail: string) => void): Promise<void> {
+  const { cdp } = session;
+  const snapshot = () => cdp.evaluate<string>(`(() => {
+    const state = window.store.get();
+    return JSON.stringify({
+      deck: state.deck,
+      slide: state.slideIndex,
+      selection: [...state.selection].sort(),
+    });
+  })()`);
+  const view = () => cdp.evaluate<{ shown: boolean; pressed: string | null }>(`({
+    shown: document.querySelector('.canvas-host')?.classList.contains('show-gridlines') === true,
+    pressed: document.querySelector('#canvas .zoom-gridlines')?.getAttribute('aria-pressed') ?? null,
+  })`);
+  const before = await snapshot();
+  const was = await view();
+  await cdp.click('#canvas .zoom-gridlines', 'the Gridlines toggle');
+  await wait(120);
+  const now = await view();
+  if (now.shown === was.shown) flag('routing', `the Gridlines toggle left the gridlines ${now.shown ? 'on' : 'off'}`);
+  if (now.pressed !== String(now.shown)) flag('routing', `Gridlines shows aria-pressed=${now.pressed} with gridlines ${now.shown ? 'on' : 'off'}`);
+  const after = await snapshot();
+  if (after !== before) flag('census', `the Gridlines toggle changed the deck, the slide or the selection; diff: ${firstDiff(before, after)}`);
+}
+
+/**
+ * Crop the image by dragging one edge strip of its crop window — away from
+ * the corner and midpoint handles — in or out. The window stays whole pixels
+ * and inside the picture, the picture stays where it was on the slide, and
+ * the three edges not dragged do not move. Crop mode is entered by a real
+ * double-click when it is not already on.
+ */
+async function cropEdgeDrag(
+  next: () => number,
+  flag: (oracle: 'routing' | 'census', detail: string) => void,
+): Promise<void> {
+  const { cdp } = session;
+  const masking = () => cdp.evaluate<string | null>('window.canvas.maskingElement()');
+  const cropping = async () => await masking() === IMAGE
+    && (await session.state()).selection.join() === IMAGE;
+  if (!await cropping()) await session.doubleClick(IMAGE);
+  if (!await cropping()) {
+    flag('routing', `double-clicking ${IMAGE} did not enter crop mode`
+      + ` (cropping ${await masking()}, selection [${(await session.state()).selection.join(', ')}])`);
+    return;
+  }
+  type Rect = { x: number; y: number; w: number; h: number };
+  const read = () => cdp.evaluate<{ box: Rect; sourceBox: Rect | null; frame: Rect | null } | null>(`(() => {
+    const el = window.store.slide.elements.find((e) => e.id === ${JSON.stringify(IMAGE)});
+    const outline = document.querySelector('.overlay-layer .sel-box.masking');
+    if (!el) return null;
+    return {
+      box: { x: el.x, y: el.y, w: el.w, h: el.h },
+      sourceBox: el.sourceBox ?? null,
+      frame: outline ? {
+        x: parseFloat(outline.style.left), y: parseFloat(outline.style.top),
+        w: parseFloat(outline.style.width), h: parseFloat(outline.style.height),
+      } : null,
+    };
+  })()`);
+  const picture = (state: { box: Rect; sourceBox: Rect | null; frame: Rect }): Rect => (state.sourceBox
+    ? { x: state.box.x + state.sourceBox.x, y: state.box.y + state.sourceBox.y, w: state.sourceBox.w, h: state.sourceBox.h }
+    : state.frame);
+  const before = await read();
+  if (!before?.frame) {
+    flag('routing', `crop mode on ${IMAGE} draws no crop window`);
+    return;
+  }
+  const edge = pick(next, ['n', 'e', 's', 'w'] as const);
+  const along = pick(next, [0.2, 0.3, 0.7, 0.8]);
+  const strip = await cdp.evaluate<{ x: number; y: number; hit: string } | null>(`(() => {
+    const node = document.querySelector('.overlay-layer .mask-edge-${edge}');
+    if (!node) return null;
+    const r = node.getBoundingClientRect();
+    const horizontal = ${edge === 'n' || edge === 's'};
+    const x = horizontal ? r.left + r.width * ${along} : r.left + r.width / 2;
+    const y = horizontal ? r.top + r.height / 2 : r.top + r.height * ${along};
+    const hit = document.elementFromPoint(x, y);
+    return { x, y, hit: hit === node ? '' : String(hit?.className || hit?.tagName) };
+  })()`);
+  if (!strip) {
+    flag('routing', `the crop window has no ${edge} edge strip`);
+    return;
+  }
+  if (strip.hit) {
+    flag('routing', `the crop window's ${edge} edge strip is covered at ${along} by ${strip.hit}`);
+    return;
+  }
+  // Slide pixels, positive outward. Inward stops short of a window too small
+  // for the other ops to click.
+  const size = edge === 'n' || edge === 's' ? before.frame.h : before.frame.w;
+  const room = size - 160;
+  const outward = room <= 0 || next() < 0.4;
+  const amount = outward ? 10 + next() * 110 : -Math.min(room, size * (0.1 + 0.35 * next()));
+  const layer = await session.boxOf('.slide-layer');
+  const perSlidePixel = layer.width / await cdp.evaluate<number>('window.store.get().deck.canvas.w');
+  const sign = edge === 'n' || edge === 'w' ? -1 : 1;
+  const dx = edge === 'e' || edge === 'w' ? sign * amount * perSlidePixel : 0;
+  const dy = edge === 'n' || edge === 's' ? sign * amount * perSlidePixel : 0;
+  const mouse = (type: string, x: number, y: number, buttons: number) => cdp.call('Input.dispatchMouseEvent', {
+    type, x, y, button: type === 'mouseMoved' && buttons === 0 ? 'none' : 'left', buttons, clickCount: type === 'mouseMoved' ? 0 : 1,
+  });
+  await mouse('mouseMoved', strip.x, strip.y, 0);
+  await mouse('mousePressed', strip.x, strip.y, 1);
+  for (let i = 1; i <= 4; i++) {
+    await mouse('mouseMoved', strip.x + (dx * i) / 4, strip.y + (dy * i) / 4, 1);
+    await wait(16);
+  }
+  await mouse('mouseReleased', strip.x + dx, strip.y + dy, 0);
+  await wait(120);
+
+  const after = await read();
+  const label = `dragging the ${edge} edge strip ${outward ? 'out' : 'in'} by ${Math.round(amount)}`;
+  if (TRACE) console.log(`  ${label}: ${JSON.stringify(before)} -> ${JSON.stringify(after)}`);
+  if (!after?.frame) {
+    flag('census', `${label} lost the image or its crop window`);
+    return;
+  }
+  const whole = [after.box.x, after.box.y, after.box.w, after.box.h,
+    ...(after.sourceBox ? [after.sourceBox.x, after.sourceBox.y] : [])];
+  if (!whole.every(Number.isInteger)) {
+    flag('census', `${label} left fractional pixels: box ${JSON.stringify(after.box)} sourceBox ${JSON.stringify(after.sourceBox)}`);
+  }
+  const was = picture({ ...before, frame: before.frame });
+  const is = picture({ ...after, frame: after.frame });
+  const near = (a: number, b: number) => Math.abs(a - b) <= 1;
+  if (!near(was.x, is.x) || !near(was.y, is.y) || !near(was.w, is.w) || !near(was.h, is.h)) {
+    flag('census', `${label} moved the picture from ${JSON.stringify(was)} to ${JSON.stringify(is)}`);
+  }
+  const win = after.frame;
+  if (win.x < is.x - 1 || win.y < is.y - 1 || win.x + win.w > is.x + is.w + 1 || win.y + win.h > is.y + is.h + 1) {
+    flag('census', `${label} left the crop window ${JSON.stringify(win)} outside the picture ${JSON.stringify(is)}`);
+  }
+  const edges = (r: Rect) => ({ n: r.y, s: r.y + r.h, w: r.x, e: r.x + r.w });
+  const from = edges(before.frame);
+  const to = edges(win);
+  for (const side of ['n', 'e', 's', 'w'] as const) {
+    if (side === edge) {
+      const moved = (to[side] - from[side]) * (side === 'n' || side === 'w' ? -1 : 1);
+      if (outward ? moved < -1 : moved > 1) {
+        flag('census', `${label} moved that edge ${outward ? 'in' : 'out'} by ${Math.abs(moved)}`);
+      }
+    } else if (!near(to[side], from[side])) {
+      flag('census', `${label} also moved the ${side} edge from ${from[side]} to ${to[side]}`);
+    }
+  }
+  if (await masking() !== IMAGE) flag('routing', `${label} ended crop mode`);
 }
 
 function firstDiff(a: string, b: string): string {

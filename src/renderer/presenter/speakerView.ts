@@ -5,6 +5,7 @@ import { revealImagesWhenDecoded } from '../player/imageDecode.js';
 import { freezePreviewVideos, releasePreviewVideos } from '../player/previewPoster.js';
 import { applyStageScale, renderSlide, rewriteCssAssetUrls } from '../player/render.js';
 import { applyStaticSlideState } from '../player/staticState.js';
+import { createLaserPointer, type LaserPointer } from '../player/laserPointer.js';
 import { formatElapsed, formatWallClock, presentationLabel } from './model.js';
 
 /**
@@ -39,6 +40,11 @@ export interface SpeakerViewOptions {
   extraActions?: HTMLElement[];
   /** Injectable clock, so timer formatting is testable without waiting. */
   now?: () => number;
+  /**
+   * Offer the laser pointer: a footer toggle (or L), pointing over the
+   * current-slide preview. Only for a shell whose audience view draws it.
+   */
+  laser?: boolean;
 }
 
 export interface SpeakerView {
@@ -123,6 +129,22 @@ export function createSpeakerView(options: SpeakerViewOptions): SpeakerView {
     slideStartedAt: openedAt,
   };
 
+  let laser: LaserPointer | null = null;
+  if (options.laser) {
+    const toggle = document.createElement('button');
+    toggle.className = 'speaker-laser';
+    toggle.setAttribute('aria-pressed', 'false');
+    toggle.setAttribute('aria-keyshortcuts', 'L');
+    toggle.title = 'Toggle laser pointer (L). Move over the current slide to point.';
+    pick('.speaker-blank').after(toggle);
+    laser = createLaserPointer({
+      host: currentHost,
+      getContext: () => ({ slideId: deck?.slides[state.cursor.slide]?.id, step: state.cursor.step }),
+      onCommand,
+      button: toggle,
+    });
+  }
+
   function preview(target: HTMLElement, slideIndex: number, step = 0): void {
     // Every advance throws this preview away and builds another. A video still
     // waiting for its poster frame is held by the module's global capture map,
@@ -134,7 +156,7 @@ export function createSpeakerView(options: SpeakerViewOptions): SpeakerView {
     if (!slide) return;
     const stage = document.createElement('div');
     stage.className = 'stage';
-    stage.appendChild(renderSlide(slide, { resolveSrc, mediaPreload: 'metadata', deferVideoSrc: true }));
+    stage.appendChild(renderSlide(slide, { deck: deck!, resolveSrc, mediaPreload: 'metadata', deferVideoSrc: true }));
     target.appendChild(stage);
     applyStaticSlideState(stage, slide, resolveState(slide, step));
     const bounds = target.getBoundingClientRect();
@@ -160,6 +182,7 @@ export function createSpeakerView(options: SpeakerViewOptions): SpeakerView {
     preview(nextHost, nextSlide <= lastSlide ? nextSlide : -1);
     position.textContent = presentationLabel(state, deck.slides.length);
     notes.textContent = deck.slides[state.cursor.slide]?.notes ?? '';
+    laser?.refresh();
   }
 
   function tick(): void {
@@ -192,13 +215,19 @@ export function createSpeakerView(options: SpeakerViewOptions): SpeakerView {
       theme.textContent = rewriteCssAssetUrls(css, resolveSrc);
     },
     setState(next) {
+      // Laser moves arrive as state too; only a new slide, step or range
+      // needs the previews rebuilt.
+      const moved = state.cursor.slide !== next.cursor.slide || state.cursor.step !== next.cursor.step
+        || state.steps !== next.steps || state.range?.end !== next.range?.end;
       state = next;
-      render();
+      if (moved) render();
+      laser?.setState(next.laser ?? { enabled: false, point: null, blanked: false });
       tick();
     },
     refresh: render,
     tick,
     destroy() {
+      laser?.destroy();
       clearInterval(clock);
       theme?.remove();
       theme = null;
@@ -219,6 +248,11 @@ export function bindSpeakerKeys(
 ): () => void {
   const onKey = (event: Event) => {
     const key = (event as KeyboardEvent).key;
+    const focused = event.target as HTMLElement | null;
+    if (
+      event.defaultPrevented || focused?.isContentEditable
+      || /^(INPUT|TEXTAREA|SELECT)$/.test(focused?.tagName ?? '')
+    ) return;
     if (['ArrowRight', 'ArrowDown', ' ', 'PageDown', 'Enter'].includes(key)) {
       onCommand({ type: 'next' });
     } else if (['ArrowLeft', 'ArrowUp', 'PageUp', 'Backspace'].includes(key)) {

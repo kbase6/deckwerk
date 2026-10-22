@@ -1,4 +1,5 @@
 import type { SlideElement } from './deck.js';
+import { cssMediaRadius } from './nativeCss.js';
 
 type MediaElement = Extract<SlideElement, { type: 'image' | 'video' }>;
 
@@ -63,6 +64,138 @@ export function paintedMediaBox(el: MediaElement, natural: Size | null): MaskRec
   const h = natural.h * scale;
   const offset = objectPositionOffset(el.style['object-position'], el, { w, h });
   return { x: offset.x, y: offset.y, w, h };
+}
+
+/** Whether media is drawn through a circular mask, set natively or by CSS. */
+export function editableCircularMask(element: MediaElement): boolean {
+  if (element.maskShape !== undefined) return element.maskShape === 'circle';
+  const radius = cssMediaRadius(element.style['border-radius']);
+  return Boolean(radius && 'maskShape' in radius && radius.maskShape === 'circle');
+}
+
+/**
+ * Whether the frame paints anything of its own -- a border, a backdrop, round
+ * corners, a shadow -- so that refitting it to the picture would change how
+ * the slide looks.
+ */
+function paintsFrame(el: MediaElement): boolean {
+  return (el.borderWidth ?? 0) > 0 || (el.borderRadius ?? 0) > 0
+    || Object.keys(el.style).some((property) => /^(background|border|box-shadow|outline|--curl-)/.test(property));
+}
+
+/**
+ * The frame an uncropped `contain` image should have: exactly the picture it
+ * paints, so its outline sits on the picture's edge and the first crop starts
+ * from the picture rather than the empty frame around it. Null when the frame
+ * already fits to the pixel, when a crop or circular mask owns the frame, or
+ * when the frame paints something the fit would move. The painted picture
+ * stays where it was on the slide, rotated or not, to the pixel.
+ */
+export function fittedImageBox(
+  el: MediaElement,
+  natural: Size | null,
+): { x: number; y: number; w: number; h: number; style: Record<string, string> } | null {
+  if (el.fit !== 'contain' || el.sourceBox || editableCircularMask(el) || !natural || paintsFrame(el)) return null;
+  const painted = paintedMediaBox(el, natural);
+  if (Math.abs(painted.w - el.w) < 1 && Math.abs(painted.h - el.h) < 1) return null;
+  // The rotation centre moves with the frame; turn its shift back into slide
+  // space so the picture does not.
+  const dx = painted.x + (painted.w - el.w) / 2;
+  const dy = painted.y + (painted.h - el.h) / 2;
+  const radians = el.rot * Math.PI / 180;
+  const w = Math.max(1, Math.round(painted.w));
+  const h = Math.max(1, Math.round(painted.h));
+  const style = { ...el.style };
+  delete style['object-position'];
+  return {
+    x: Math.round(el.x + (el.w - w) / 2 + dx * Math.cos(radians) - dy * Math.sin(radians)),
+    y: Math.round(el.y + (el.h - h) / 2 + dx * Math.sin(radians) + dy * Math.cos(radians)),
+    w,
+    h,
+    style,
+  };
+}
+
+/**
+ * The element box and `sourceBox` for a crop window dragged to `rect`.
+ *
+ * `origin` is the element box and `base` the painted picture (box-relative)
+ * when the drag began; `rect` is the dragged window in the same unrotated
+ * frame as `origin`. The window never grows past the picture, or past where
+ * it already was when the frame is larger than the picture (a letterboxed
+ * `contain`), so an edge the drag leaves alone never moves. `lockAspect`
+ * (Shift, a circular mask) keeps `rect`'s proportions at the picture's edge.
+ * The picture stays fixed on the slide: for a rotated element the box moves
+ * so that its new rotation centre does not swing the picture around.
+ */
+export function cropWindow(
+  rect: MaskRect,
+  origin: MaskRect,
+  base: MaskRect,
+  rot: number,
+  lockAspect = false,
+): { x: number; y: number; w: number; h: number; sourceBox: MaskRect } {
+  // Whole pixels, rounded inward so the window never shows past the picture.
+  const minX = Math.ceil(origin.x + Math.min(0, base.x) - 1e-6);
+  const minY = Math.ceil(origin.y + Math.min(0, base.y) - 1e-6);
+  const maxX = Math.floor(origin.x + Math.max(origin.w, base.x + base.w) + 1e-6);
+  const maxY = Math.floor(origin.y + Math.max(origin.h, base.y + base.h) + 1e-6);
+  let { x, y, w, h } = rect;
+  if (lockAspect && w > 0 && h > 0) {
+    // Clamping each edge on its own would change the proportions, so shrink
+    // the whole window towards the corner it is anchored at.
+    const anchorLeft = Math.abs(x - origin.x) <= Math.abs(x + w - origin.x - origin.w);
+    const anchorTop = Math.abs(y - origin.y) <= Math.abs(y + h - origin.y - origin.h);
+    const scale = Math.min(
+      1,
+      (anchorLeft ? maxX - x : x + w - minX) / w,
+      (anchorTop ? maxY - y : y + h - minY) / h,
+    );
+    const right = x + w;
+    const bottom = y + h;
+    w = Math.floor(w * scale + 1e-6);
+    h = Math.floor(h * scale + 1e-6);
+    if (!anchorLeft) x = right - w;
+    if (!anchorTop) y = bottom - h;
+  }
+  const minW = Math.min(8, maxX - minX);
+  const minH = Math.min(8, maxY - minY);
+  const left = Math.max(minX, Math.min(Math.round(x), maxX - minW));
+  const top = Math.max(minY, Math.min(Math.round(y), maxY - minH));
+  const right = Math.min(maxX, Math.max(left + minW, Math.round(x + w)));
+  const bottom = Math.min(maxY, Math.max(top + minH, Math.round(y + h)));
+  const dx = left - origin.x;
+  const dy = top - origin.y;
+  const width = right - left;
+  const height = bottom - top;
+  const radians = rot * Math.PI / 180;
+  const cx = dx + (width - origin.w) / 2;
+  const cy = dy + (height - origin.h) / 2;
+  return {
+    x: Math.round(origin.x + (origin.w - width) / 2 + cx * Math.cos(radians) - cy * Math.sin(radians)),
+    y: Math.round(origin.y + (origin.h - height) / 2 + cx * Math.sin(radians) + cy * Math.cos(radians)),
+    w: width,
+    h: height,
+    sourceBox: { w: base.w, h: base.h, x: Math.round(base.x - dx), y: Math.round(base.y - dy) },
+  };
+}
+
+/**
+ * `sourceBox` for a crop panned by (`dx`, `dy`) from `base`: a picture that
+ * covers its window keeps covering it, and one smaller than its window stays
+ * inside it. A pan never starts by jumping, wherever the picture began.
+ */
+export function pannedSourceBox(base: MaskRect, window: Size, dx: number, dy: number): MaskRect {
+  const axis = (start: number, delta: number, room: number) => Math.min(
+    Math.max(Math.round(start + delta), Math.ceil(Math.min(0, room, start))),
+    Math.floor(Math.max(0, room, start)),
+  );
+  return {
+    w: base.w,
+    h: base.h,
+    x: axis(base.x, dx, window.w - base.w),
+    y: axis(base.y, dy, window.h - base.h),
+  };
 }
 
 /**

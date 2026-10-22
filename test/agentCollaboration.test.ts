@@ -5,9 +5,10 @@ import { join } from 'node:path';
 import { Worker } from 'node:worker_threads';
 import { validateDeckIntegrity } from '../src/shared/agent.js';
 import { sameSlideContent } from '../src/shared/htmlSlides.js';
-import type { Deck, Slide } from '../src/shared/deck.js';
+import type { Deck, Slide, SlideElement } from '../src/shared/deck.js';
 import { electronBinary } from './support/browserSession.js';
 import {
+  agentFixtureDeck,
   hostedWorkspace,
   sectionIds,
   startWorkspace,
@@ -46,8 +47,8 @@ afterEach(async () => {
   ws = null;
 });
 
-async function open(kind: WorkspaceKind): Promise<AgentWorkspace> {
-  ws = await startWorkspace(kind);
+async function open(kind: WorkspaceKind, deck?: Deck): Promise<AgentWorkspace> {
+  ws = await startWorkspace(kind, deck);
   return ws;
 }
 
@@ -244,6 +245,46 @@ for (const kind of BACKENDS) describe.skipIf(!electronBinary)(`an agent working 
     }
     expect(element(after, 'details-nudged')).toMatchObject({ x: 120, y: 420, w: 800, h: 80 });
     expect(after.morphFromPrevious).toBe(false);
+  });
+
+  // Props → Style → Ends: a line's ends are its `stroke-linecap`, carried on
+  // the shape's inline style. A compile that dropped it reset a round rule to
+  // flat, and a flat curve back to round, on every save of the slide.
+  it('keeps a line\'s round or flat ends through an untouched save and an edit beside them, and lands ends a page writes', async () => {
+    const workspace = await open(kind, deckWithLineEnds());
+    const before = await workspace.deck();
+    const page = await exportPage(workspace, 'details');
+    expect(page).toMatch(/stroke-linecap:\s*round/);
+    expect(page).toMatch(/stroke-linecap:\s*butt/);
+
+    await workspace.write('untouched.html', page);
+    const untouched = landed(await apply(workspace, 'untouched.html'), workspace);
+    expect(untouched.changes).toEqual({ replaced: [], inserted: [], deleted: [], moved: 0 });
+    expect(await workspace.deck()).toEqual(before);
+
+    await workspace.write('work.html', page.replace('Nudged by its class', 'Nudged, then revised'));
+    expect(landed(await apply(workspace, 'work.html'), workspace).changes.replaced).toEqual(['details']);
+    const element = (slide: Slide, id: string) => slide.elements.find((candidate) => candidate.id === id)!;
+    const after = slideById(await workspace.deck(), 'details');
+    for (const id of ['ends-round', 'ends-flat']) {
+      expect(element(after, id), id).toEqual(element(slideById(before, 'details'), id));
+    }
+
+    // Authored the way the export writes a line: the ends on the inline style.
+    await workspace.write('rule.html', await newPage(workspace,
+      '<div data-element="shape" data-shape="line" data-stroke="#333333" data-stroke-width="12"'
+      + ' style="width:600px; height:12px; stroke-linecap:round"></div>'));
+    const added = landed(await apply(workspace, 'rule.html'), workspace).changes.inserted[0];
+    const rule = slideById(await workspace.deck(), added).elements.find((candidate) => candidate.type === 'shape');
+    expect(rule).toMatchObject({ shape: 'line', style: { 'stroke-linecap': 'round' } });
+
+    // Authored as a one-primitive SVG, the way AGENTS.md draws a line.
+    await workspace.write('svg.html', await newPage(workspace,
+      '<svg width="600" height="40" viewBox="0 0 600 40"><line x1="10" y1="20" x2="590" y2="20"'
+      + ' stroke="#333333" stroke-width="12" stroke-linecap="round"/></svg>'));
+    const drawn = landed(await apply(workspace, 'svg.html'), workspace).changes.inserted[0];
+    const svgLine = slideById(await workspace.deck(), drawn).elements.find((candidate) => candidate.type === 'shape');
+    expect(svgLine).toMatchObject({ shape: 'line', style: { 'stroke-linecap': 'round' } });
   });
 
   it('replaces only the slide the agent edited in a page that holds them all', async () => {
@@ -707,6 +748,21 @@ describe.skipIf(!electronBinary)('the decks this repository ships', { timeout: 2
     });
   }
 });
+
+/** The fixture, its details slide also holding a round-ended straight line and a flat-ended curve. */
+function deckWithLineEnds(): Deck {
+  const deck = agentFixtureDeck();
+  const details = slideById(deck, 'details');
+  const line = details.elements.find((element) => element.id === 'details-curve')!;
+  details.elements.push(
+    { ...structuredClone(line), id: 'ends-round', y: 880, style: { 'stroke-linecap': 'round' } } as SlideElement,
+    {
+      ...structuredClone(line), id: 'ends-flat', x: 1200, y: 880, control: { x: 1500, y: 780 },
+      style: { 'stroke-linecap': 'butt' },
+    } as SlideElement,
+  );
+  return deck;
+}
 
 /** A one-line slide, as a person adds it in the browser. */
 function personSlide(id: string, text: string): Slide {

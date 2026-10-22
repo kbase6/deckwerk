@@ -195,7 +195,9 @@ export class DesignWorkspace {
     const layer = document.createElement('div');
     layer.className = 'design-slide-preview';
     const clone = structuredClone(slide);
+    const { deck } = this.deps.store.get();
     layer.appendChild(renderSlide(clone, {
+      deck: { ...deck, slides: deck.slides.map((s) => (s.id === clone.id ? clone : s)) },
       resolveSrc: (src) => window.api.assetUrl(src),
       mediaPreload: 'metadata',
     }));

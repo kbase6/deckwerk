@@ -18,7 +18,8 @@ import { KEPT_SELECTION_INVARIANTS } from './selectionSession.js';
 
 /**
  * A three-element editor for the cross-context fuzz walk: one textbox holding
- * plain paragraphs, one holding a committed list, and one image — plus a
+ * plain paragraphs, one holding a committed list, and one image (and two
+ * straight lines for the Ends control) — plus a
  * second slide with a single textbox, so the slide rail is part of the state
  * space. Everything is driven with real input; the deck write in `reset` is
  * fixture setup, exactly as in selectionSession.ts.
@@ -31,6 +32,9 @@ import { KEPT_SELECTION_INVARIANTS } from './selectionSession.js';
 export const PARA = 'xc-paragraphs';
 export const LIST = 'xc-list';
 export const IMAGE = 'xc-image';
+/** Two straight lines on slide 1, between the image and the list. */
+export const LINE_A = 'xc-line-a';
+export const LINE_B = 'xc-line-b';
 /** The only object on slide 2. */
 export const FAR = 'xc-far';
 
@@ -525,7 +529,17 @@ function startingElements(): Array<Record<string, unknown>> {
       id: IMAGE, type: 'image', src: 'assets/pic.png', fit: 'contain', alt: 'fixture',
       x: 120, y: 470, w: 420, h: 280, rot: 0, z: 2, opacity: 1, class: [], style: {},
     },
+    lineElement(LINE_A, 520, 3),
+    lineElement(LINE_B, 660, 4),
   ];
+}
+
+function lineElement(id: string, y: number, z: number): Record<string, unknown> {
+  return {
+    id, type: 'shape', shape: 'line', x: 640, y, w: 400, h: 20, rot: 0, z, opacity: 1,
+    class: [], style: {}, fill: null, stroke: '#1d2545', strokeWidth: 8, radius: 0,
+    path: null, pathSize: null, arrowStart: false, arrowEnd: false,
+  };
 }
 
 function secondSlideElement(): Record<string, unknown> {
