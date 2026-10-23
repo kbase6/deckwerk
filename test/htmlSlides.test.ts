@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { emptyDeck, parseDeck, type SlideElement } from '../src/shared/deck.js';
 import {
   buildFromNode,
+  carrySlideState,
+  slideBase,
   elementFromNode,
   htmlChangeLabel,
   htmlSlideScope,
@@ -37,6 +39,64 @@ function node(over: Partial<MeasuredNode> = {}): MeasuredNode {
   };
 }
 
+describe('which text styles a saved page set on purpose', () => {
+  const box = (style: Record<string, string>, overrides?: string[]): SlideElement => ({
+    id: 't', type: 'text', x: 0, y: 0, w: 100, h: 50, rot: 0, z: 1, opacity: 1,
+    class: ['role-body'], style, html: 'Words', align: 'left', valign: 'top',
+    ...(overrides ? { overrides } : {}),
+  });
+  const slide = (elements: SlideElement[]) => ({ ...emptyDeck().slides[0], id: 'slide-1', elements });
+  /** What the compile makes of a box: everything its inline style states, as written. */
+  const compiled = (style: Record<string, string>) => box(style, Object.keys(style));
+
+  it('keeps a pinned copy a copy, and marks only what the page changed', () => {
+    const next = carrySlideState(
+      slide([box({ 'font-size': '48px' })]),
+      slide([compiled({ 'font-size': '48px', color: '#cc0000' })]),
+    );
+    expect(next.elements[0]).toMatchObject({ style: { 'font-size': '48px', color: '#cc0000' }, overrides: ['color'] });
+  });
+
+  it('keeps what was set on purpose, and drops it when the page removes it', () => {
+    const chosen = slide([box({ 'font-size': '48px', color: '#cc0000' }, ['color'])]);
+    const resized = carrySlideState(chosen, slide([compiled({ 'font-size': '60px', color: '#cc0000' })]));
+    expect(resized.elements[0]).toMatchObject({ overrides: ['font-size', 'color'] });
+    const cleared = carrySlideState(chosen, slide([compiled({ 'font-size': '48px' })]));
+    expect('overrides' in cleared.elements[0]).toBe(false);
+  });
+
+  it('leaves an object the page did not change exactly as the deck has it', () => {
+    const pinned = slide([box({ 'font-size': '48px' })]);
+    expect(carrySlideState(pinned, slide([compiled({ 'font-size': '48px' })])).elements[0])
+      .toEqual(pinned.elements[0]);
+    const chosen = slide([box({ color: '#cc0000' }, ['color'])]);
+    expect(carrySlideState(chosen, slide([compiled({ color: '#cc0000' })])).elements[0])
+      .toEqual(chosen.elements[0]);
+  });
+});
+
+describe('background origin through an authoring page', () => {
+  it('keeps an automatic pin until the page changes its background', () => {
+    const previous = emptyDeck().slides[0];
+    previous.background = { color: '#ffffff', image: null, themePinned: true };
+    const page = structuredClone(previous);
+    delete page.background.themePinned;
+    expect(carrySlideState(previous, page).background).toEqual(previous.background);
+    page.background.color = '#123456';
+    expect(carrySlideState(previous, page).background).toEqual({ color: '#123456', image: null });
+  });
+
+  it('keeps a collaborator’s background change while the page edits only text', () => {
+    const previous = emptyDeck().slides[0];
+    previous.background = { color: '#ffffff', image: null, themePinned: true };
+    const base = slideBase(previous);
+    const page = structuredClone(previous);
+    delete page.background.themePinned;
+    previous.background = { color: '#123456', image: null };
+    expect(carrySlideState(previous, page, base).background).toEqual(previous.background);
+  });
+});
+
 describe('measured nodes become deck objects', () => {
   it('maps explicitly authored tables to native resizable table text', () => {
     const element = elementFromNode(node({
@@ -70,6 +130,19 @@ describe('measured nodes become deck objects', () => {
       class: ['role-title'], align: 'center', valign: 'top', html: 'A title',
     });
     expect(element?.style).toEqual({ color: '#ff3366', 'font-size': '80px' });
+    // Written on purpose, so a later theme change keeps it.
+    expect(element?.type === 'text' && element.overrides).toEqual(['font-size', 'color']);
+  });
+
+  it('counts only what a standalone page wrote inline as set on purpose, not what the walk computed', () => {
+    const element = elementFromNode(node({
+      tag: 'h1',
+      style: { color: '#ff3366', 'font-family': 'Inter', 'font-size': '96px' },
+      authoredStyle: ['color'],
+      html: 'A title',
+    }), 'title-1', 3);
+    expect(element?.style).toEqual({ color: '#ff3366', 'font-family': 'Inter', 'font-size': '96px' });
+    expect(element?.type === 'text' && element.overrides).toEqual(['color']);
   });
 
   it('drops layout declarations that did their job during measurement', () => {

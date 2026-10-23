@@ -158,7 +158,7 @@ type OpName =
   | 'rail hop' | 'undo' | 'redo' | 'undo round-trip' | 'delete selection'
   | 'cmd+a' | 'click with stray hover' | 'rail multi-delete' | 'stack key' | 'spelling fix'
   | 'size from sidebar' | 'viewport gesture' | 'line ends' | 'slide numbers' | 'gridlines'
-  | 'crop edge drag';
+  | 'crop edge drag' | 'theme pick';
 
 interface Violation { seed: number; step: number; op: OpName; oracle: string; detail: string }
 
@@ -439,6 +439,7 @@ function chooseOp(next: () => number, pre: CrossState): OpName {
   if (pre.elements.includes(LINE_A) || pre.elements.includes(LINE_B)) add('line ends', 2);
   add('slide numbers', 1);
   add('gridlines', 1);
+  add('theme pick', 1);
   if (pre.elements.includes(IMAGE)) add('crop edge drag', 2);
   return pick(next, ops);
 }
@@ -668,6 +669,9 @@ async function performOp(
       return 'same';
     case 'gridlines':
       await gridlines(flag);
+      return 'same';
+    case 'theme pick':
+      await themePick(next, flag);
       return 'same';
     case 'crop edge drag':
       await cropEdgeDrag(next, flag);
@@ -1057,6 +1061,62 @@ async function gridlines(flag: (oracle: 'routing' | 'census', detail: string) =>
   if (now.pressed !== String(now.shown)) flag('routing', `Gridlines shows aria-pressed=${now.pressed} with gridlines ${now.shown ? 'on' : 'off'}`);
   const after = await snapshot();
   if (after !== before) flag('census', `the Gridlines toggle changed the deck, the slide or the selection; diff: ${firstDiff(before, after)}`);
+}
+
+/**
+ * Choose another theme in the Design tab, mid-edit or not. It lands on every
+ * slide at once: the deck wears it, no box keeps a copy of type it did not
+ * choose (only `overrides`, and an untagged box's size), no object comes or
+ * goes, and the panel reports what happened. The Props tab comes back after,
+ * as the other ops expect it.
+ */
+async function themePick(
+  next: () => number,
+  flag: (oracle: 'routing' | 'census', detail: string) => void,
+): Promise<void> {
+  const { cdp } = session;
+  await cdp.click('#side-tabs button[data-panel="themePanel"]', 'the Design tab');
+  await wait(80);
+  try {
+    await cdp.click('#themePanel .theme-active-card', 'the current theme card');
+    await wait(80);
+    const offered = await cdp.evaluate<string[]>(`[...document.querySelectorAll('#themePanel .theme-gallery .theme-card')]
+      .filter((card) => !card.classList.contains('selected')).map((card) => card.dataset.themeId)`);
+    if (offered.length === 0) {
+      flag('routing', 'the theme chooser offered no other theme');
+      return;
+    }
+    const id = pick(next, offered);
+    await cdp.click(`#themePanel .theme-gallery .theme-card[data-theme-id="${id}"]`, `the ${id} theme card`);
+    await wait(150);
+    const after = await cdp.evaluate<{ preset: string | null; copies: string[]; reported: boolean }>(`(() => {
+      const deck = window.store.get().deck;
+      const TYPE = ['font-family', 'font-size', 'font-weight', 'line-height', 'letter-spacing', 'color'];
+      const copies = [];
+      for (const slide of deck.slides) for (const el of slide.elements) {
+        if (el.type !== 'text') continue;
+        const own = new Set(el.overrides ?? []);
+        const untagged = !el.class.some((name) => /^role-(title|heading|body|caption)$/.test(name));
+        for (const property of TYPE) {
+          if (own.has(property) || (untagged && (property === 'font-size' || property === 'line-height'))) continue;
+          if (el.style[property] !== undefined || el.contentStyle?.[property] !== undefined) {
+            copies.push(slide.id + '/' + el.id + ' ' + property);
+          }
+        }
+      }
+      return {
+        preset: deck.themePreset,
+        copies,
+        reported: document.querySelector('#themePanel .theme-change-report')?.hidden === false,
+      };
+    })()`);
+    if (after.preset !== id) flag('routing', `choosing ${id} left the deck wearing ${after.preset}`);
+    if (after.copies.length > 0) flag('census', `after choosing ${id}, boxes still carry type: ${after.copies.join(', ')}`);
+    if (!after.reported) flag('routing', `choosing ${id} reported nothing in the Design tab`);
+  } finally {
+    await cdp.click('#side-tabs button[data-panel="inspector"]', 'the Props tab');
+    await wait(80);
+  }
 }
 
 /**

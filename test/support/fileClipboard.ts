@@ -12,8 +12,8 @@ import { Cdp, eventually } from './browserSession.js';
  * can read another client's selection, and test windows are hidden. So the
  * write happens inside the Electron process under test, through its main
  * process's Node inspector (`--inspect=<port>`), using Electron's own
- * `clipboard.writeBuffer` -- the same pasteboard entry, written by a
- * different hand.
+ * `clipboard.write` -- the same pasteboard entry, written by a different
+ * hand.
  *
  * Returns a function that clears the clipboard again.
  */
@@ -28,7 +28,8 @@ export async function copyFilesLikeFileManager(
     format = 'text/uri-list';
     payload = `${urls.join('\r\n')}\r\n`;
   } else if (process.platform === 'darwin') {
-    format = 'public.file-url';
+    // Raw, as Finder writes it, rather than the files format Electron maps.
+    format = 'electron application/osclipboard;format="public.file-url"';
     payload = urls[0];
   } else {
     throw new Error(`copyFilesLikeFileManager has no file-copy format for ${process.platform}`);
@@ -44,9 +45,12 @@ export async function copyFilesLikeFileManager(
     // Node's command-line API is what provides `require` here.
     includeCommandLineAPI: true,
     returnByValue: true,
+    awaitPromise: true,
   });
-  await run(`require('electron').clipboard.writeBuffer(
-    ${JSON.stringify(format)}, Buffer.from(${JSON.stringify(payload)}, 'utf8'))`);
+  await run(`(() => {
+    const { clipboard, ClipboardItem } = require('electron');
+    return clipboard.write([new ClipboardItem({ ${JSON.stringify(format)}: ${JSON.stringify(payload)} })]);
+  })()`);
   return async () => {
     await run(`require('electron').clipboard.clear()`).catch(() => undefined);
     main.close();

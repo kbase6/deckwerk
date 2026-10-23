@@ -3,7 +3,7 @@ import { writeFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { userInfo } from 'node:os';
 import { basename, dirname, extname, join, resolve, sep } from 'node:path';
-import { BrowserWindow, app, clipboard, ipcMain, screen, shell } from 'electron';
+import { BrowserWindow, ClipboardItem, app, clipboard, ipcMain, nativeImage, screen, shell } from 'electron';
 import type { Display, IpcMainInvokeEvent, WebContents } from 'electron';
 import { deckForExport, parseDeck, type Deck } from '@shared/deck.js';
 import type { DeckHistoryDocument } from '@shared/deckHistory.js';
@@ -593,7 +593,7 @@ app.whenReady().then(async () => {
   // app switcher, so set the matching high-resolution artwork explicitly.
   if (process.platform === 'darwin' && !app.isPackaged) {
     const developmentIcon = join(process.cwd(), 'resources', 'deckwerk-icon.png');
-    if (existsSync(developmentIcon)) app.dock.setIcon(developmentIcon);
+    if (existsSync(developmentIcon)) app.dock?.setIcon(developmentIcon);
   }
 
   installAssetProtocol();
@@ -866,29 +866,38 @@ function registerHandlers(): void {
     },
   );
 
-  /** Files a file manager's Copy left on the pasteboard, in each OS's format. */
-  const readClipboardFilePaths = (): string[] => {
-    const read = (format: string): string => {
-      try {
-        return clipboard.readBuffer(format).toString(format === 'FileNameW' ? 'utf16le' : 'utf8');
-      } catch {
-        return '';
-      }
-    };
-    if (process.platform === 'win32') {
-      const path = read('FileNameW').replace(/\0+$/, '');
-      return path ? [path] : [];
+  /** A raw platform pasteboard format, as the clipboard API names it. */
+  const osClipboardFormat = (name: string): string => `electron application/osclipboard;format="${name}"`;
+
+  /** The pasteboard's bytes for `type`, or null when it offers none. */
+  const clipboardBytes = async (items: ClipboardItem[], type: string): Promise<Buffer | null> => {
+    const item = items.find((entry) => entry.types.includes(type));
+    if (!item) return null;
+    try {
+      return Buffer.from(await (await item.getType(type) as Blob).arrayBuffer());
+    } catch {
+      return null;
     }
-    const lists = process.platform === 'darwin'
-      ? [read('public.file-url')]
-      : [read('text/uri-list'), read('x-special/gnome-copied-files')];
-    return lists.map((list) => clipboardFilePaths(list)).find((paths) => paths.length > 0) ?? [];
+  };
+
+  /** Files a file manager's Copy left on the pasteboard, in each OS's format. */
+  const readClipboardFilePaths = async (items: ClipboardItem[]): Promise<string[]> => {
+    // Electron maps text/uri-list onto each OS's copied-files format (CF_HDROP,
+    // Finder's file URLs, text/uri-list). GNOME's own list has no mapping, so
+    // it is read raw.
+    const formats = ['text/uri-list'];
+    if (process.platform === 'linux') formats.push(osClipboardFormat('x-special/gnome-copied-files'));
+    for (const format of formats) {
+      const paths = clipboardFilePaths((await clipboardBytes(items, format))?.toString('utf8') ?? '');
+      if (paths.length > 0) return paths;
+    }
+    return [];
   };
 
   // Copy: serialise the fragment onto the OS pasteboard under a private
   // format, with absolute asset paths attached, so any instance of this app —
   // including a different process with a different deck open — can paste it.
-  ipcMain.handle(IPC.clipboardWrite, (event, request: ClipboardWriteRequest): void => {
+  ipcMain.handle(IPC.clipboardWrite, async (event, request: ClipboardWriteRequest): Promise<void> => {
     const assets: ClipboardPayload['assets'] = [];
     const source = ownerOf(event.sender)?.session;
     if (source) {
@@ -902,17 +911,21 @@ function registerHandlers(): void {
       }
     }
     const payload = { format: CLIPBOARD_FORMAT, version: 1, ...request, assets };
-    clipboard.writeBuffer(CLIPBOARD_FORMAT, Buffer.from(JSON.stringify(payload), 'utf8'));
+    // The same raw format name earlier builds wrote, so they can still paste it.
+    await clipboard.write([
+      new ClipboardItem({ [osClipboardFormat(CLIPBOARD_FORMAT)]: JSON.stringify(payload) }),
+    ]);
   });
 
   // Paste: validate whatever is on the pasteboard, then re-import each
   // referenced asset into *this* deck. Import names files by content hash, so
   // pasting back into the source deck (or pasting twice) copies nothing.
   ipcMain.handle(IPC.clipboardRead, async (event): Promise<ClipboardReadResult | null> => {
-    const buf = clipboard.readBuffer(CLIPBOARD_FORMAT);
+    const items = await clipboard.read();
+    const buf = await clipboardBytes(items, osClipboardFormat(CLIPBOARD_FORMAT));
     if (!buf || buf.length === 0) {
-      const html = clipboard.readHTML();
-      const text = clipboard.readText();
+      const html = (await clipboardBytes(items, 'text/html'))?.toString('utf8') ?? '';
+      const text = await clipboard.readText();
       // A real HTML table wins over everything else: a spreadsheet copy puts
       // a bitmap of the range on the pasteboard *as well*, and an author who
       // copied cells wants cells.
@@ -922,22 +935,16 @@ function registerHandlers(): void {
       // A file copied in the file manager: the pasteboard holds only its
       // path (and, from Finder, the file's icon as a bitmap, which must not
       // win). Import the file itself, video included.
-      const copiedFile = firstClipboardMediaPath(readClipboardFilePaths());
+      const copiedFile = firstClipboardMediaPath(await readClipboardFilePaths(items));
       if (copiedFile) {
         const asset = await importAsset(requireSession(event).dir, copiedFile);
         return { kind: 'external-image', asset };
       }
-      const image = clipboard.readImage();
-      if (!image.isEmpty()) {
-        // Preserve the sharpest representation on Retina displays. NativeImage
-        // otherwise defaults PNG encoding to the 1x representation.
-        const scaleFactor = Math.max(1, ...image.getScaleFactors());
-        const asset = await importImageBuffer(
-          requireSession(event).dir,
-          image.toPNG({ scaleFactor }),
-          'Screenshot.png',
-          image.getSize(scaleFactor),
-        );
+      // The bitmap as the pasteboard offers it, at its full pixel size.
+      const png = await clipboardBytes(items, 'image/png');
+      const image = png ? nativeImage.createFromBuffer(png) : null;
+      if (png && image && !image.isEmpty()) {
+        const asset = await importImageBuffer(requireSession(event).dir, png, 'Screenshot.png', image.getSize());
         return { kind: 'external-image', asset };
       }
       // Tab-separated text is a spreadsheet range only when no bitmap was
@@ -1349,7 +1356,8 @@ function registerHandlers(): void {
     // must not overwrite what they were about to paste, nor what a clipboard
     // test running beside this one just put there.
     if (process.env['DECKWERK_HEADLESS_TEST'] !== '1') {
-      clipboard.writeText(handoff?.command ?? joinUrl);
+      clipboard.writeText(handoff?.command ?? joinUrl)
+        .catch((error) => console.error('Could not copy the invite link:', error));
     }
     return handoff;
   };

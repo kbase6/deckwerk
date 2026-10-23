@@ -41,3 +41,5 @@ example-keynote-decks/*
 
 # Built website (npm run build:site).
 dist-site/
+
+docs/research

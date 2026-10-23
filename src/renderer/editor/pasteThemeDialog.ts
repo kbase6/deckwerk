@@ -28,7 +28,7 @@ export function showPasteThemeDialog(count: number): Promise<SlidePasteThemeChoi
     const explanation = document.createElement('p');
     explanation.className = 'paste-theme-detail';
     explanation.textContent = 'Keep source appearance pins the current fonts, sizes, colors, and background. '
-      + 'Match destination leaves semantic title and body roles connected to this presentation’s theme.';
+      + 'Match destination leaves title and body text styles connected to this presentation’s theme.';
 
     const actions = document.createElement('div');
     actions.className = 'workflow-actions paste-theme-actions';

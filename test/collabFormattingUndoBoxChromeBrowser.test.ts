@@ -96,8 +96,8 @@ describe.skipIf(!electronBinary)('box-level formatting scope and undo in the col
         && ((element as any).noWrapMode ?? 'shrink') === 'shrink');
     await session.undoChrome(OL_ID);
 
-    const role = await session.idField('Role', 'test-role', 'label.field');
-    await editor.choose(role, 'role-title', 'Role');
+    const role = await session.idField('Text style', 'test-role', 'label.field');
+    await editor.choose(role, 'role-title', 'Text style');
     await eventually(async () => (await session!.liveElement(OL_ID)).class.includes('role-title'),
       'role did not apply');
     await session.undoChrome(OL_ID);

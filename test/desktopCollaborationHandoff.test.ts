@@ -441,9 +441,13 @@ describe.skipIf(!electronBinary || noWindowManager)('desktop collaboration hando
     // A browser reload creates a new WebSocket/client id. The host must discard
     // the old peer, accept the replacement, and render its new presence rather
     // than retaining a ghost or requiring its own reload.
+    // Page.reload returns before the old document is gone, and that document
+    // is still collab-ready: only a new time origin proves the reload landed.
+    const beforeReload = await peer.evaluate<number>('performance.timeOrigin');
     await peer.call('Page.reload', { ignoreCache: true });
     await eventually(async () => peer!.evaluate<boolean>(
-      `document.documentElement?.dataset.collabReady === 'true'
+      `performance.timeOrigin !== ${beforeReload}
+        && document.documentElement?.dataset.collabReady === 'true'
         && window.store?.get?.().deck.title === 'Collaboration handoff'`,
     ), 'reloaded peer did not reconnect to the collaboration');
     await peer.click('#canvas [data-element-id="handoff-title"]', 'reconnected peer title');

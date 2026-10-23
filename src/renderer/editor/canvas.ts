@@ -709,6 +709,10 @@ function normalizeInlineStyleSpans(root: HTMLElement): void {
 const MIN_ZOOM = 0.25;
 const MAX_ZOOM = 8;
 const ZOOM_STEP = 0.25;
+/** The gridlines' unit, in slide pixels; zooming out doubles it (see `rescale`). */
+const GRID_STEP = 40;
+/** The closest the gridline dots may sit on screen, in CSS pixels. */
+const GRID_MIN_GAP = 16;
 /** Zoom ratio of one mouse-wheel notch with Ctrl/Cmd held, in either direction. */
 const WHEEL_NOTCH_ZOOM = 1.1;
 /**
@@ -1822,6 +1826,12 @@ export class EditorCanvas {
     setStyle(this.stage, 'height', `${deck.canvas.h}px`);
     setStyle(this.stage, 'transform', `scale(${scale})`);
     setStyle(this.stage, '--editor-inv-scale', String(1 / scale));
+    // The grid's dots keep their on-screen size, so zooming out would pack
+    // them into noise; instead every other line drops out, which keeps each
+    // dot on the same 40-pixel grid.
+    let gridStep = GRID_STEP;
+    while (gridStep * scale < GRID_MIN_GAP) gridStep *= 2;
+    setStyle(this.stage, '--editor-grid-step', `${gridStep}px`);
     setStyle(this.stage, 'transform-origin', 'top left');
     setStyle(this.stage, 'left', `${(r.width - deck.canvas.w * scale) / 2 + this.pan.x}px`);
     setStyle(this.stage, 'top', `${(r.height - deck.canvas.h * scale) / 2 + this.pan.y}px`);
@@ -1910,8 +1920,9 @@ export class EditorCanvas {
   }
 
   /**
-   * An alignment grid drawn over the slide in the editor only: it is overlay
-   * chrome, never deck data, so presenting and exporting never see it. The
+   * An alignment grid drawn on the slide, behind its objects, in the editor
+   * only: it is editor chrome, never deck data, so presenting and exporting
+   * never see it. The
    * choice is remembered per browser.
    */
   private createGridlinesToggle(button: (text: string, label: string, action: () => void) => HTMLButtonElement): HTMLButtonElement {

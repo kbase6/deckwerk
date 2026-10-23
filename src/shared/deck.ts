@@ -381,6 +381,8 @@ export const ElementSchema = z.discriminatedUnion('type', [
 const SlideBackgroundSchema = z.object({
   color: z.string().nullable().default(null),
   image: z.string().nullable().default(null),
+  /** A copy of the old theme background, written to preserve an unselected slide. */
+  themePinned: z.boolean().optional(),
 });
 
 const LayoutMasterSchema = z.object({

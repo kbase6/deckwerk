@@ -16,9 +16,9 @@ import {
 import { isEditorTarget, launchDesktopApp, materializeDesktopApp } from './support/desktopApp.js';
 
 /**
- * A slide inserted with Return in the slide picker wears the theme the author
- * picked in the Theme tab — checked in the real desktop app, driven the way a
- * person drives it.
+ * A theme picked in the Theme tab reaches the slides already there, and a
+ * slide inserted with Return in the slide picker wears it too — checked in the
+ * real desktop app, driven the way a person drives it.
  *
  * The jsdom rail test for the same path dispatches a synthetic `keydown` at
  * the rail host and reads the store. That cannot see the whole route a real
@@ -65,10 +65,9 @@ describe.skipIf(!electronBinary)('new slide from Return in the slide picker (des
 
     await materializeDesktopApp(appDir, 'deckwerk-new-slide-theme-test');
 
-    // Two plain slides on the stylesheet alone: no theme chosen, no theme
-    // applied. The first carries an unstyled title so the test can prove the
-    // existing slides still look exactly as they did: choosing a theme pins
-    // them in deck.json precisely so that nothing on screen moves.
+    // Two plain slides on the stylesheet alone: no theme chosen yet. The
+    // first carries an unstyled title so the test can prove choosing a theme
+    // restyles the slides that already exist, not only new ones.
     const base = emptyDeck('New slide theme');
     const deck: Deck = parseDeck({
       ...base,
@@ -146,15 +145,20 @@ describe.skipIf(!electronBinary)('new slide from Return in the slide picker (des
       (saved) => saved.themeSelection?.preset === 'noir',
     );
     // Choosing installs Noir as the deck's defaults -- theme.css now carries
-    // its role rules -- yet restyles nothing that already exists: the first
-    // slide's title is pinned at what it rendered at, and the canvas agrees.
+    // its role rules -- and the slide already on screen wears it at once.
     await eventually(
       () => readThemeCss(deckDir),
       'choosing a theme did not write its block into theme.css',
       (css) => css.includes(THEME_BLOCK_START),
     );
-    expect(await canvasBackground(editor)).toBe(groundBefore);
-    expect(await computedType(editor, 'existing-title')).toEqual(existingTitleBefore);
+    await eventually(
+      () => canvasBackground(editor!),
+      'the existing slide did not take the chosen theme background',
+      (color) => color === rgb(NOIR.colors.background),
+    );
+    const existingTitleNoir = await computedType(editor, 'existing-title');
+    expect(existingTitleNoir.size).toBe(`${NOIR.fonts.title.size}px`);
+    expect(existingTitleNoir.color).toBe(rgb(NOIR.fonts.title.color ?? NOIR.colors.text));
 
     // 2. Select the first slide in the picker with a real mouse press, then
     //    press Return. The keystroke must land on the rail, not on the canvas
@@ -195,8 +199,9 @@ describe.skipIf(!electronBinary)('new slide from Return in the slide picker (des
     const block = themeCss.slice(themeCss.indexOf(THEME_BLOCK_START), themeCss.indexOf(THEME_BLOCK_END));
     expect(block).toMatch(new RegExp(`\\.role-title \\{[^}]*font-size: ${NOIR.fonts.title.size}px;`));
     expect(block).toContain(`font-family: ${NOIR.fonts.title.family};`);
-    // The second slide was never touched by anything but the pin.
+    // The second slide still holds nothing, and follows the theme too.
     expect(saved.slides[2].elements).toEqual([]);
+    expect(saved.slides[2].background).toEqual({ color: null, image: null });
 
     // 4. What the author actually sees: the canvas shows the new slide on
     //    Noir's ground with Noir's title, and its rail thumbnail agrees.
@@ -235,16 +240,15 @@ describe.skipIf(!electronBinary)('new slide from Return in the slide picker (des
       (color) => color === rgb(NOIR.colors.background),
     );
 
-    // 5. Back on the first slide, the existing title renders exactly as it
-    //    did before any of this: same face, size, weight and colour.
+    // 5. Back on the first slide, the existing title still wears Noir.
     await editor.click('#rail .rail-item[data-slide-id="s1"]', 'first slide in the picker');
     await eventually(
       () => editor!.evaluate<string>(`document.querySelector(${JSON.stringify(CANVAS_SLIDE)})?.dataset.slideId`),
       'the editor did not return to the first slide',
       (id) => id === 's1',
     );
-    expect(await canvasBackground(editor)).toBe(groundBefore);
-    expect(await computedType(editor, 'existing-title')).toEqual(existingTitleBefore);
+    expect(await canvasBackground(editor)).toBe(rgb(NOIR.colors.background));
+    expect(await computedType(editor, 'existing-title')).toEqual(existingTitleNoir);
   });
 });
 

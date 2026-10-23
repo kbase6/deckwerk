@@ -1275,6 +1275,9 @@ export function measureSlides(doc: Document): MeasuredSlide[] {
       // wrapper doubles filters, borders and alpha (a .24 SVG became .0576).
       opacity: verbatim ? 1 : (Number(style.opacity) || 1),
       style: verbatim ? {} : kept,
+      // A standalone page's `kept` is mostly what the browser computed; only
+      // what the author wrote inline was a choice.
+      ...(independent && !verbatim ? { authoredStyle: Object.keys(authored) } : {}),
       // A text box exported from a deck carries the player's own wrappers so
       // that it lays out identically; the deck stores only what is inside
       // them. Hand-authored markup has no such wrapper and is read whole.
@@ -1732,9 +1735,13 @@ export interface TextOverflow {
  * frame), so a box that stays overflowing did so at the fit's minimum size.
  *
  * Self-contained for the same reason as `measureSlides`: it is serialised
- * into a bare offscreen window.
+ * into a bare offscreen window. `roots` lets a page that renders slides some
+ * other way (the editor's off-screen probe after a theme change) name them.
  */
-export function measureTextOverflows(doc: Document): TextOverflow[] {
+export function measureTextOverflows(
+  doc: Document,
+  roots: Iterable<HTMLElement> = doc.querySelectorAll<HTMLElement>('section.slide'),
+): TextOverflow[] {
   const view = doc.defaultView;
   if (!view) throw new Error('The document being measured has no window');
   const fit = (view as unknown as {
@@ -1742,7 +1749,7 @@ export function measureTextOverflows(doc: Document): TextOverflow[] {
   }).fitAutoTextElement;
 
   const found: TextOverflow[] = [];
-  for (const root of doc.querySelectorAll<HTMLElement>('section.slide')) {
+  for (const root of roots) {
     for (const node of root.querySelectorAll<HTMLElement>('.element-text')) {
       const body = node.querySelector<HTMLElement>(':scope > .text-body');
       const content = body?.querySelector<HTMLElement>(':scope > .text-content');

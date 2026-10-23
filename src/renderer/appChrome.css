@@ -6,15 +6,16 @@
   font-display: swap;
 }
 
-/* Shared DeckWerk chrome. Slide content keeps using the deck's theme. */
+/* Shared DeckWerk chrome. Slide content keeps using the deck's theme. Text and
+   muted stay at least 4.5:1 on bg, panel and panel-2 (test/appChrome.test.ts). */
 :root {
   color-scheme: dark;
   --bg: #16161e;
   --panel: #1a1b26;
-  --panel-2: #20212e;
-  --line: #2c2e3d;
-  --text: #c0caf5;
-  --muted: #565f89;
+  --panel-2: #242536;
+  --line: #3b3f55;
+  --text: #c8d0f5;
+  --muted: #878fb8;
   --accent: #7aa2f7;
   --accent-soft: rgb(122 162 247 / 12%);
   --green: #9ece6a;
@@ -91,11 +92,13 @@ input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="
   font: inherit;
 }
 
+/* A data URI cannot read a token, so the chevron is one colour above 3:1 on
+   both themes' fields. */
 select {
   appearance: none;
   -webkit-appearance: none;
   padding: 5px 24px 5px 9px;
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'><path d='M2 3.5l3 3 3-3' fill='none' stroke='%23565f89' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'><path d='M2 3.5l3 3 3-3' fill='none' stroke='%23787fa5' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/></svg>");
   background-repeat: no-repeat;
   background-position: right 8px center;
   cursor: pointer;

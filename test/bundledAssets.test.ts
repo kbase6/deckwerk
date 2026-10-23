@@ -59,14 +59,15 @@ describe('assets the app needs at run time', () => {
     expect(builder.mac.icon).toBe('resources/deckwerk-icon.icns');
     const main = await readFile(join(process.cwd(), 'src/main/index.ts'), 'utf8');
     expect(main).toContain("app.setName('DeckWerk')");
-    expect(main).toContain("app.dock.setIcon(developmentIcon)");
+    expect(main).toContain("app.dock?.setIcon(developmentIcon)");
   });
 
   it('bundles Monaspace Krypton for the editor UI and app icon', async () => {
     const editorCss = await readFile(join(process.cwd(), 'src/renderer/editor/editor.css'), 'utf8');
     expect(editorCss).toContain('@font-face');
     expect(editorCss).toContain('./fonts/Monaspace-Krypton-Var.woff2');
-    expect(editorCss).toContain('--mono: "Monaspace Krypton", monospace;');
+    const chromeCss = await readFile(join(process.cwd(), 'src/renderer/appChrome.css'), 'utf8');
+    expect(chromeCss).toContain('--mono: "Monaspace Krypton", monospace;');
     expect(existsSync(join(process.cwd(), 'src/renderer/editor/fonts/Monaspace-Krypton-Var.woff2'))).toBe(true);
 
     const icon = await readFile(join(process.cwd(), 'resources/deckwerk-icon.svg'), 'utf8');

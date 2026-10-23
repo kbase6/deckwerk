@@ -1,7 +1,7 @@
 import { emptyDeck, type Deck, type Slide, type SlideElement } from '@shared/deck.js';
 import { defaultLayoutMasters, syncDeckWithLayoutMasters, type FixedLayout } from '@shared/layoutMasters.js';
-import { ROLE_TYPE_SCALE_PROPERTIES, deckTheme, themeCss, type ThemePreset } from '@shared/themes.js';
-import { renderSlide } from '../player/render.js';
+import { ROLE_TYPE_SCALE_PROPERTIES, deckTheme, restyleDeck, themeCss, type ThemePreset } from '@shared/themes.js';
+import { fitAutoText, renderSlide } from '../player/render.js';
 import {
   FIXED_LAYOUTS as LAYOUTS,
   LAYOUT_LABELS_BY_ID as LABELS,
@@ -202,6 +202,7 @@ export class DesignWorkspace {
       mediaPreload: 'metadata',
     }));
     stage.appendChild(layer);
+    fitAutoText(layer);
     const note = document.createElement('div');
     note.className = 'design-slide-preview-banner';
     note.textContent = label ? `Preview · ${label}` : 'Preview';
@@ -209,13 +210,20 @@ export class DesignWorkspace {
   }
 
   /**
-   * Preview a theme draft: theme.css for `theme` is laid over the editor so
-   * every box that follows the stylesheet shows the draft. Boxes carrying
-   * their own values stay put, which is exactly what Done would do to them.
+   * Preview the current slide through the same restyling rules as Done,
+   * under the draft's stylesheet, without changing the deck.
    */
   previewThemeDraft(theme: ThemePreset | null): void {
     this.previewStyle.textContent = theme ? themeCss(theme) : '';
-    this.deps.canvasHost.classList.toggle('design-theme-previewing', Boolean(theme));
+    const { deck, slideIndex } = this.deps.store.get();
+    const slide = deck.slides[slideIndex];
+    if (!theme || !slide) {
+      this.previewSlideOnCanvas(null);
+      return;
+    }
+    const previewDeck = { ...deck, slides: [structuredClone(slide)] };
+    restyleDeck(previewDeck, theme);
+    this.previewSlideOnCanvas(previewDeck.slides[0], 'Theme draft');
   }
 
   openLayoutEditor(initialLayout: FixedLayout): void {

@@ -20,10 +20,10 @@ Hosted decks have a chat too: `slide-agent chat .`, `say . "text"`, `chat . --wa
 
 A theme sets the fonts, sizes and colours for text roles. Give text the class
 `role-title`, `role-heading`, `role-body` or `role-caption` and it takes the
-deck's theme; don't hard-code fonts or colours the theme already supplies.
-`slide-agent theme list .` prints every theme's title and body typefaces and
-its background, text, muted and accent colours (`chosen` is the deck's
-current one). To switch: `slide-agent theme apply . --id <id> --scope deck`.
+deck's theme. Don't hard-code fonts or colours: inline type counts as chosen
+on purpose, so a theme change in the Design tab leaves it as you wrote it.
+`slide-agent theme list .` prints every theme's typefaces and colours
+(`chosen` is the deck's). To switch: `slide-agent theme apply . --id <id> --scope deck`.
 Layouts: `data-layout="standard"` (title + body) or `"title"` on a `<section>`,
 with `data-layout-slot="title"`/`"body"` on its boxes; the layout places them
 and the theme styles them, so leave their position and type to DeckWerk.

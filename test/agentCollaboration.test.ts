@@ -227,6 +227,35 @@ for (const kind of BACKENDS) describe.skipIf(!electronBinary)(`an agent working 
     expect(validateDeckIntegrity(deck)).toEqual([]);
   });
 
+  it('records the type a page writes inline as set on purpose, so a theme change keeps it', async () => {
+    const workspace = await open(kind);
+    await workspace.write('add.html', await newPage(workspace,
+      '<h1 class="role-title" style="color: #cc0000">Red on purpose</h1><p class="role-body">Themed body</p>'));
+    const result = landed(await apply(workspace, 'add.html'), workspace);
+    const added = slideById(await workspace.deck(), result.changes.inserted[0]);
+    const title = added.elements.find((element) => element.type === 'text' && element.html.includes('Red on purpose'));
+    const body = added.elements.find((element) => element.type === 'text' && element.html.includes('Themed body'));
+    expect(title?.style.color, JSON.stringify(title)).toBeDefined();
+    expect(title?.type === 'text' && title.overrides, JSON.stringify(title)).toEqual(['color']);
+    expect(body?.type === 'text' && body.overrides, JSON.stringify(body)).toBeUndefined();
+  });
+
+  it('keeps theme-pinned backgrounds through an untouched export, and clears the pin on an authored background change', async () => {
+    const fixture = agentFixtureDeck();
+    const agenda = slideById(fixture, 'agenda');
+    agenda.background = { color: '#faf9f5', image: null, themePinned: true };
+    const workspace = await open(kind, fixture);
+    await workspace.write('background.html', await exportPage(workspace, 'agenda'));
+    expect(landed(await apply(workspace, 'background.html'), workspace).applied).toBe(false);
+    expect(slideById(await workspace.deck(), 'agenda').background).toEqual(agenda.background);
+
+    const page = await exportPage(workspace, 'agenda');
+    expect(page).toContain('background-color:#faf9f5');
+    await workspace.write('background.html', page.replace('background-color:#faf9f5', 'background-color:#123456'));
+    landed(await apply(workspace, 'background.html'), workspace);
+    expect(slideById(await workspace.deck(), 'agenda').background).toEqual({ color: '#123456', image: null });
+  });
+
   it('keeps maths as TeX, line breaks, video flags, regions and theme-placed objects when the agent edits beside them', async () => {
     const workspace = await open(kind);
     const before = slideById(await workspace.deck(), 'details');

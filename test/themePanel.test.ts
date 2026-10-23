@@ -3,13 +3,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CssEditor } from '../src/renderer/editor/cssEditor.js';
 import { createThemePanel } from '../src/renderer/editor/themePanel.js';
 import { EditorStore } from '../src/renderer/editor/store.js';
-import { emptyDeck } from '../src/shared/deck.js';
-import { STOCK_STYLESHEET_STYLE, THEMES, fullThemeSelection, themeStyleOf } from '../src/shared/themes.js';
+import { emptyDeck, type TextEl } from '../src/shared/deck.js';
+import { THEMES, fullThemeSelection, themeStyleOf } from '../src/shared/themes.js';
 
 describe('theme panel', () => {
   beforeEach(() => document.body.replaceChildren());
 
-  it('keeps the theme first, its Apply second, then layouts and their Apply', () => {
+  it('keeps the theme first, then layouts, with no Apply step between them', () => {
     const store = new EditorStore(emptyDeck('Theme panel'), '/tmp/theme-panel');
     const cssEditor = {
       getValue: () => '',
@@ -31,11 +31,10 @@ describe('theme panel', () => {
     expect([...panel.element.children].map((child) => child.className)).toEqual([
       'theme-browser-intro',
       'insp-option-section theme-current-section',
-      'insp-option-section theme-apply-section',
       'insp-option-section layouts-section',
     ]);
     expect([...panel.element.querySelectorAll('.insp-subtitle')].map((h) => h.textContent))
-      .toEqual(['Current theme', 'Apply theme', 'Layouts']);
+      .toEqual(['Current theme', 'Layouts']);
     expect(panel.element.querySelectorAll('.theme-active-host .theme-card')).toHaveLength(1);
     expect(panel.element.querySelector('.theme-chooser')?.hasAttribute('hidden')).toBe(true);
     expect(onThemePreview).not.toHaveBeenCalled();
@@ -48,14 +47,10 @@ describe('theme panel', () => {
     masters[1].click();
     expect(onEditLayouts).toHaveBeenCalledWith('standard');
 
-    // Roles are always on show; properties are three decisions plus detection.
-    const labels = [...panel.element.querySelectorAll<HTMLElement>('.theme-adoption-controls .field-check > span')]
-      .map((label) => label.firstChild?.textContent);
-    expect(labels).toEqual([
-      'Title', 'Body', 'Caption',
-      'Typography', 'Type scale', 'Colour', 'Detect roles for untagged text',
-    ]);
-    expect(labels).not.toContain('Heading');
+    // A theme reaches every slide by itself: nothing to tick, nothing to press.
+    expect(panel.element.querySelectorAll('input[type="checkbox"]')).toHaveLength(0);
+    // Until a theme changes there is nothing to report.
+    expect(panel.element.querySelector<HTMLElement>('.theme-change-report')!.hidden).toBe(true);
   });
 
   it('dismisses theme picking and the inline theme editor', () => {
@@ -84,12 +79,16 @@ describe('theme panel', () => {
     expect(panel.dismiss()).toBe(false);
   });
 
-  it('installs the chosen theme for new slides and pins existing slides where they are', () => {
+  it('puts the chosen theme on every slide as one undo step, and says so', () => {
     const deck = emptyDeck('Theme panel');
-    // A title on the stock stylesheet alone: no inline type, no theme installed.
+    // A title on the stock stylesheet alone, and one an import pinned inline.
     deck.slides[0].elements.push({
       id: 'title-1', type: 'text', x: 0, y: 0, w: 800, h: 200, rot: 0, z: 1, opacity: 1,
       class: ['role-title'], style: {}, html: 'Existing title',
+      align: 'left', valign: 'middle',
+    }, {
+      id: 'title-2', type: 'text', x: 0, y: 300, w: 800, h: 200, rot: 0, z: 2, opacity: 1,
+      class: ['role-title'], style: { 'font-family': 'Papyrus', 'font-size': '40px' }, html: 'Imported title',
       align: 'left', valign: 'middle',
     });
     const store = new EditorStore(deck, '/tmp/theme-panel');
@@ -111,11 +110,9 @@ describe('theme panel', () => {
     const showing = panel.currentTheme()!.id;
     const target = THEMES.find((theme) => theme.id !== showing)!;
     const cards = [...panel.element.querySelectorAll<HTMLButtonElement>('.theme-gallery .theme-card')];
-    const card = cards.find((element) => element.textContent?.includes(target.name));
-    card!.click();
+    cards.find((element) => element.textContent?.includes(target.name))!.click();
 
-    // Choosing installs the whole theme as the deck's defaults, and theme.css
-    // follows it at once so new slides can sit on the cascade.
+    // The whole theme is the deck's, and theme.css carries it at once.
     expect(store.get().deck.themeSelection).toEqual(fullThemeSelection(target.id));
     expect(store.get().deck.themePreset).toBe(target.id);
     expect(store.get().deck.themeStyle).toEqual(themeStyleOf(target));
@@ -124,33 +121,75 @@ describe('theme panel', () => {
       '.role-title {',
       `  font-family: ${target.fonts.title.family};`,
       `  font-size: ${target.fonts.title.size}px;`,
-      `  font-weight: ${target.fonts.title.weight};`,
-      `  line-height: ${target.fonts.title.lineHeight};`,
-      `  letter-spacing: ${target.fonts.title.letterSpacing};`,
     ].join('\n'));
     expect(css).toContain(`.slide {\n  background: ${target.colors.background};\n  color: ${target.colors.text};`);
 
-    // The existing title is pinned at exactly what it rendered at before: the
-    // stock value for every property the new theme would have moved, nothing
-    // for the properties the two agree on.
-    const was = STOCK_STYLESHEET_STYLE.fonts.title;
-    const will = target.fonts.title;
-    const pinned = (before: string, after: string): string | undefined => (before === after ? undefined : before);
-    const title = store.get().deck.slides[0].elements.find((element) => element.id === 'title-1')!;
-    expect(title.style).toEqual(Object.fromEntries(Object.entries({
-      'font-family': pinned(was.family, will.family),
-      'font-weight': pinned(String(was.weight), String(will.weight)),
-      'font-size': pinned(`${was.size}px`, `${will.size}px`),
-      'line-height': pinned(String(was.lineHeight), String(will.lineHeight)),
-      'letter-spacing': pinned(was.letterSpacing, will.letterSpacing),
-      color: pinned(STOCK_STYLESHEET_STYLE.colors.text, will.color ?? target.colors.text),
-    }).filter(([, value]) => value !== undefined)));
-    expect(title.style).not.toEqual({});
-    expect(store.get().deck.slides[0].background.color)
-      .toBe(pinned(STOCK_STYLESHEET_STYLE.colors.background, target.colors.background) ?? null);
+    // Both titles follow it: nothing pinned, the imported type gone.
+    const elements = store.get().deck.slides[0].elements;
+    expect(elements.map((element) => element.style)).toEqual([{}, {}]);
+    expect(store.get().deck.slides[0].background).toEqual({ color: null, image: null });
     expect(save).toHaveBeenCalled();
-    expect(setStatusMessage.mock.calls.at(-1)?.[0]).toContain('New slides will use');
     expect(setStatusMessage.mock.calls.at(-1)?.[0]).toContain(target.name);
+    const report = panel.element.querySelector<HTMLElement>('.theme-change-report')!;
+    expect(report.hidden).toBe(false);
+    expect(report.textContent).toContain(`Every slide now uses “${target.name}”.`);
+
+    // One undo step brings the import's own type back.
+    store.undo();
+    expect(store.get().deck.slides[0].elements[1].style).toEqual({ 'font-family': 'Papyrus', 'font-size': '40px' });
+    expect(report.hidden).toBe(true);
+    expect(report.textContent).toBe('');
+  });
+
+  it('reports what kept its own look, finds it, and resets it on request', () => {
+    const deck = emptyDeck('Theme panel');
+    const box = (id: string, z: number, patch: Partial<TextEl> = {}): TextEl => ({
+      id, type: 'text', x: 0, y: z * 100, w: 800, h: 80, rot: 0, z, opacity: 1,
+      class: ['role-body'], style: {}, html: id, align: 'left', valign: 'top', ...patch,
+    });
+    deck.slides = ['slide-1', 'slide-2', 'slide-3'].map((id) => ({ ...structuredClone(deck.slides[0]), id }));
+    const ownType = { color: '#cc0000', 'font-style': 'italic', 'text-decoration': 'underline' };
+    deck.slides[1].elements.push(box('red', 1, { style: ownType, overrides: Object.keys(ownType) }));
+    deck.slides[2].elements.push(box('plain', 1));
+    deck.slides[2].background = { color: '#123456', image: null };
+    const store = new EditorStore(deck, '/tmp/theme-panel');
+    const panel = createThemePanel({
+      store,
+      cssEditor: { getValue: () => '', setValue: vi.fn() } as unknown as CssEditor,
+      save: vi.fn(),
+      setStatusMessage: vi.fn(),
+      saveThemeCss: vi.fn(),
+      onThemePreview: vi.fn(),
+    });
+    document.body.appendChild(panel.element);
+    panel.element.querySelector<HTMLButtonElement>('.theme-active-card')!.click();
+    panel.element.querySelector<HTMLButtonElement>('.theme-gallery .theme-card[data-theme-id="swiss"]')!.click();
+
+    const report = panel.element.querySelector<HTMLElement>('.theme-change-report')!;
+    expect(report.textContent).toContain('1 text box kept its own formatting.');
+    expect(report.textContent).toContain('1 slide kept its own background.');
+    const button = (line: string, label: string) => {
+      const hint = [...report.querySelectorAll('.insp-hint')].find((node) => node.textContent?.startsWith(line))!;
+      return [...hint.nextElementSibling!.querySelectorAll<HTMLButtonElement>('button')]
+        .find((node) => node.textContent === label)!;
+    };
+
+    // Show goes to the slide and selects what kept its own look.
+    button('1 text box', 'Show').click();
+    expect(store.get().slideIndex).toBe(1);
+    expect([...store.get().selection]).toEqual(['red']);
+    button('1 slide', 'Show').click();
+    expect(store.get().slideIndex).toBe(2);
+
+    // Reset them too: the red box follows the theme as well, as one undo step.
+    button('1 text box', 'Reset them too').click();
+    const red = store.get().deck.slides[1].elements[0] as TextEl;
+    expect(red.style).toEqual({});
+    expect(red.overrides).toBeUndefined();
+    expect(report.textContent).not.toContain('kept its own formatting');
+    store.undo();
+    expect((store.get().deck.slides[1].elements[0] as TextEl).style).toEqual(ownType);
+    expect(report.hidden).toBe(true);
   });
 
   it('follows the Light/Dark switch with the selection and the preview', () => {
@@ -221,7 +260,7 @@ describe('theme panel', () => {
     expect(onThemePreview.mock.calls.at(-1)?.[0]).toBeNull();
   });
 
-  it('marks the theme the deck last actually wore, not the one last clicked', () => {
+  it('marks the theme the deck wore before the current one', () => {
     const deck = emptyDeck('Theme panel');
     deck.slides[0].elements.push({
       id: 'title-1', type: 'text', x: 0, y: 0, w: 800, h: 200, rot: 0, z: 1, opacity: 1,
@@ -247,23 +286,15 @@ describe('theme panel', () => {
       .filter((badge) => !badge.hidden)
       .map((badge) => badge.closest<HTMLElement>('.theme-card')!.dataset.themeId);
 
-    // Choose Swiss and actually put it on the slide.
+    // Choosing a theme puts it on the slides: Swiss is now worn.
     openChooser();
     cardFor(THEMES.find((theme) => theme.id === 'swiss')!.name).click();
-    panel.element.querySelector<HTMLButtonElement>('.theme-apply-action button')!.click();
     openChooser();
     expect(markedPrevious()).toEqual([]);
 
-    // Now merely click through another theme: chosen, never applied.
+    // Choosing Salon makes it the deck's look, and Swiss the one to go back to.
     const salon = THEMES.find((theme) => theme.id === 'salon')!;
-    openChooser();
     cardFor(salon.name).click();
-    openChooser();
-    // Swiss is the last theme this deck actually wore; Salon is only selected.
-    expect(markedPrevious()).toEqual(['swiss']);
-
-    // Applying Salon makes it the deck's look, and Swiss the one to go back to.
-    panel.element.querySelector<HTMLButtonElement>('.theme-apply-action button')!.click();
     openChooser();
     expect(store.get().deck.themeHistory).toEqual(['salon', 'swiss']);
     expect(markedPrevious()).toEqual(['swiss']);
@@ -289,12 +320,11 @@ describe('theme panel', () => {
     });
     document.body.appendChild(panel.element);
 
-    // Pick the condensed-medium theme, then apply with the panel's defaults.
+    // Pick the condensed-medium theme: it reaches the slide at once.
     panel.element.querySelector<HTMLButtonElement>('.theme-active-card')!.click();
     const colloquium = THEMES.find((theme) => theme.id === 'colloquium')!;
     [...panel.element.querySelectorAll<HTMLButtonElement>('.theme-gallery .theme-card')]
       .find((element) => element.textContent?.includes(colloquium.name))!.click();
-    panel.element.querySelector<HTMLButtonElement>('.theme-apply-action button')!.click();
 
     // The family without its weight is what left condensed titles at 700. Now
     // both travel together: the title's own 700 is cleared so it follows the
@@ -346,7 +376,6 @@ describe('theme panel', () => {
     // is offered as its generated light counterpart — the same courtesy the
     // built-ins get.
     expect(panel.currentTheme()?.id).toBe('lab-night-light');
-    panel.element.querySelector<HTMLButtonElement>('.theme-apply-action button')!.click();
 
     // The title's own Comic Sans is cleared so it follows theme.css, which now
     // carries the deck theme's title face.
@@ -405,7 +434,7 @@ describe('theme panel', () => {
 });
 
 describe('the theme editor’s type scale', () => {
-  it('edits one role’s default size into theme.css on Done, without moving existing slides', () => {
+  it('edits one role’s size into theme.css on Done, and every slide follows it', () => {
     const deck = emptyDeck('Scale panel');
     deck.themePreset = THEMES[0].id;
     deck.themeStyle = structuredClone({
@@ -450,10 +479,9 @@ describe('the theme editor’s type scale', () => {
     expect(onPreviewThemeDraft).toHaveBeenLastCalledWith(null);
     expect(store.get().deck.themeStyle?.fonts.title.size).toBe(100);
     expect(saveThemeCss).toHaveBeenLastCalledWith(expect.stringMatching(/\.role-title \{[^}]*font-size: 100px/));
-    // The existing title kept the size it rendered at; only new slides and an
-    // explicit Apply see 100px.
+    // The existing title still follows the stylesheet, so it is 100px too.
     expect(store.get().deck.slides[0].elements.find((el) => el.id === 'following')?.style)
-      .toEqual({ 'font-size': `${before}px` });
+      .toEqual({});
     expect(panel.element.querySelector<HTMLElement>('.theme-inline-editor')!.hidden).toBe(true);
   });
 
@@ -518,77 +546,4 @@ describe('the theme editor’s type scale', () => {
     expect(store.canUndo()).toBe(false);
   });
 
-});
-
-describe('Apply-theme dry runs', () => {
-  beforeEach(() => document.body.replaceChildren());
-
-  it('reruns the Apply-theme dry run only when the deck or what it reads changes, and only on screen', () => {
-    const deck = emptyDeck('Dry runs');
-    deck.slides = [0, 1, 2].map((i) => ({
-      ...structuredClone(deck.slides[0]),
-      id: `slide-${i}`,
-      elements: [{
-        id: `text-${i}`, type: 'text', x: 0, y: 0, w: 100, h: 40, rot: 0, z: 0, opacity: 1,
-        class: ['role-body'], style: {}, html: 'Hello', align: 'left',
-      } as never],
-    }));
-    const store = new EditorStore(deck, '/tmp/theme-panel');
-    // A theme dry run is the panel's only whole-deck structuredClone.
-    const clones = () => cloneSpy.mock.calls.filter(([value]) => value === store.get().deck).length;
-    const cloneSpy = vi.spyOn(globalThis, 'structuredClone');
-    let observe: IntersectionObserverCallback = () => {};
-    const original = globalThis.IntersectionObserver;
-    globalThis.IntersectionObserver = class {
-      constructor(callback: IntersectionObserverCallback) { observe = callback; }
-      observe(): void {}
-      unobserve(): void {}
-      disconnect(): void {}
-    } as unknown as typeof IntersectionObserver;
-    try {
-      const panel = createThemePanel({
-        store,
-        cssEditor: { getValue: () => '', setValue: vi.fn() } as unknown as CssEditor,
-        save: vi.fn(),
-        setStatusMessage: vi.fn(),
-        saveThemeCss: vi.fn(),
-      });
-      document.body.appendChild(panel.element);
-      const readout = panel.element.querySelector('.theme-readout')!;
-      const show = (visible: boolean) => observe(
-        [readout, panel.element.querySelector('.theme-apply-action button')!]
-          .map((target) => ({ target, isIntersecting: visible })) as unknown as IntersectionObserverEntry[],
-        {} as IntersectionObserver,
-      );
-      show(true);
-      cloneSpy.mockClear();
-      const scope = panel.element.querySelector<HTMLSelectElement>('.theme-adoption-controls select')!;
-      scope.value = 'deck';
-      scope.dispatchEvent(new Event('change'));
-      const afterScope = clones();
-      expect(afterScope).toBeLessThanOrEqual(1);
-
-      // Selection-only emits with the deck scope: nothing the dry run reads.
-      store.select(['text-0']);
-      store.selectSlide(1);
-      store.select(['text-1']);
-      expect(clones()).toBe(afterScope);
-
-      // A deck change reruns it…
-      store.commit((d) => { d.slides[0].elements[0].x = 5; }, { label: 'Nudge' });
-      expect(clones()).toBe(1);
-
-      // …but not while the panel is on another tab; it catches up on return.
-      show(false);
-      store.commit((d) => { d.slides[0].elements[0].x = 6; }, { label: 'Nudge' });
-      store.commit((d) => { d.slides[0].elements[0].x = 7; }, { label: 'Nudge' });
-      expect(clones()).toBe(0);
-      show(true);
-      expect(clones()).toBe(1);
-      expect(readout.textContent).not.toBe('');
-    } finally {
-      globalThis.IntersectionObserver = original;
-      cloneSpy.mockRestore();
-    }
-  });
 });

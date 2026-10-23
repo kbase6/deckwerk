@@ -348,9 +348,10 @@ export function deckTheme(deck: Deck): ThemePreset | null {
 
 /** A preset wearing the deck's composed defaults, for preview and labelling. */
 export function presetFromStyle(style: ThemeStyle, base: ThemePreset): ThemePreset {
+  const pristine = JSON.stringify(style) === JSON.stringify(themeStyleOf(base));
   return {
     id: base.id,
-    name: `${base.name} · Modified`,
+    name: pristine ? base.name : `${base.name} · Modified`,
     description: base.description,
     fonts: structuredClone(style.fonts),
     palette: [...style.palette],
@@ -698,11 +699,105 @@ export function followThemeOnText(el: Extract<SlideElement, { type: 'text' }>): 
   }
 }
 
+/** The importers' classes (Keynote, PowerPoint): theme.css may style them above the role rules. */
+const IMPORTER_TEXT_CLASSES = new Set([IMPORTED_TEXT_CLASS, 'pp-text']);
+
+/** The type a theme decides for a box. */
+const THEME_TYPE_PROPERTIES = ['font-family', 'font-size', 'font-weight', 'line-height', 'letter-spacing', 'color'];
+
+/**
+ * Hand a box's type back to the theme, keeping what was chosen on purpose:
+ * a property in `overrides`, formatting on part of its text (a bold or a
+ * coloured word), and an untagged box's size, which nothing ever pins. What
+ * goes is what only held the box still: a pinned copy, an importer's inline
+ * type and class, a run repeating its box's value.
+ */
+export function followDeckTheme(el: Extract<SlideElement, { type: 'text' }>): void {
+  const role = explicitRole(el) ?? 'base';
+  const kept = new Set(el.overrides ?? []);
+  const properties = THEME_TYPE_PROPERTIES.filter((property) => !kept.has(property)
+    && (role !== 'base' || (property !== 'font-size' && property !== 'line-height')));
+  const boxValues: Record<string, string> = {};
+  for (const property of properties) {
+    const value = el.style[property] ?? el.contentStyle?.[property];
+    if (value !== undefined) boxValues[property] = value;
+  }
+  clearTextProperties(el, properties, boxValues);
+  if (el.class.some((name) => IMPORTER_TEXT_CLASSES.has(name))) {
+    el.class = el.class.filter((name) => !IMPORTER_TEXT_CLASSES.has(name));
+  }
+}
+
+/** What a deck-wide theme change did, for the Design tab to report. */
+export interface ThemeChangeReport {
+  /** Text boxes whose look moved to the theme. */
+  restyled: number;
+  /** Text boxes that kept type the author set on them. */
+  kept: Array<{ slideId: string; elementId: string }>;
+  /** Slides that kept a background of their own (or their layout's). */
+  ownBackgrounds: string[];
+}
+
+/**
+ * Put the whole deck on `theme`: it becomes the deck's defaults and so
+ * theme.css, and every slide follows it (`followDeckTheme`) -- what choosing
+ * or editing a theme in the Design tab means. A slide keeps a background of
+ * its own; a recorded copy of an old theme background follows again. Shape
+ * colours taken from a swatch move to the same swatch of the new palette.
+ */
+export function restyleDeck(deck: Deck, theme: ThemePreset, currentCss?: string): ThemeChangeReport {
+  const previous = effectiveThemeStyle(deck, currentCss);
+  const next = themeStyleOf(theme);
+  const worn = wornThemes(deck, theme);
+  // The deck's own palette first: a swatch it edited still moves by slot.
+  const slots = paletteSlots([presetFromStyle(previous, theme), ...worn]);
+  const report: ThemeChangeReport = { restyled: 0, kept: [], ownBackgrounds: [] };
+  for (const slide of deck.slides) {
+    const { color, image } = slide.background;
+    const pinned = !slide.layoutBackgroundInherited && image === null && slide.background.themePinned;
+    if (pinned) {
+      slide.background = { color: null, image: null };
+      slide.layoutBackgroundInherited = false;
+    } else if (color !== null || image !== null) {
+      report.ownBackgrounds.push(slide.id);
+    }
+    for (const el of slide.elements) {
+      if (el.type === 'shape') {
+        if (el.fill) el.fill = remapObjectColor(el.fill, next.palette, slots);
+        if (el.stroke) el.stroke = remapObjectColor(el.stroke, next.palette, slots, 'stroke');
+      }
+      if (el.type !== 'text') continue;
+      const before = JSON.stringify([el.style, el.contentStyle, el.html, el.class]);
+      followDeckTheme(el);
+      if (JSON.stringify([el.style, el.contentStyle, el.html, el.class]) !== before) report.restyled += 1;
+      if (textOverrides(el).length > 0) report.kept.push({ slideId: slide.id, elementId: el.id });
+    }
+  }
+  deck.themeStyle = next;
+  deck.themePreset = theme.id;
+  deck.themeSelection = fullThemeSelection(theme.id);
+  noteThemeUsed(deck, theme.id);
+  return report;
+}
+
+/** Whether two CSS values say the same thing, give or take case and spacing. */
+function sameCssValue(a: string, b: string | undefined): boolean {
+  if (b === undefined) return false;
+  const canonical = (value: string) => value.trim().toLowerCase().replace(/\s*,\s*/g, ',').replace(/\s+/g, ' ');
+  return canonical(a) === canonical(b);
+}
+
 /**
  * Remove a box's own declarations for `properties` at every level, so the
- * stylesheet decides them. Absolute run sizes go; relative ones stay.
+ * stylesheet decides them. Absolute run sizes go; relative ones stay. With
+ * `runCopiesOf`, runs lose only declarations that repeat it (see
+ * `stripStyleProperties`).
  */
-export function clearTextProperties(el: Extract<SlideElement, { type: 'text' }>, properties: string[]): void {
+export function clearTextProperties(
+  el: Extract<SlideElement, { type: 'text' }>,
+  properties: string[],
+  runCopiesOf?: Record<string, string>,
+): void {
   const style = { ...el.style };
   for (const property of properties) delete style[property];
   el.style = style;
@@ -711,7 +806,7 @@ export function clearTextProperties(el: Extract<SlideElement, { type: 'text' }>,
     for (const property of properties) delete contentStyle[property];
     el.contentStyle = Object.keys(contentStyle).length > 0 ? contentStyle : undefined;
   }
-  el.html = stripStyleProperties(el.html, properties);
+  el.html = stripStyleProperties(el.html, properties, runCopiesOf);
 }
 
 /**
@@ -726,8 +821,16 @@ export function clearTextProperties(el: Extract<SlideElement, { type: 'text' }>,
  * the first as `font-family` and wrote the rest back as a style with no
  * property at all. The value is decoded first, split only where a `;` really
  * ends a declaration, and encoded again for the attribute it goes back into.
+ *
+ * Given `onlyCopiesOf` -- the box's own values -- a run loses a declaration
+ * only where it repeats the box's value: that is a copy. A run that differs
+ * (a bold, coloured or differently sized word) is formatting and stays.
  */
-export function stripStyleProperties(html: string, properties: string[]): string {
+export function stripStyleProperties(
+  html: string,
+  properties: string[],
+  onlyCopiesOf?: Record<string, string>,
+): string {
   if (properties.length === 0 || !/style\s*=/.test(html)) return html;
   const wanted = new Set(properties.map((property) => property.toLowerCase()));
   return html.replace(/\sstyle\s*=\s*("([^"]*)"|'([^']*)')/gi, (_match, _quoted, doubleQuoted, singleQuoted) => {
@@ -741,7 +844,8 @@ export function stripStyleProperties(html: string, properties: string[]): string
         const property = declaration.slice(0, colon).trim().toLowerCase();
         const value = declaration.slice(colon + 1).trim();
         if (!wanted.has(property)) return true;
-        return property === 'font-size' && /(em|rem|%|ex|ch)$/i.test(value);
+        if (property === 'font-size' && /(em|rem|%|ex|ch)$/i.test(value)) return true;
+        return onlyCopiesOf !== undefined && !sameCssValue(value, onlyCopiesOf[property]);
       });
     if (declarations.length === 0) return '';
     return ` style=${quote}${encodeAttribute(declarations.join('; '), quote)}${quote}`;
@@ -1009,7 +1113,7 @@ export function installThemeStyle(
       slide.background.color === null && slide.background.image === null
       && previous.colors.background !== next.colors.background
     ) {
-      slide.background = { color: previous.colors.background, image: null };
+      slide.background = { color: previous.colors.background, image: null, themePinned: true };
       slide.layoutBackgroundInherited = false;
     }
     for (const el of slide.elements) {

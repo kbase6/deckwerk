@@ -1428,7 +1428,7 @@ export class Inspector {
     const roles = texts.map((text) =>
       text.class.find((name) => /^role-(title|heading|body|caption|base)$/.test(name)) ?? 'none');
     wrap.appendChild(mixedSelectField(
-      'Role', ['none', ...ROLE_ORDER.map((role) => `role-${role}`)],
+      'Text style', [...ROLE_ORDER.map((role) => `role-${role}`), 'none'],
       commonValue(roles),
       (value) => {
         const role = value === 'none' ? null : value.slice(5);
@@ -1436,8 +1436,9 @@ export class Inspector {
         this.store.updateSelected((element) => {
           if (element.type !== 'text') return;
           applyTextRole(element, role, defaults);
-        }, { label: role ? `Set role to ${role}` : 'Clear role' });
+        }, { label: role ? `Set text style to ${ROLE_LABELS[role as ThemeTypeRole]}` : 'Clear text style' });
       },
+      { none: 'None', ...Object.fromEntries(ROLE_ORDER.map((role) => [`role-${role}`, ROLE_LABELS[role]])) },
     ));
 
     wrap.appendChild(mixedCheckboxField(
@@ -2040,7 +2041,7 @@ export class Inspector {
         const roleSelect = document.createElement('label');
         roleSelect.className = 'field';
         const roleSpan = document.createElement('span');
-        roleSpan.textContent = 'Role';
+        roleSpan.textContent = 'Text style';
         const roleDrop = document.createElement('select');
         // InDesign's convention: a "+" after the role says the author changed
         // something on this box that the role no longer decides.
@@ -2054,7 +2055,7 @@ export class Inspector {
         roleDrop.value = current;
         if (overridden.length > 0) {
           roleDrop.title = `Customised on this box: ${overridden.join(', ')}. `
-            + 'The theme changes everything else; Follow theme clears these too.';
+            + 'The theme changes everything else; Reset to theme clears these too.';
         }
         roleDrop.addEventListener('change', () => {
           const role = roleDrop.value ? roleDrop.value.slice(5) : null;
@@ -2062,7 +2063,7 @@ export class Inspector {
           this.store.updateSelected((e) => {
             if (e.type !== 'text') return;
             applyTextRole(e, role, defaults);
-          }, { label: role ? `Set role to ${role}` : 'Clear role' });
+          }, { label: role ? `Set text style to ${ROLE_LABELS[role as ThemeTypeRole]}` : 'Clear text style' });
         });
         roleSelect.append(roleSpan, roleDrop);
         roleSelect.classList.add('text-role');
@@ -3576,6 +3577,7 @@ function mixedSelectField(
   options: string[],
   value: string | null,
   onChange: (v: string) => void,
+  labels: Record<string, string> = {},
 ): HTMLElement {
   const wrap = document.createElement('label');
   wrap.className = 'field';
@@ -3592,7 +3594,7 @@ function mixedSelectField(
   for (const optionValue of options) {
     const option = document.createElement('option');
     option.value = optionValue;
-    option.textContent = optionValue;
+    option.textContent = labels[optionValue] ?? optionValue;
     select.appendChild(option);
   }
   select.value = value ?? '__mixed__';

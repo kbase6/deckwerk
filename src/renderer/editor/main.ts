@@ -961,7 +961,6 @@ const themePanel = createThemePanel({
   saveThemeCss: (css) => void persistThemeCss(css),
   onThemePreview: (theme) => (theme ? designWorkspace.show(theme) : designWorkspace.hide()),
   onEditLayouts: (layout) => designWorkspace.openLayoutEditor(layout),
-  onPreviewSlide: (slide, label) => designWorkspace.previewSlideOnCanvas(slide, label),
   onPreviewThemeDraft: (theme) => designWorkspace.previewThemeDraft(theme),
 });
 rail.onSlideActivate = () => {
@@ -1033,7 +1032,6 @@ function syncSlideSelectionContext(): void {
   if (multiple && activePanelId !== 'themePanel' && activePanelId !== 'inspector') {
     showPanel('themePanel');
   }
-  themePanel.syncScope(count);
 }
 
 /* --- element creation --- */

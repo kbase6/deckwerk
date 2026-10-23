@@ -69,6 +69,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+          check-latest: true
           cache: npm
       - name: Install system dependencies (Electron + ffmpeg)
         uses: ./.github/actions/electron-system-deps

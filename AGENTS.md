@@ -210,6 +210,11 @@ there too — the list is a checklist, not an error. Scope it to the slides you
 are actually editing with `--slide <id|number>` (repeatable, or comma-separated) or
 `--selected`; structural `errors` stay deck-wide either way.
 
+**Inline type is a choice.** A `font-*`, `line-height`, `letter-spacing` or
+`color` you write in a text element's `style` is recorded as set on purpose,
+so a theme change in the Design tab leaves it alone. Leave type to the role
+classes when the slide should follow the deck's theme.
+
 **Write semantic markup; put reusable classes in `theme.css`.** The walk bakes
 layout from any CSS, keeps a dissolving container's paint (background, border,
 radius) wherever it was styled, keeps a `<ul>`/`<ol>` as one list object, and
@@ -645,7 +650,10 @@ way back; a clean `importGaps: []` confirms that the repair loop is complete.
 ### Make or change a theme
 
 A theme is a *preset* — five font roles, a swatch palette, four ground colours
-— and installing one is separate from applying it, exactly as in the panel.
+— and from the CLI, installing one is separate from applying it. The Design
+tab does both at once: choosing or editing a theme there restyles every slide
+(`restyleDeck`), keeping type that was set on a box on purpose (`overrides`),
+formatting on part of a box's text, and a slide's own background.
 Presets shipped with the app are read-only; a theme you write is stored on the
 deck, offered in the same gallery, and travels in the deck folder.
 
@@ -658,8 +666,7 @@ slide-agent theme apply  $DECK --id lab-night --scope deck
 slide-agent render $DECK --all --output /tmp/shots   # look at it
 ```
 
-- **`create` restyles nothing.** Like installing a theme in the panel, it
-  changes what is *available*. `choose` makes it the deck's current theme, so
+- **`create` restyles nothing.** It changes what is *available*. `choose` makes it the deck's current theme, so
   new slides are born wearing it; `apply` restyles slides that already exist.
 - Every `apply` and `choose` installs what it adopts into the deck's defaults
   and the generated block of `theme.css`; the slides it targets drop their

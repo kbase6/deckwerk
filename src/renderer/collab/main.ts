@@ -385,7 +385,6 @@ const themePanel = createThemePanel({
   saveThemeCss: (css) => bridge.sendTheme(css),
   onThemePreview: (theme) => (theme ? designWorkspace.show(theme) : designWorkspace.hide()),
   onEditLayouts: (layout) => designWorkspace.openLayoutEditor(layout),
-  onPreviewSlide: (slide, label) => designWorkspace.previewSlideOnCanvas(slide, label),
   onPreviewThemeDraft: (theme) => designWorkspace.previewThemeDraft(theme),
 });
 rail.onSlideActivate = () => {
@@ -1115,7 +1114,6 @@ function syncSlideSelectionContext(): void {
   if (multiple && !DECK_LEVEL_PANELS.has(activePanelId)) {
     showPanel('themePanel');
   }
-  themePanel.syncScope(count);
 }
 
 function renderStatus(): void {

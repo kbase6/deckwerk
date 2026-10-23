@@ -188,7 +188,7 @@ describe('installThemeStyle pinning', () => {
     deck.slides[1].background = { color: '#abcdef', image: null };
     const next = themeStyleOf(themeById('basic')!);
     installThemeStyle(deck, next, 'basic', nobody);
-    expect(deck.slides[0].background).toEqual({ color: STOCK_STYLESHEET_STYLE.colors.background, image: null });
+    expect(deck.slides[0].background).toEqual({ color: STOCK_STYLESHEET_STYLE.colors.background, image: null, themePinned: true });
     expect(deck.slides[0].layoutBackgroundInherited).toBe(false);
     expect(deck.slides[1].background).toEqual({ color: '#abcdef', image: null });
 

@@ -282,6 +282,7 @@ export function slideThemeStylesDiffer(source: ThemeStyle, destination: ThemeSty
  */
 export function pinSlidesToTheme(slides: Slide[], theme: ThemeStyle): void {
   for (const slide of slides) {
+    delete slide.background.themePinned;
     if (
       slide.background.color === null
       && slide.background.image === null
@@ -309,6 +310,8 @@ export function pinSlidesToTheme(slides: Slide[], theme: ThemeStyle): void {
         style[property] = value;
       }
       element.style = style;
+      // "Keep source appearance" is a choice: a later theme change keeps it too.
+      element.overrides = [...new Set([...(element.overrides ?? []), ...Object.keys(declarations)])];
     }
   }
 }

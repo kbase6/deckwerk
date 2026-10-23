@@ -6,7 +6,8 @@ import { applySlideLayout } from '../src/renderer/editor/slideLayouts.js';
 import { emptyDeck, type Deck } from '../src/shared/deck.js';
 import { defaultLayoutMasters } from '../src/shared/layoutMasters.js';
 import { PLAYER_TYPE_CSS } from '../src/shared/playerTypeCss.js';
-import { THEMES } from '../src/shared/themes.js';
+import { THEMES, restyleDeck, themeById, themeCss, themeStyleOf } from '../src/shared/themes.js';
+import { renderSlide } from '../src/renderer/player/render.js';
 
 class NoopResizeObserver {
   observe(): void {}
@@ -94,6 +95,53 @@ describe('design workspace dismissal', () => {
  * gallery is nothing but prompt copy, so without an explicit opt-out the whole
  * design mode presented empty slides.
  */
+describe('theme draft preview', () => {
+  beforeEach(() => {
+    document.head.replaceChildren();
+    document.body.replaceChildren();
+    installDomShims();
+  });
+
+  it('previews the same restyling as Done without changing the deck, and clears on Cancel', () => {
+    const theme = themeById('swiss')!;
+    const deck = emptyDeck('Draft');
+    deck.themePreset = theme.id;
+    deck.themeStyle = themeStyleOf(theme);
+    deck.slides[0].elements = [80, 70].map((size, index) => ({
+      id: `title-${index}`, type: 'text', x: 0, y: index * 200, w: 1000, h: 180, rot: 0, z: index,
+      opacity: 1, class: ['role-title'], style: { 'font-size': `${size}px` }, html: 'Title',
+      align: 'left', valign: 'top', ...(index ? { overrides: ['font-size'] } : {}),
+    }));
+    const sheet = document.createElement('style');
+    sheet.textContent = themeCss(theme);
+    document.head.appendChild(sheet);
+    const { workspace, store } = build(deck);
+    const stage = document.createElement('div');
+    stage.className = 'stage';
+    stage.appendChild(renderSlide(deck.slides[0], { resolveSrc: (src) => src }));
+    document.querySelector('main')!.appendChild(stage);
+    const before = structuredClone(store.get().deck);
+    const draft = structuredClone(theme);
+    draft.fonts.title.size = 100;
+
+    workspace.previewThemeDraft(draft);
+    const preview = stage.querySelector<HTMLElement>('.design-slide-preview')!;
+    expect(preview).not.toBeNull();
+    expect(getComputedStyle(preview.querySelector('[data-element-id="title-0"]')!).fontSize).toBe('100px');
+    expect(getComputedStyle(preview.querySelector('[data-element-id="title-1"]')!).fontSize).toBe('70px');
+    const expected = structuredClone(before);
+    restyleDeck(expected, draft);
+    expect([...preview.querySelectorAll<HTMLElement>('.element-text')].map((el) => el.style.fontSize))
+      .toEqual(expected.slides[0].elements.map((el) => el.style['font-size'] ?? ''));
+    expect(store.get().deck).toEqual(before);
+
+    workspace.previewThemeDraft(null);
+    expect(stage.querySelector('.design-slide-preview')).toBeNull();
+    expect(getComputedStyle(stage.querySelector('[data-element-id="title-0"]')!).fontSize).toBe('80px');
+    expect(store.get().deck).toEqual(before);
+  });
+});
+
 describe('the layout gallery', () => {
   beforeEach(() => {
     document.head.replaceChildren();

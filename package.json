@@ -75,9 +75,9 @@
   "devDependencies": {
     "@types/jsdom": "^30.0.0",
     "@types/node": "^22.7.4",
-    "electron": "^32.1.2",
-    "electron-builder": "^25.1.8",
-    "electron-vite": "^2.3.0",
+    "electron": "^45.0.0",
+    "electron-builder": "^26.16.1",
+    "electron-vite": "^3.1.0",
     "jsdom": "^25.0.1",
     "marked": "^15.0.12",
     "typescript": "^5.6.2",
@@ -86,6 +86,7 @@
     "vitest": "^2.1.1"
   },
   "overrides": {
+    "@electron-internal/extract-zip": "1.0.5",
     "extract-zip": {
       "yauzl": "^3.4.0"
     }

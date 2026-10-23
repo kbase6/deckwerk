@@ -34,6 +34,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+          check-latest: true
       # Only `marked` is needed; a full `npm ci` would pull Electron and the
       # platform ffmpeg binaries for nothing.
       - run: npm install --no-save --no-audit --no-fund marked@15

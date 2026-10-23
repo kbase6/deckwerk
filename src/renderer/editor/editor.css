@@ -6,17 +6,11 @@
   font-display: swap;
 }
 
-/* Editor chrome. The slide itself is styled by the deck's own theme.css. */
+/* Editor chrome. The slide itself is styled by the deck's own theme.css. The
+   palette, fonts and radius come from appChrome.css alone; a token declared
+   again here would win in the editor and nowhere else. */
 
 :root {
-  --bg: #1c1c1e;
-  --panel: #252528;
-  --panel-2: #2e2e32;
-  --line: #3a3a3f;
-  --text: #e8e8ea;
-  --muted: #9a9aa2;
-  --accent: #3b82f6;
-  --danger: #e0463c;
   --build-orange: #f59e0b;
 }
 
@@ -976,13 +970,13 @@ body.panel-resizing iframe { pointer-events: none; }
   justify-self: end;
   margin-right: 7px;
   color: var(--muted);
-  font-size: 9.5px;
+  font-size: 11px;
   white-space: nowrap;
   pointer-events: none;
 }
 .field > .auto-fit-value {
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.3;
   white-space: nowrap;
 }
@@ -1320,21 +1314,6 @@ body.panel-resizing iframe { pointer-events: none; }
 /* edges. Structure above is unchanged; this layer restyles it.   */
 /* ============================================================= */
 
-:root {
-  color-scheme: dark;
-  --bg: #161619;
-  --panel: #1d1d21;
-  --panel-2: #27272c;
-  --line: #313138;
-  --text: #ececf1;
-  --muted: #8f8f9c;
-  --accent: #4f8ef7;
-  --accent-soft: rgb(79 142 247 / 14%);
-  --danger: #e5544b;
-  --radius: 8px;
-  --shadow: 0 1px 2px rgb(0 0 0 / 40%);
-}
-
 html, body { font: 12.5px/1.45 -apple-system, "SF Pro Text", Inter, system-ui, sans-serif; }
 
 /* Toolbar: a quiet strip, buttons appear on hover intent. */
@@ -1378,7 +1357,7 @@ button.primary:hover:not(:disabled) { background: #659cf8; border-color: transpa
 .rail-item:hover { background: var(--panel-2); }
 .rail-item.active { background: var(--accent-soft); }
 
-.rail-num { font-size: 10.5px; }
+.rail-num { font-size: 11px; }
 
 .rail-thumb {
   border-color: rgb(255 255 255 / 8%);
@@ -1418,7 +1397,7 @@ button.primary:hover:not(:disabled) { background: #659cf8; border-color: transpa
   margin-bottom: 10px;
 }
 
-.insp-group h3 { font-size: 10.5px; color: var(--muted); }
+.insp-group h3 { font-size: 11px; color: var(--muted); }
 .insp-title { font-size: 14px; letter-spacing: -0.01em; }
 
 .field input, .field select, .field textarea {
@@ -1477,7 +1456,7 @@ input[type="range"] { accent-color: var(--accent); padding: 0; background: trans
 }
 
 /* Status bar quieter. */
-#status { border-top: 1px solid var(--line); background: var(--bg); font-size: 10.5px; letter-spacing: 0.01em; }
+#status { border-top: 1px solid var(--line); background: var(--bg); font-size: 11px; letter-spacing: 0.01em; }
 
 /* Timeline rows breathe a little. */
 .step-block { border-radius: var(--radius); background: rgb(255 255 255 / 1.5%); }
@@ -1493,10 +1472,10 @@ input[type="range"] { accent-color: var(--accent); padding: 0; background: trans
 .history-row { position: relative; margin: 0 0 6px; }
 .history-row .history-item { margin-bottom: 0; }
 .history-item strong { font-size: 11px; font-weight: 600; }
-.history-item span { color: var(--muted); font-size: 10px; }
+.history-item span { color: var(--muted); font-size: 11px; }
 .history-item .history-description {
   color: var(--text);
-  font-size: 10.5px;
+  font-size: 11px;
   line-height: 1.4;
   white-space: normal;
 }
@@ -1508,7 +1487,7 @@ input[type="range"] { accent-color: var(--accent); padding: 0; background: trans
   border: 0;
   background: transparent;
   color: var(--accent);
-  font-size: 10px;
+  font-size: 11px;
   text-align: left;
 }
 .history-chat-link:hover { text-decoration: underline; }
@@ -1523,7 +1502,7 @@ input[type="range"] { accent-color: var(--accent); padding: 0; background: trans
   border: 0;
   background: transparent;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
   text-align: left;
 }
 .history-group-toggle:hover { color: var(--accent); text-decoration: underline; }
@@ -1581,11 +1560,11 @@ input[type="range"] { accent-color: var(--accent); padding: 0; background: trans
   background: var(--panel-2);
 }
 .agent-history-message-user { align-self: flex-end; background: color-mix(in srgb, var(--accent) 14%, var(--panel-2)); }
-.agent-history-message strong { display: block; margin-bottom: 5px; font-size: 10px; }
+.agent-history-message strong { display: block; margin-bottom: 5px; font-size: 11px; }
 .agent-history-message div { font-size: 11px; line-height: 1.5; white-space: pre-wrap; }
 .text-selection-style { display: grid; gap: 6px; margin: 4px 0 8px; }
 .text-selection-style .button-row { display: grid; gap: 4px; }
-.text-selection-style button { padding: 5px 2px; font-size: 10px; }
+.text-selection-style button { padding: 5px 2px; font-size: 11px; }
 .text-selection-style .text-format-buttons { grid-template-columns: repeat(5, 1fr); }
 .text-format-bold { font-weight: 800; }
 .text-format-italic { font-style: italic; }
@@ -1639,7 +1618,7 @@ input[type="range"] { accent-color: var(--accent); padding: 0; background: trans
 .insp-subtitle {
   margin: 8px 0 5px;
   color: var(--yellow);
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 650;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -1675,7 +1654,7 @@ input[type="range"] { accent-color: var(--accent); padding: 0; background: trans
   padding: 3px 0;
   border: 0;
   color: var(--muted);
-  font-size: 10.5px;
+  font-size: 11px;
   text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1747,7 +1726,7 @@ input[type="range"] { accent-color: var(--accent); padding: 0; background: trans
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 4px;
 }
-.z-order-row button { min-width: 0; padding: 4px 2px; font-size: 10px; }
+.z-order-row button { min-width: 0; padding: 4px 2px; font-size: 11px; }
 
 .video-playback-options > .panel-action { margin: 0 0 7px; }
 .video-checkbox-grid {
@@ -1797,12 +1776,12 @@ input[type="range"] { accent-color: var(--accent); padding: 0; background: trans
   gap: 5px;
 }
 .morph-duration input { min-width: 0; }
-.field-suffix { color: var(--muted); font-size: 10px; }
+.field-suffix { color: var(--muted); font-size: 11px; }
 .morph-instruction { min-height: 34px; }
 .morph-previews { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; margin: 10px 0 16px; }
 .morph-compact-previews { grid-template-columns: 1fr; gap: 10px; margin-bottom: 10px; }
 .morph-preview-wrap { width: 100%; min-width: 0; }
-.morph-preview-label { margin-bottom: 5px; color: var(--muted); font: 10px var(--mono); text-align: center; }
+.morph-preview-label { margin-bottom: 5px; color: var(--muted); font: 11px var(--mono); text-align: center; }
 .morph-preview {
   position: relative;
   width: 100%;
@@ -1872,7 +1851,7 @@ input[type="range"] { accent-color: var(--accent); padding: 0; background: trans
   border: none;
   background: none;
   color: var(--text);
-  font-size: 10px;
+  font-size: 11px;
   text-align: left;
   cursor: pointer;
 }
@@ -1941,22 +1920,6 @@ input[type="range"] { accent-color: var(--accent); padding: 0; background: trans
 /* Later rules override the earlier refresh wholesale.            */
 /* ============================================================= */
 
-:root {
-  --bg: #16161e;
-  --panel: #1a1b26;
-  --panel-2: #20212e;
-  --line: #2c2e3d;
-  --text: #c0caf5;
-  --muted: #565f89;
-  --accent: #7aa2f7;      /* pastel blue */
-  --accent-soft: rgb(122 162 247 / 12%);
-  --green: #9ece6a;
-  --yellow: #e0af68;
-  --danger: #f7768e;      /* pastel red */
-  --radius: 0;
-  --mono: "Monaspace Krypton", monospace;
-}
-
 html, body {
   background: var(--bg);
   color: var(--text);
@@ -2022,7 +1985,7 @@ button.primary:hover:not(:disabled) { background: rgb(122 162 247 / 22%); }
 .rail-item.selected { background: rgb(122 162 247 / 7%); border-color: rgb(122 162 247 / 55%); }
 .rail-item.active { background: var(--accent-soft); border-color: var(--accent); }
 
-.rail-num { font: 10px var(--mono); color: var(--muted); }
+.rail-num { font: 11px var(--mono); color: var(--muted); }
 .rail-item.selected .rail-num { color: var(--accent); }
 .rail-item.active .rail-num { color: var(--accent); }
 
@@ -2068,7 +2031,7 @@ button.primary:hover:not(:disabled) { background: rgb(122 162 247 / 22%); }
 }
 
 .insp-group h3 {
-  font: 10px var(--mono);
+  font: 11px var(--mono);
   color: var(--yellow);
   letter-spacing: 0.12em;
 }
@@ -2080,10 +2043,10 @@ button.primary:hover:not(:disabled) { background: rgb(122 162 247 / 22%); }
   letter-spacing: 0.1em;
 }
 
-.insp-hint { color: var(--muted); font-size: 10.5px; }
+.insp-hint { color: var(--muted); font-size: 11px; }
 
 .field > span,
-.theme-option-title { font: 10px var(--mono); color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
+.theme-option-title { font: 11px var(--mono); color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
 
 .field input, .field select, .field textarea, .media-effect-row input {
   border: 1px solid var(--line);
@@ -2114,13 +2077,13 @@ input[type="range"] { accent-color: var(--accent); border: 0; background: transp
 
 /* Timeline + status. */
 .step-block { border: 1px solid var(--line); background: transparent; }
-.step-label { color: var(--muted); font: 10px var(--mono); letter-spacing: 0.08em; }
+.step-label { color: var(--muted); font: 11px var(--mono); letter-spacing: 0.08em; }
 
 #status {
   background: var(--panel);
   border-top: 1px solid var(--line);
   color: var(--muted);
-  font: 10.5px var(--mono);
+  font: 11px var(--mono);
 }
 
 #status[data-busy="true"]::before {
@@ -2217,7 +2180,7 @@ input[type="range"] { accent-color: var(--accent); border: 0; background: transp
 .color-picker-section-title {
   margin-bottom: 7px;
   color: var(--muted);
-  font: 10px var(--mono);
+  font: 11px var(--mono);
   text-transform: uppercase;
   letter-spacing: .08em;
 }
@@ -2231,9 +2194,9 @@ input[type="range"] { accent-color: var(--accent); border: 0; background: transp
   border-radius: 5px;
   background: color-mix(in srgb, var(--yellow) 8%, transparent);
   color: var(--muted);
-  font: 10px/1.25 var(--mono);
+  font: 11px/1.25 var(--mono);
 }
-.color-picker-source-note strong { color: var(--yellow); font-size: 9px; }
+.color-picker-source-note strong { color: var(--yellow); font-size: 11px; }
 .color-picker-palette {
   display: flex;
   flex-wrap: wrap;
@@ -2281,7 +2244,7 @@ input[type="range"] { accent-color: var(--accent); border: 0; background: transp
   background: var(--picker-color);
 }
 .color-picker-theme-default .color-picker-theme-badge { right: -3px; bottom: -3px; }
-.color-picker-palette-empty { color: var(--muted); font: 10px var(--mono); }
+.color-picker-palette-empty { color: var(--muted); font: 11px var(--mono); }
 
 .color-picker-plane {
   position: relative;
@@ -2312,12 +2275,12 @@ input[type="range"] { accent-color: var(--accent); border: 0; background: transp
 
 .color-picker-slider-row {
   display: grid;
-  grid-template-columns: 48px 1fr;
+  grid-template-columns: 56px 1fr;
   gap: 8px;
   align-items: center;
   margin-top: 9px;
   color: var(--muted);
-  font: 10px var(--mono);
+  font: 11px var(--mono);
   text-transform: uppercase;
   letter-spacing: .06em;
 }
@@ -2341,7 +2304,7 @@ input[type="range"] { accent-color: var(--accent); border: 0; background: transp
   background: transparent;
   box-shadow: 0 1px 3px rgb(0 0 0 / 70%);
 }
-.color-picker-opacity { grid-template-columns: 48px 1fr 34px; }
+.color-picker-opacity { grid-template-columns: 56px 1fr 34px; }
 .color-picker-opacity input[type="range"] {
   background-color: #fff;
   background-image:
@@ -2355,8 +2318,8 @@ input[type="range"] { accent-color: var(--accent); border: 0; background: transp
 }
 .color-picker-opacity output { color: var(--text); text-align: right; }
 .color-picker-values { display: grid; grid-template-columns: 1fr; margin-top: 9px; }
-.color-picker-values label { display: grid; grid-template-columns: 48px 1fr; gap: 8px; align-items: center; }
-.color-picker-values span { color: var(--muted); font: 10px var(--mono); text-transform: uppercase; letter-spacing: .06em; }
+.color-picker-values label { display: grid; grid-template-columns: 56px 1fr; gap: 8px; align-items: center; }
+.color-picker-values span { color: var(--muted); font: 11px var(--mono); text-transform: uppercase; letter-spacing: .06em; }
 .color-picker-values input { min-width: 0; font-family: var(--mono); text-transform: uppercase; }
 .color-picker-values.has-eyedropper { grid-template-columns: 1fr auto; gap: 6px; align-items: center; }
 .color-picker-eyedropper {
@@ -2549,7 +2512,7 @@ input[type="range"] { accent-color: var(--accent); border: 0; background: transp
 .ctx-sep { border-top: 1px solid var(--line); margin: 4px 6px; }
 #ctx-menu .ctx-heading {
   color: var(--muted);
-  font: 10px var(--mono);
+  font: 11px var(--mono);
   letter-spacing: 0.06em;
   text-transform: uppercase;
   padding: 4px 10px 2px;
@@ -2580,7 +2543,7 @@ input[type="range"] { accent-color: var(--accent); border: 0; background: transp
   border-radius: 5px;
   background: transparent;
   color: var(--muted);
-  font: 10px var(--mono);
+  font: 11px var(--mono);
   letter-spacing: 0.08em;
   text-transform: uppercase;
   cursor: pointer;
@@ -2592,13 +2555,15 @@ input[type="range"] { accent-color: var(--accent); border: 0; background: transp
 /* Room under the samples for the affordance below, which is absolutely
    positioned and otherwise lands on top of the caption line. */
 .theme-active-card .theme-card-preview { padding-bottom: 24px; }
-.theme-active-card::after {
+/* On the preview, not the card, so currentColor is the theme's text colour
+   rather than the chrome's (light chrome text vanished on a light theme). */
+.theme-active-card .theme-card-preview::after {
   position: absolute;
   right: 10px;
   bottom: 8px;
   content: "Change or edit ▾";
   color: currentColor;
-  font: 700 7px/1 var(--mono);
+  font: 700 11px/1 var(--mono);
   letter-spacing: .06em;
   opacity: .58;
   text-transform: uppercase;
@@ -2614,7 +2579,7 @@ input[type="range"] { accent-color: var(--accent); border: 0; background: transp
 /* Same rank as the panel's other cluster labels. */
 .theme-chooser-header strong {
   color: var(--muted);
-  font: 10px var(--mono);
+  font: 11px var(--mono);
   font-weight: 500;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -2678,15 +2643,7 @@ input[type="range"] { accent-color: var(--accent); border: 0; background: transp
 .theme-font-title > span { font-size: 21px; }
 .theme-font-body > span { font-size: 13px; }
 .theme-font-caption > span { font-size: 10px; }
-.theme-adoption-controls {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 6px 10px;
-  align-items: start;
-}
-.theme-adoption-controls > .field:not(.field-check),
 .theme-option-title { grid-column: 1 / -1; }
-.theme-adoption-controls .field { margin-bottom: 0; }
 /* Names a cluster of controls inside a section. Deliberately the same rank and
    styling as a field's own label (see `.field > span`) — sections are titled by
    `.insp-subtitle`. */
@@ -2713,7 +2670,7 @@ input[type="range"] { accent-color: var(--accent); border: 0; background: transp
 }
 .design-preview-workspace > header span {
   color: var(--muted);
-  font: 700 9px/1 var(--mono);
+  font: 700 11px/1 var(--mono);
   letter-spacing: .1em;
   text-transform: uppercase;
 }
@@ -2755,12 +2712,10 @@ input[type="range"] { accent-color: var(--accent); border: 0; background: transp
 .layout-master-element { pointer-events: none; }
 .design-preview-label { display: flex; justify-content: space-between; gap: 12px; margin-top: 9px; }
 .design-preview-label strong { font-size: 11px; }
-.design-preview-label small { color: var(--muted); font-size: 9px; }
+.design-preview-label small { color: var(--muted); font-size: 11px; }
 .design-preview-freeform { grid-column: 1 / -1; width: calc(50% - 9px); }
 
 .theme-section-action { width: 100%; margin-top: 8px; }
-.theme-apply-action { margin-top: 9px; }
-.theme-apply-action .panel-action { width: 100%; }
 .theme-layout-summary {
   display: block;
   width: 100%;
@@ -2779,8 +2734,8 @@ input[type="range"] { accent-color: var(--accent); border: 0; background: transp
   gap: 10px;
   margin-top: 8px;
 }
-.theme-layout-summary-label strong { font-size: 10px; }
-.theme-layout-summary-label small { color: var(--muted); font-size: 9px; }
+.theme-layout-summary-label strong { font-size: 11px; }
+.theme-layout-summary-label small { color: var(--muted); font-size: 11px; }
 
 /* Explicit, full-window layout-master editor. */
 .layout-editor-overlay {
@@ -2804,7 +2759,7 @@ input[type="range"] { accent-color: var(--accent); border: 0; background: transp
 .layout-editor-header > div:first-child { display: flex; flex-direction: column; gap: 3px; }
 .layout-editor-header > div:first-child span {
   color: var(--accent);
-  font: 700 8px/1 var(--mono);
+  font: 700 11px/1 var(--mono);
   letter-spacing: .1em;
   text-transform: uppercase;
 }
@@ -2827,7 +2782,7 @@ input[type="range"] { accent-color: var(--accent); border: 0; background: transp
 .layout-editor-rail h3 {
   margin: 0 5px 12px;
   color: var(--muted);
-  font: 700 9px/1 var(--mono);
+  font: 700 11px/1 var(--mono);
   letter-spacing: .08em;
   text-transform: uppercase;
 }
@@ -2860,8 +2815,8 @@ input[type="range"] { accent-color: var(--accent); border: 0; background: transp
 }
 .layout-editor-rail-thumb .text-body,
 .layout-editor-rail-thumb .text-content { visibility: visible; }
-.layout-editor-rail-item > span:last-child { display: block; margin-top: 6px; font-size: 10px; }
-.layout-editor-rail > p { margin: 18px 5px 0; color: var(--muted); font-size: 9px; line-height: 1.5; }
+.layout-editor-rail-item > span:last-child { display: block; margin-top: 6px; font-size: 11px; }
+.layout-editor-rail > p { margin: 18px 5px 0; color: var(--muted); font-size: 11px; line-height: 1.5; }
 .layout-editor-canvas { position: relative; min-width: 0; min-height: 0; }
 .layout-editor-inspector {
   overflow: auto;
@@ -3319,7 +3274,7 @@ button.morph-object-hit.selected-source:hover:not(:disabled) {
 
 .agent-chat-message > strong {
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   letter-spacing: .04em;
   text-transform: uppercase;
@@ -3382,7 +3337,7 @@ button.morph-object-hit.selected-source:hover:not(:disabled) {
 .agent-chat-composer textarea:focus { border-color: var(--accent); }
 .agent-chat-compose-row { justify-content: space-between; margin-top: 8px; }
 .agent-chat-composer-actions { display: flex; align-items: center; gap: 6px; }
-.agent-chat-hint { color: var(--muted); font-size: 10px; }
+.agent-chat-hint { color: var(--muted); font-size: 11px; }
 .agent-chat-action { min-width: 64px; }
 .agent-chat-stop { min-width: 54px; border-color: transparent; background: var(--danger); color: white; }
 .agent-chat-stop[hidden] { display: none; }
@@ -3498,7 +3453,7 @@ button.morph-object-hit.selected-source:hover:not(:disabled) {
 }
 .deck-picker-columns .deck-picker-row {
   color: var(--muted, #8a93a6);
-  font: 600 10px var(--mono);
+  font: 600 11px var(--mono);
   text-transform: uppercase;
   letter-spacing: .08em;
 }
@@ -3529,7 +3484,7 @@ button.morph-object-hit.selected-source:hover:not(:disabled) {
 .deck-picker-group {
   margin-top: 14px;
   color: var(--muted, #8a93a6);
-  font: 600 10px var(--mono);
+  font: 600 11px var(--mono);
   text-transform: uppercase;
   letter-spacing: .08em;
 }
@@ -3594,7 +3549,7 @@ button.deck-picker-row.active { border-color: var(--accent); }
 .share-dialog-section h3 {
   margin: 0;
   color: var(--muted, #8a93a6);
-  font: 600 10px var(--mono);
+  font: 600 11px var(--mono);
   text-transform: uppercase;
   letter-spacing: .08em;
 }
@@ -3837,7 +3792,7 @@ select.panel-action-select {
 .shape-menu-section-label {
   padding: 3px 9px 2px;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -3980,7 +3935,7 @@ select.panel-action-select {
   background: transparent;
   color: var(--muted);
   padding: 1px 4px;
-  font-size: 10.5px;
+  font-size: 11px;
 }
 .cthread-head button:not(:disabled):hover, .cmsg-tools button:not(:disabled):hover {
   background: transparent;
@@ -3993,7 +3948,7 @@ select.panel-action-select {
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--muted);
-  font-size: 10.5px;
+  font-size: 11px;
   text-transform: none;
   letter-spacing: 0;
 }
@@ -4007,7 +3962,7 @@ button.cthread-where:disabled { cursor: default; opacity: 1; }
 .cmsg:hover .cmsg-tools, .cmsg-tools:focus-within { opacity: 1; }
 .cmsg-tools button.danger { color: var(--danger); opacity: 1; }
 .comment-author { font-weight: 600; font-size: 12px; }
-.comment-when { color: var(--muted); font-size: 10.5px; }
+.comment-when { color: var(--muted); font-size: 11px; }
 .comment-text { white-space: pre-wrap; overflow-wrap: anywhere; }
 .comment-compose {
   display: flex;
@@ -4234,7 +4189,7 @@ button.cthread-where:disabled { cursor: default; opacity: 1; }
   min-width: 0;
   overflow: hidden;
   color: var(--muted);
-  font: 10px var(--mono);
+  font: 11px var(--mono);
   text-align: right;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -4260,7 +4215,7 @@ button.cthread-where:disabled { cursor: default; opacity: 1; }
 .segment-button svg { width: 14px; height: 14px; }
 .segment-button svg * { fill: none; stroke: currentcolor; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
 .segment-button svg .fill { fill: currentcolor; stroke: none; }
-.segment-button { font: 10.5px var(--mono); }
+.segment-button { font: 11px var(--mono); }
 .align-button:focus-visible, .segment-button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 
 /* The value-carrying select behind a strip: present for keyboard and
@@ -4291,7 +4246,7 @@ button.cthread-where:disabled { cursor: default; opacity: 1; }
 }
 .geometry-bottom-row > .field { margin-bottom: 0; min-width: 0; }
 .geometry-bottom-row .field-opacity-controls { height: 28px; grid-template-columns: minmax(0, 1fr) 36px; gap: 6px; }
-.geometry-bottom-row .field-opacity output { font-size: 10.5px; }
+.geometry-bottom-row .field-opacity output { font-size: 11px; }
 .field-arrange .align-strip { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); }
 .z-order-row { grid-template-columns: none; gap: 0; }
 .z-order-row button { padding: 0; font-size: inherit; }
@@ -4313,7 +4268,7 @@ button.cthread-where:disabled { cursor: default; opacity: 1; }
   right: 20px;
   transform: translateY(-50%);
   margin: 0;
-  font-size: 9px;
+  font-size: 11px;
 }
 .optional-number-controls > .number-step-buttons {
   position: absolute;
@@ -4356,7 +4311,7 @@ button.cthread-where:disabled { cursor: default; opacity: 1; }
 
 /* Units read as the input's suffix: "12 px", "90 °", "300 ms". */
 /* A span directly under `.field` is otherwise styled as the field's label
-   (10px, uppercase, muted) and the input inside inherits that font, so a
+   (11px, uppercase, muted) and the input inside inherits that font, so a
    number with a unit rendered shorter than its unitless neighbour. */
 .field > .field-unit-wrap {
   position: relative;
@@ -4377,7 +4332,7 @@ button.cthread-where:disabled { cursor: default; opacity: 1; }
   right: 8px;
   transform: translateY(-50%);
   color: var(--muted);
-  font: 10px var(--mono);
+  font: 11px var(--mono);
   pointer-events: none;
 }
 
@@ -4385,7 +4340,7 @@ button.cthread-where:disabled { cursor: default; opacity: 1; }
 
 .text-style-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 46px;
+  grid-template-columns: minmax(0, 1fr) 52px;
   align-items: end;
   gap: 6px;
   margin-bottom: 6px;
@@ -4411,7 +4366,7 @@ button.cthread-where:disabled { cursor: default; opacity: 1; }
   padding: 0;
   border: 0;
   background: transparent;
-  font-size: 10px;
+  font-size: 11px;
 }
 
 /* --- 7. Media: one primary action per panel, toggles as a strip --- */
@@ -4422,7 +4377,7 @@ button.cthread-where:disabled { cursor: default; opacity: 1; }
   align-items: center;
   gap: 6px;
 }
-.video-playback-options > .panel-action { width: auto; margin: 0; padding: 0 10px; height: 26px; font-size: 10.5px; white-space: nowrap; }
+.video-playback-options > .panel-action { width: auto; margin: 0; padding: 0 10px; height: 26px; font-size: 11px; white-space: nowrap; }
 .video-checkbox-grid {
   display: grid;
   grid-auto-flow: column;
@@ -4461,7 +4416,7 @@ button.cthread-where:disabled { cursor: default; opacity: 1; }
 .toggle-segment:has(> input:checked) { background: var(--accent); color: #fff; }
 .toggle-segment:has(> input:indeterminate) { background: var(--accent-soft); color: var(--text); }
 .toggle-segment:has(> input:focus-visible) { outline: 2px solid var(--accent); outline-offset: -2px; }
-.toggle-segment > .toggle-segment-short { font: 10.5px var(--mono); letter-spacing: 0; text-transform: none; }
+.toggle-segment > .toggle-segment-short { font: 11px var(--mono); letter-spacing: 0; text-transform: none; }
 /* The label's own span rule (muted grey) would otherwise win over the strip's
    colour, leaving grey text on the accent fill. */
 .toggle-segment > .toggle-segment-short { color: inherit; }
@@ -4493,7 +4448,7 @@ select.panel-action-select {
   border-color: transparent;
   background-color: transparent;
   color: var(--muted);
-  font: 10.5px var(--mono);
+  font: 11px var(--mono);
 }
 select.panel-action-select:hover:not(:disabled) { color: var(--text); border-color: var(--line); }
 
@@ -4506,7 +4461,7 @@ button.ghost {
   border-color: transparent;
   background: transparent;
   color: var(--muted);
-  font-size: 10.5px;
+  font-size: 11px;
 }
 button.ghost:hover:not(:disabled) { color: var(--text); background: transparent; border-color: var(--line); }
 
@@ -4514,7 +4469,7 @@ button.ghost:hover:not(:disabled) { color: var(--text); background: transparent;
 
 .shape-line-flags { grid-template-columns: repeat(3, auto); justify-content: space-between; align-items: center; }
 .shape-line-flags .field-check { margin: 0; gap: 5px; }
-.shape-line-flags .field-check > span { font-size: 9px; letter-spacing: 0.04em; white-space: nowrap; }
+.shape-line-flags .field-check > span { font-size: 11px; letter-spacing: 0.04em; white-space: nowrap; }
 
 /* --- 9 & 10. Build panel --- */
 
@@ -4580,7 +4535,7 @@ button.ghost:hover:not(:disabled) { color: var(--text); background: transparent;
 .build-trigger-strip .segment-button { height: 24px; }
 .build-delay-wrap > input { padding: 3px 24px 3px 6px; height: 24px; }
 .build-card-what { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; }
-.build-action-label { color: var(--muted); font: 9.5px var(--mono); letter-spacing: 0.08em; text-transform: uppercase; }
+.build-action-label { color: var(--muted); font: 11px var(--mono); letter-spacing: 0.08em; text-transform: uppercase; }
 /* A shadow's direction: the knob, then Angle and Distance. */
 .shadow-direction-row { grid-template-columns: 40px repeat(2, minmax(0, 1fr)); }
 .angle-dial {
@@ -4608,7 +4563,7 @@ button.ghost:hover:not(:disabled) { color: var(--text); background: transparent;
 .duration-field .duration-number { flex: 0 0 76px; }
 .duration-field .duration-number > input { width: 100%; padding: 3px 24px 3px 6px; height: 24px; }
 .build-duration-wrap { width: 100%; }
-.timeline-row select.build-action { padding: 2px 20px 2px 6px; height: 24px; font: 10.5px var(--mono); }
+.timeline-row select.build-action { padding: 2px 20px 2px 6px; height: 24px; font: 11px var(--mono); }
 .timeline-row select.build-trigger { flex: none; }
 .build-num { min-width: 16px; height: 16px; font: 700 9.5px/1 var(--mono); color: #000; }
 
@@ -4633,7 +4588,7 @@ button.ghost:hover:not(:disabled) { color: var(--text); background: transparent;
   border-radius: 3px;
   background: var(--accent);
   color: #fff;
-  font: 700 9px/1.3 var(--mono);
+  font: 700 11px/1.3 var(--mono);
   letter-spacing: .08em;
   text-transform: uppercase;
   transform: translateX(-50%);
@@ -4654,11 +4609,11 @@ button.ghost:hover:not(:disabled) { color: var(--text); background: transparent;
 }
 .layout-popover-item:hover { border-color: var(--muted); }
 .layout-popover-item.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
-.layout-popover-item em { display: block; padding: 3px 0 2px; font-style: normal; font-size: 9px; color: var(--muted); }
+.layout-popover-item em { display: block; padding: 3px 0 2px; font-style: normal; font-size: 11px; color: var(--muted); }
 .design-readout {
   margin: 6px 0 0;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.45;
 }
 .design-readout em { font-style: normal; color: var(--text); }
@@ -4677,7 +4632,7 @@ button.ghost:hover:not(:disabled) { color: var(--text); background: transparent;
   grid-column: 1 / -1;
   margin-top: 2px;
   color: var(--muted);
-  font-size: 9px;
+  font-size: 11px;
   line-height: 1.3;
 }
 .rail-design-labels .rail-design-label { display: block; }
@@ -4689,32 +4644,16 @@ button.ghost:hover:not(:disabled) { color: var(--text); background: transparent;
   gap: 8px;
   margin-top: 8px;
 }
-.theme-default-label { color: var(--muted); font-size: 10px; min-width: 44px; }
+.theme-default-label { color: var(--muted); font-size: 11px; min-width: 44px; }
 .theme-default-mode { flex: 1; }
 .theme-edit-button { margin-left: auto; }
 .design-masters { margin-top: 12px; }
 .design-masters-row { justify-content: space-between; margin-top: 8px; }
-.field-check-sub { color: var(--muted); font-weight: 400; }
 .theme-editor-actions { display: flex; gap: 6px; margin-top: 8px; }
+.theme-change-report { margin-top: 10px; }
+.theme-change-report > .insp-hint { margin: 8px 0 0; }
 .theme-editor-actions > button { flex: 1; }
 .theme-inline-editor .design-readout { margin: 4px 0 8px; }
-.canvas-host.design-theme-previewing::after {
-  content: 'Previewing theme draft';
-  position: absolute;
-  top: 10px;
-  left: 50%;
-  z-index: 6;
-  padding: 4px 9px;
-  border-radius: 3px;
-  background: var(--accent);
-  color: #fff;
-  font: 700 9px/1.3 var(--mono);
-  letter-spacing: .08em;
-  text-transform: uppercase;
-  transform: translateX(-50%);
-  pointer-events: none;
-}
-
 /* The characters selected in the box being edited, while focus is in the
    sidebar (keptSelection.ts), drawn as an inactive selection: over white it
    is Chromium's own inactive grey (#c8c8c8), and being translucent it keeps
@@ -4744,17 +4683,24 @@ button.ghost:hover:not(:disabled) { color: var(--text); background: transparent;
 .mask-edge-e { right: calc(-5px * var(--inv)); }
 .mask-edge-w { left: calc(-5px * var(--inv)); }
 
-/* Gridlines: dotted guides every 40 slide pixels, a dot every 6, scaled with
-   the slide; editor chrome only. */
-.canvas-host.show-gridlines .overlay-layer::before {
+/* Gridlines: one dot where every 40-slide-pixel grid line crosses another,
+   with the step doubled when zooming out would crowd them
+   (--editor-grid-step, set by the canvas); editor chrome only. Dotted lines
+   ran alongside any box edge near them and threaded through text; crossings
+   alone keep the grid readable without tracing anything. Painted on the
+   slide's ground, first in its paint order, so objects, their outlines and
+   selection boxes all sit on top of it.
+   A dot is 1.5 slide pixels in radius, so it shrinks with the slide as it
+   zooms out rather than growing against it, held between half a screen pixel
+   (still visible) and one (no bigger as it zooms in). */
+.canvas-host.show-gridlines .slide-layer > .slide::before {
+  --grid-dot: clamp(calc(0.5px * var(--editor-inv-scale, 1)), 1.5px, calc(1px * var(--editor-inv-scale, 1)));
   content: "";
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background-image:
-    radial-gradient(circle, rgb(128 128 128 / 20%) calc(0.7px * var(--editor-inv-scale, 1)), transparent calc(0.9px * var(--editor-inv-scale, 1))),
-    radial-gradient(circle, rgb(128 128 128 / 20%) calc(0.7px * var(--editor-inv-scale, 1)), transparent calc(0.9px * var(--editor-inv-scale, 1)));
-  background-size: 40px 6px, 6px 40px;
-  background-position: -20px -3px, -3px -20px;
+  background-image: radial-gradient(circle, rgb(128 128 128 / 50%) var(--grid-dot), transparent calc(var(--grid-dot) + 0.3px * var(--editor-inv-scale, 1)));
+  background-size: var(--editor-grid-step, 40px) var(--editor-grid-step, 40px);
+  background-position: calc(var(--editor-grid-step, 40px) / -2) calc(var(--editor-grid-step, 40px) / -2);
 }
 .zoom-controls .zoom-gridlines { width: auto; padding: 0 10px; }

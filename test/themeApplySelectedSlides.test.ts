@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { emptyDeck } from '../src/shared/deck.js';
 import type { Deck, Slide, SlideElement } from '../src/shared/deck.js';
 import {
@@ -11,12 +11,10 @@ import {
 import { syncDeckWithLayoutMasters, defaultLayoutMasters } from '../src/shared/layoutMasters.js';
 import { applySlideLayout } from '../src/renderer/editor/slideLayouts.js';
 import { EditorStore } from '../src/renderer/editor/store.js';
-import { createThemePanel } from '../src/renderer/editor/themePanel.js';
-import type { CssEditor } from '../src/renderer/editor/cssEditor.js';
 
 /**
- * "Apply theme to selected slides" — the exact user gesture: pick slides in
- * the rail, tick properties, press Apply, then keep editing. The apply installs
+ * "Apply theme to selected slides", as the agent CLI does it
+ * (`slide-agent theme apply --slide …`). The apply installs
  * what it adopted into the deck defaults (theme.css); the selected slides then
  * *follow* theme.css, carrying no copy of those properties, while every other
  * slide is pinned inline at exactly what it rendered at before. That state has
@@ -119,7 +117,7 @@ describe('adoptThemeStyles at slides scope', () => {
     expect(withoutStyling(deck.slides[0])).toBe(withoutStyling(before[0]));
     expect(withoutStyling(deck.slides[2])).toBe(withoutStyling(before[2]));
     for (const at of [0, 2]) {
-      expect(deck.slides[at].background).toEqual({ color: STOCK.colors.background, image: null });
+      expect(deck.slides[at].background).toEqual({ color: STOCK.colors.background, image: null, themePinned: true });
       expect(deck.slides[at].layoutBackgroundInherited).toBe(false);
     }
     expect(deck.slides[0].elements[0].style).toEqual({
@@ -294,104 +292,6 @@ describe('apply theme through the editor store', () => {
   });
 });
 
-describe('the theme panel apply button', () => {
-  beforeEach(() => document.body.replaceChildren());
-
-  function buildPanel(store: EditorStore) {
-    const cssEditor = { getValue: () => '', setValue: vi.fn() } as unknown as CssEditor;
-    const saveThemeCss = vi.fn<(css: string) => void>();
-    const panel = createThemePanel({
-      store,
-      cssEditor,
-      save: vi.fn(),
-      setStatusMessage: vi.fn(),
-      saveThemeCss,
-    });
-    document.body.appendChild(panel.element);
-    return Object.assign(panel, { saveThemeCss });
-  }
-
-  function setOption(panel: HTMLElement, label: string, checked: boolean): void {
-    const box = [...panel.querySelectorAll<HTMLLabelElement>('label.field-check')]
-      .find((candidate) => candidate.querySelector('span')?.textContent?.trim().startsWith(label))!;
-    const input = box.querySelector<HTMLInputElement>('input')!;
-    if (input.checked !== checked) input.click();
-  }
-
-  it('applies to the rail selection captured at click time', () => {
-    const store = new EditorStore(threeSlideDeck(), '/tmp/theme-panel-apply');
-    const panel = buildPanel(store);
-    store.selectSlide(0);
-    store.selectSlide(2, true); // rail range: s1..s3
-    panel.syncScope(store.get().slideSelection.size);
-    expect(panel.applyButtonLabel()).toBe('Apply theme to 3 selected slides');
-
-    setOption(panel.element, 'Type scale', true);
-    setOption(panel.element, 'Colour', true);
-    panel.element.querySelector<HTMLButtonElement>('.theme-apply-action button')!.click();
-
-    const theme = panel.currentTheme()!;
-    const { deck } = store.get();
-    // Every selected slide follows theme.css, which the panel rewrote for the theme.
-    for (const slide of deck.slides) {
-      expect(slide.background).toEqual({ color: null, image: null });
-    }
-    expect(deck.themeStyle!.colors.background).toBe(theme.colors.background);
-    const title = deck.slides[0].elements.find((el) => el.id === 's1-title')!;
-    expect(title.style['font-family']).toBeUndefined();
-    expect(title.style['font-size']).toBeUndefined();
-    expect(deck.themeStyle!.fonts.title.family).toBe(theme.fonts.title.family);
-    expect(deck.themeStyle!.fonts.title.size).toBe(theme.fonts.title.size);
-    expect(panel.saveThemeCss).toHaveBeenCalledTimes(1);
-    const css = panel.saveThemeCss.mock.calls[0][0];
-    expect(css).toContain(`background: ${theme.colors.background};`);
-    expect(css).toContain(`font-size: ${theme.fonts.title.size}px`);
-  });
-
-  it('applies to the single current slide when only it is selected', () => {
-    const store = new EditorStore(threeSlideDeck(), '/tmp/theme-panel-apply');
-    const panel = buildPanel(store);
-    store.selectSlide(1);
-    panel.syncScope(store.get().slideSelection.size);
-    expect(panel.applyButtonLabel()).toBe('Apply theme to 1 selected slide');
-
-    setOption(panel.element, 'Colour', true);
-    panel.element.querySelector<HTMLButtonElement>('.theme-apply-action button')!.click();
-
-    const theme = panel.currentTheme()!;
-    const { deck } = store.get();
-    // The selected slide follows theme.css; the others are pinned at the stock ground.
-    expect(deck.slides[1].background).toEqual({ color: null, image: null });
-    expect(deck.themeStyle!.colors.background).toBe(theme.colors.background);
-    expect(deck.slides[0].background.color).toBe(STOCK.colors.background);
-    expect(deck.slides[2].background.color).toBe(STOCK.colors.background);
-
-    // Switching away and back does not shed the apply.
-    store.selectSlide(2);
-    store.selectSlide(1);
-    expect(store.get().deck.slides[1].background).toEqual({ color: null, image: null });
-    expect(store.get().deck.themeStyle!.colors.background).toBe(theme.colors.background);
-  });
-
-  it('keeps a single-slide apply working after a multi-selection collapses', () => {
-    const store = new EditorStore(threeSlideDeck(), '/tmp/theme-panel-apply');
-    const panel = buildPanel(store);
-    store.selectSlide(0);
-    store.selectSlide(2, true);
-    panel.syncScope(3);
-    store.selectSlide(1); // collapse back to one slide
-    panel.syncScope(1);
-
-    setOption(panel.element, 'Colour', true);
-    panel.element.querySelector<HTMLButtonElement>('.theme-apply-action button')!.click();
-    const theme = panel.currentTheme()!;
-    const { deck } = store.get();
-    expect(deck.slides[1].background).toEqual({ color: null, image: null });
-    expect(deck.themeStyle!.colors.background).toBe(theme.colors.background);
-    expect(deck.slides[0].background.color).toBe(STOCK.colors.background);
-  });
-});
-
 describe('adoptThemeStyles at slides scope: selection edge cases', () => {
   const noir = () => THEMES.find((candidate) => candidate.id === 'noir')!;
 
@@ -403,7 +303,7 @@ describe('adoptThemeStyles at slides scope: selection edge cases', () => {
     expect(deck.themePreset).toBe('noir');
     for (const [at, slide] of deck.slides.entries()) {
       expect(withoutStyling(slide)).toBe(withoutStyling(before[at]));
-      expect(slide.background).toEqual({ color: STOCK.colors.background, image: null });
+      expect(slide.background).toEqual({ color: STOCK.colors.background, image: null, themePinned: true });
     }
     expect(deck.slides[1].elements[0].style).toEqual({
       'font-size': '90px', 'font-family': STOCK.fonts.title.family,

@@ -7,6 +7,7 @@ import { shapeSvg } from './shapeSvg.js';
 import { applyTableColumnWidths } from './paragraphs.js';
 import { normalizeHtmlLineHeights, normalizeStyleLineHeight } from './lineHeight.js';
 import { layoutMaster, placeNewPlaceholders, syncSlideWithLayoutMaster, type FixedLayout } from './layoutMasters.js';
+import { THEME_TEXT_PROPERTIES } from './themes.js';
 import {
   cssMediaBorder,
   cssMediaRadius,
@@ -45,6 +46,11 @@ export interface MeasuredNode {
   opacity: number;
   /** The node's inline declarations, as authored. Filtered on the way to an element. */
   style: Record<string, string>;
+  /**
+   * Which of `style` the author wrote, when the walk added the rest from the
+   * computed style (a standalone page). Absent: all of it.
+   */
+  authoredStyle?: string[];
   /** innerHTML for text, outerHTML for anything preserved verbatim. */
   html: string;
   attrs: {
@@ -651,6 +657,10 @@ export function carrySlideState(previous: Slide, compiled: Slide, base?: SlideBa
     && next.layout === previous.layout) {
     next.layoutBackgroundInherited = previous.layoutBackgroundInherited;
   }
+  if (previous.background.themePinned && next.background.color === previous.background.color
+    && next.background.image === previous.background.image) {
+    next.background.themePinned = true;
+  }
   next.elements = reconciledElements(previous, next.elements);
   next.timeline = mergedTimeline(previous, next, concurrent?.theirBuilds);
   return next;
@@ -742,6 +752,17 @@ function reconciledElements(previous: Slide, compiled: SlideElement[]): SlideEle
     }
     if (old.comments?.length && !element.comments?.length) next.comments = structuredClone(old.comments);
     if (old.layoutMasterId && !element.layoutMasterId) next.layoutMasterId = old.layoutMasterId;
+    // A value the export carried and the page left alone keeps the standing
+    // it had -- a pinned copy stays a copy; only what the page changed is the
+    // author's.
+    if (old.type === 'text' && element.type === 'text') {
+      const own = (text: typeof old, property: string) => text.style[property] ?? text.contentStyle?.[property];
+      const was = new Set(old.overrides ?? []);
+      const overrides = THEME_TEXT_PROPERTIES.filter((property) => own(element, property) !== undefined
+        && (was.has(property) || own(element, property) !== own(old, property)));
+      if (overrides.length > 0) next.overrides = [...overrides];
+      else delete next.overrides;
+    }
     // A region's captured stylesheet and whether it renders isolated are the
     // deck object's, not its markup's: a legacy region came back sandboxed.
     if (old.type === 'html' && element.type === 'html') {
@@ -768,12 +789,13 @@ const GEOMETRY_TOLERANCE = 0.02;
 /**
  * Whether a compiled object says what the deck's object says, as far as a
  * page can. Set aside: its z (paint order is compared per slide), and what is
- * never markup — its comments, a master decoration's link, an HTML region's
- * captured stylesheet and isolation. Allowed: the measurement slack and the
+ * never markup — its comments, a master decoration's link, which of its text
+ * styles were set on purpose, an HTML region's captured stylesheet and
+ * isolation. Allowed: the measurement slack and the
  * `false`-or-`null`-versus-absent equivalence above.
  */
 function sameElement(old: SlideElement, compiled: SlideElement): boolean {
-  const ignored = new Set(['z', 'comments', 'layoutMasterId', ...(old.type === 'html' ? ['css', 'sandboxed'] : [])]);
+  const ignored = new Set(['z', 'comments', 'layoutMasterId', 'overrides', ...(old.type === 'html' ? ['css', 'sandboxed'] : [])]);
   const keys = new Set([...Object.keys(old), ...Object.keys(compiled)]);
   for (const key of keys) {
     if (ignored.has(key)) continue;
@@ -915,17 +937,20 @@ export function slideBase(slide: Slide): SlideBase {
 
 function propsFingerprint(slide: Slide): string {
   return fingerprint(sortedJson(Object.fromEntries(SLIDE_PROPS
-    .map((key) => [key, slide[key] === false ? undefined : slide[key]])))!);
+    .map((key) => [key, key === 'background'
+      ? { color: slide.background.color, image: slide.background.image }
+      : slide[key] === false ? undefined : slide[key]])))!);
 }
 
 /**
  * An object's content as a page states it: not its box (compared with slack
- * instead), z, comments or what its markup never carries; `false` and `null`
+ * instead), z, comments or what its markup never carries (which of its text
+ * styles were set on purpose among them); `false` and `null`
  * as good as absent; and its appearance build, which the page states too.
  */
 function elementFingerprint(element: SlideElement, build: string): string {
   const form: Record<string, unknown> = { ...element, build };
-  for (const key of ['x', 'y', 'w', 'h', 'rot', 'z', 'comments', 'layoutMasterId', 'css', 'sandboxed']) delete form[key];
+  for (const key of ['x', 'y', 'w', 'h', 'rot', 'z', 'comments', 'layoutMasterId', 'overrides', 'css', 'sandboxed']) delete form[key];
   for (const [key, value] of Object.entries(form)) if (value === false || value === null) delete form[key];
   return fingerprint(sortedJson(form)!);
 }
@@ -1473,6 +1498,7 @@ export function elementFromNode(
     align: alignFrom(node.attrs.textAlign),
     valign: valignFrom(node.dataset.valign),
     ...(contentStyle ? { contentStyle } : {}),
+    ...authoredOverrides(base.style, contentStyle, node.authoredStyle),
     ...(node.dataset.autofit !== undefined ? { autoFit: node.dataset.autofit !== 'false' } : {}),
     ...(node.dataset.autoSize === 'true' ? { autoSize: true } : {}),
     ...(node.dataset.layoutSlot === 'title' || node.dataset.layoutSlot === 'body'
@@ -1498,6 +1524,25 @@ export function elementFromNode(
       ? { paragraphSpacing: Math.max(0, Number.parseFloat(node.dataset.paragraphSpacing!)) }
       : {}),
   };
+}
+
+/**
+ * The type an author wrote inline on a text box: written on purpose, so a
+ * later theme change keeps it (`followDeckTheme`). What a standalone page's
+ * walk took from the computed style is a copy, not a choice. A page saved
+ * over existing objects narrows this to what it changed
+ * (`reconciledElements`).
+ */
+function authoredOverrides(
+  style: Record<string, string>,
+  contentStyle: Record<string, string> | null,
+  authored?: string[],
+): { overrides?: string[] } {
+  const overrides = THEME_TEXT_PROPERTIES.filter((property) => (
+    (style[property] !== undefined && (!authored || authored.includes(property)))
+    || contentStyle?.[property] !== undefined
+  ));
+  return overrides.length > 0 ? { overrides: [...overrides] } : {};
 }
 
 /**

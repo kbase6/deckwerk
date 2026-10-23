@@ -4,15 +4,16 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { loadTheme } from '../src/main/deckStore.js';
 import { emptyDeck, parseDeck, type Deck } from '../src/shared/deck.js';
-import { THEMES, THEME_BLOCK_END, THEME_BLOCK_START } from '../src/shared/themes.js';
+import { pinSlidesToTheme } from '../src/shared/clipboard.js';
+import { THEMES, THEME_BLOCK_END, THEME_BLOCK_START, themeById, themeStyleOf } from '../src/shared/themes.js';
 import { type Cdp, electronBinary, eventually } from './support/browserSession.js';
 import { launchWebEditor, type WebEditorSession } from './support/webEditorSession.js';
 
 /**
  * The web-client twin of `newSlideThemeDesktopBrowser.test.ts`.
  *
- * A slide inserted with Return in the slide picker wears the theme the author
- * picked in the Design tab — checked in the production browser client served
+ * A theme picked in the Design tab reaches the slides already there, and a
+ * slide inserted with Return in the slide picker wears it too — checked in the production browser client served
  * by the real collaboration server, driven the way a person drives it. Where
  * the desktop suite reads deck.json and theme.css off disk, this one reads
  * what the server holds (`/api/deck`, `/api/theme`): the theme choice travels
@@ -42,14 +43,69 @@ afterEach(async () => {
 });
 
 describe.skipIf(!electronBinary)('new slide from Return in the slide picker (web client)', () => {
+  it('preserves formatting and source backgrounds, previews Done, and clears reports after undo', { timeout: 120_000 }, async () => {
+    const swiss = themeById('swiss')!;
+    const deck = parseDeck({
+      ...emptyDeck('Theme regressions'),
+      themePreset: swiss.id, themeStyle: themeStyleOf(swiss),
+      slides: [
+        { id: 'editable', elements: [
+          { id: 'imported', type: 'text', x: 140, y: 150, w: 1640, h: 180,
+            class: ['role-title'], style: { 'font-size': '80px' }, html: 'Imported title' },
+          { id: 'manual', type: 'text', x: 140, y: 400, w: 1640, h: 180,
+            class: ['role-body'], style: { 'font-style': 'italic', 'text-decoration': 'underline' },
+            overrides: ['font-style', 'text-decoration'], html: 'A <span style="font-size: 60px">large</span> word' },
+        ] },
+        { id: 'source', elements: [
+          { id: 'source-text', type: 'text', x: 140, y: 150, w: 1640, h: 180,
+            class: ['role-body'], html: 'Kept source appearance' },
+        ] },
+      ],
+    });
+    pinSlidesToTheme([deck.slides[1]], themeStyleOf(swiss));
+    session = await launchWebEditor([{ id: 'theme-regressions', deck, themeCss: await builtInThemeCss() }]);
+    const { cdp, fetchDeck } = session;
+    const previewSize = () => cdp.evaluate<string>(`getComputedStyle(document.querySelector(
+      '#canvas .design-slide-preview [data-element-id="imported"] .text-content')).fontSize`);
+    await cdp.click(DESIGN_TAB, 'Design tab');
+    await cdp.click('#themePanel .theme-edit-button', 'Edit theme');
+    await cdp.typeInto('#themePanel .theme-role-size input', '100', 'Title size');
+    expect(await previewSize()).toBe('100px');
+    expect((await fetchDeck()).themeStyle!.fonts.title.size).toBe(swiss.fonts.title.size);
+    await cdp.clickByText('#themePanel .theme-inline-editor button', 'Cancel');
+    expect((await computedType(cdp, 'imported')).size).toBe('80px');
+    await cdp.click('#themePanel .theme-edit-button', 'Edit theme');
+    await cdp.typeInto('#themePanel .theme-role-size input', '100', 'Title size');
+    await cdp.clickByText('#themePanel .theme-inline-editor button', 'Done');
+    await eventually(() => computedType(cdp, 'imported'), 'Done did not match the preview', (type) => type.size === '100px');
+
+    await cdp.click(ACTIVE_CARD, 'current theme card');
+    await cdp.clickByText(`${CHOOSER} .theme-mode-option`, 'Dark', 'Dark appearance');
+    await cdp.click(NOIR_CARD, 'Noir theme card');
+    const changed = await eventually(fetchDeck, 'Noir did not reach the server', (current) => current.themePreset === 'noir');
+    expect(changed.slides[1].background.color).toBe(swiss.colors.background);
+    expect(changed.slides[0].elements.find((el) => el.id === 'manual')).toMatchObject({
+      style: { 'font-style': 'italic', 'text-decoration': 'underline' },
+      html: expect.stringContaining('font-size: 60px'),
+    });
+    await cdp.clickByText('#themePanel .theme-change-report button', 'Reset them too');
+    await eventually(fetchDeck, 'Reset left italic or underline behind', (current) => {
+      const style = current.slides[0].elements.find((el) => el.id === 'manual')!.style;
+      return style['font-style'] === undefined && style['text-decoration'] === undefined;
+    });
+    await cdp.chord('z', 'KeyZ', 90, process.platform === 'darwin' ? 4 : 2);
+    await eventually(fetchDeck, 'Undo did not restore the custom formatting', (current) =>
+      current.slides[0].elements.find((el) => el.id === 'manual')!.style['font-style'] === 'italic');
+    expect(await cdp.evaluate<boolean>(`document.querySelector('#themePanel .theme-change-report').hidden`)).toBe(true);
+  });
+
   it('wears the theme chosen in the Design tab, on the canvas and on the server', {
     retry: 2,
     timeout: 120_000,
   }, async () => {
-    // Two plain slides on the stylesheet alone: no theme chosen, no theme
-    // applied. The first carries an unstyled title so the test can prove the
-    // existing slides still look exactly as they did: choosing a theme pins
-    // them in the deck precisely so that nothing on screen moves.
+    // Two plain slides on the stylesheet alone: no theme chosen yet. The
+    // first carries an unstyled title so the test can prove choosing a theme
+    // restyles the slides that already exist, not only new ones.
     const base = emptyDeck('New slide theme');
     const deck: Deck = parseDeck({
       ...base,
@@ -122,17 +178,22 @@ describe.skipIf(!electronBinary)('new slide from Return in the slide picker (web
       SLOW,
     );
     // Choosing installs Noir as the deck's defaults -- the server's theme.css
-    // now carries its role rules -- yet restyles nothing that already exists:
-    // the first slide's title is pinned at what it rendered at, and the
-    // canvas agrees.
+    // now carries its role rules -- and the slide already on screen wears it.
     await eventually(
       () => fetchTheme(),
       'choosing a theme did not write its block into the server theme.css',
       (css) => css.includes(THEME_BLOCK_START),
       SLOW,
     );
-    expect(await canvasBackground(cdp)).toBe(groundBefore);
-    expect(await computedType(cdp, 'existing-title')).toEqual(existingTitleBefore);
+    await eventually(
+      () => canvasBackground(cdp),
+      'the existing slide did not take the chosen theme background',
+      (color) => color === rgb(NOIR.colors.background),
+      SLOW,
+    );
+    const existingTitleNoir = await computedType(cdp, 'existing-title');
+    expect(existingTitleNoir.size).toBe(`${NOIR.fonts.title.size}px`);
+    expect(existingTitleNoir.color).toBe(rgb(NOIR.fonts.title.color ?? NOIR.colors.text));
 
     // 2. Select the first slide in the picker with a real mouse press, then
     //    press Return. The keystroke must land on the rail, not on the canvas
@@ -173,8 +234,9 @@ describe.skipIf(!electronBinary)('new slide from Return in the slide picker (web
     const block = themeCss.slice(themeCss.indexOf(THEME_BLOCK_START), themeCss.indexOf(THEME_BLOCK_END));
     expect(block).toMatch(new RegExp(`\\.role-title \\{[^}]*font-size: ${NOIR.fonts.title.size}px;`));
     expect(block).toContain(`font-family: ${NOIR.fonts.title.family};`);
-    // The second slide was never touched by anything but the pin.
+    // The second slide still holds nothing, and follows the theme too.
     expect(saved.slides[2].elements).toEqual([]);
+    expect(saved.slides[2].background).toEqual({ color: null, image: null });
 
     // 4. What the author actually sees: the canvas shows the new slide on
     //    Noir's ground with Noir's title, and its rail thumbnail agrees.
@@ -213,16 +275,15 @@ describe.skipIf(!electronBinary)('new slide from Return in the slide picker (web
       (color) => color === rgb(NOIR.colors.background),
     );
 
-    // 5. Back on the first slide, the existing title renders exactly as it
-    //    did before any of this: same face, size, weight and colour.
+    // 5. Back on the first slide, the existing title still wears Noir.
     await cdp.click('#rail .rail-item[data-slide-id="s1"]', 'first slide in the picker');
     await eventually(
       () => cdp.evaluate<string>(`document.querySelector(${JSON.stringify(CANVAS_SLIDE)})?.dataset.slideId`),
       'the editor did not return to the first slide',
       (id) => id === 's1',
     );
-    expect(await canvasBackground(cdp)).toBe(groundBefore);
-    expect(await computedType(cdp, 'existing-title')).toEqual(existingTitleBefore);
+    expect(await canvasBackground(cdp)).toBe(rgb(NOIR.colors.background));
+    expect(await computedType(cdp, 'existing-title')).toEqual(existingTitleNoir);
   });
 });
 

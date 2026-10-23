@@ -100,6 +100,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
+          check-latest: true
           cache: npm
 
       # Every platform freezes its own importer: PyInstaller cannot
@@ -145,6 +146,7 @@ jobs:
           AZURE_CODE_SIGNING_ENDPOINT: ${{ vars.AZURE_CODE_SIGNING_ENDPOINT }}
           AZURE_CODE_SIGNING_ACCOUNT: ${{ vars.AZURE_CODE_SIGNING_ACCOUNT }}
           AZURE_CODE_SIGNING_PROFILE: ${{ vars.AZURE_CODE_SIGNING_PROFILE }}
+          AZURE_CODE_SIGNING_PUBLISHER: ${{ vars.AZURE_CODE_SIGNING_PUBLISHER }}
           # Lets electron-builder resolve the GitHub publish config for the
           # latest*.yml update manifests without actually uploading.
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
