@@ -15,6 +15,8 @@ import {
   type CrossState,
 } from './support/crossContextSession.js';
 import { sidebarSelectionProbes } from './support/selectionSession.js';
+import { paintedMediaBox } from '../src/shared/mediaMask.js';
+import type { SlideElement } from '../src/shared/deck.js';
 
 /**
  * Cross-context fuzz: a seeded random walk over a slide holding THREE
@@ -31,8 +33,8 @@ import { sidebarSelectionProbes } from './support/selectionSession.js';
  * resizing a selected word from the sidebar's Font size field,
  * panning and zooming the view with a plain mouse and the keyboard, the
  * Props tab's line Ends control on one or both lines, its Show slide numbers
- * box, the zoom bar's Gridlines toggle, and dragging a crop window by the
- * whole length of one of its edges.
+ * box, the zoom bar's Gridlines toggle, dragging a crop window by the
+ * whole length of one of its edges, and resetting that crop from Props.
  *
  * After EVERY step five oracles run: the whole-editor invariant set from
  * selectionSession, keystroke routing via per-step nonce strings, an element
@@ -158,7 +160,7 @@ type OpName =
   | 'rail hop' | 'undo' | 'redo' | 'undo round-trip' | 'delete selection'
   | 'cmd+a' | 'click with stray hover' | 'rail multi-delete' | 'stack key' | 'spelling fix'
   | 'size from sidebar' | 'viewport gesture' | 'line ends' | 'slide numbers' | 'gridlines'
-  | 'crop edge drag' | 'theme pick';
+  | 'crop edge drag' | 'reset crop' | 'theme pick';
 
 interface Violation { seed: number; step: number; op: OpName; oracle: string; detail: string }
 
@@ -337,6 +339,22 @@ describe.skipIf(!electronBinary)('directed repros minimised from the fuzz walk',
     await session.doubleClick(IMAGE);
     expect(await masking(), 'back on the slide, double-click enters crop mode again').toBe(IMAGE);
   });
+
+  // Fixed: Reset mask only dropped the crop, leaving the frame at the cropped
+  // window's size, so `contain` shrank the whole picture into that window.
+  it('restores the whole picture when a crop is reset', {
+    timeout: 120_000,
+  }, async () => {
+    await session.reset();
+    // A suite before this one may have left crop mode on; a click away ends it.
+    await session.clickEmpty();
+    await session.drainPageErrors();
+    const problems: string[] = [];
+    // 0.9 drags the west edge inward, so the window is narrower than the picture.
+    await resetCrop(() => 0.9, (oracle, detail) => problems.push(`[${oracle}] ${detail}`));
+    expect(problems).toEqual([]);
+    expect(await session.drainPageErrors()).toEqual([]);
+  });
 });
 
 describe.skipIf(!electronBinary)('directed repro: stale slide identity across a rail hop', () => {
@@ -441,6 +459,7 @@ function chooseOp(next: () => number, pre: CrossState): OpName {
   add('gridlines', 1);
   add('theme pick', 1);
   if (pre.elements.includes(IMAGE)) add('crop edge drag', 2);
+  if (pre.elements.includes(IMAGE)) add('reset crop', 1);
   return pick(next, ops);
 }
 
@@ -675,6 +694,9 @@ async function performOp(
       return 'same';
     case 'crop edge drag':
       await cropEdgeDrag(next, flag);
+      return 'same';
+    case 'reset crop':
+      await resetCrop(next, flag);
       return 'same';
     case 'rail multi-delete': {
       // Select both slides in the rail with real clicks, then a deletion key.
@@ -1241,6 +1263,67 @@ async function cropEdgeDrag(
     }
   }
   if (await masking() !== IMAGE) flag('routing', `${label} ended crop mode`);
+}
+
+/**
+ * Reset the image's crop with the × beside Edit mask in the Props tab,
+ * cropping it first by an edge drag when it is not cropped. The frame becomes
+ * the whole picture where the crop showed it: the picture neither moves nor
+ * changes size, as it did when the reset squeezed it into the cropped window.
+ */
+async function resetCrop(
+  next: () => number,
+  flag: (oracle: 'routing' | 'census', detail: string) => void,
+): Promise<void> {
+  const { cdp } = session;
+  type Media = Extract<SlideElement, { type: 'image' | 'video' }>;
+  const read = () => cdp.evaluate<{ el: Media; natural: { w: number; h: number } | null } | null>(`(() => {
+    const el = window.store.slide.elements.find((e) => e.id === ${JSON.stringify(IMAGE)});
+    const img = document.querySelector('${elementSelector(IMAGE)} img');
+    if (!el) return null;
+    return { el, natural: img && img.naturalWidth > 0 ? { w: img.naturalWidth, h: img.naturalHeight } : null };
+  })()`);
+  const onSlide = (state: { el: Media; natural: { w: number; h: number } | null }) => {
+    const painted = paintedMediaBox(state.el, state.natural);
+    return { x: state.el.x + painted.x, y: state.el.y + painted.y, w: painted.w, h: painted.h };
+  };
+  let before = await read();
+  if (!before?.el.sourceBox) {
+    await cropEdgeDrag(next, flag);
+    before = await read();
+    if (!before?.el.sourceBox) return;
+  }
+  const masking = () => cdp.evaluate<string | null>('window.canvas.maskingElement()');
+  if (await masking() === IMAGE) {
+    await clickFound(`() => [...document.querySelectorAll('.editor-inspector .mask-action-row .panel-action')]
+      .find((node) => node.textContent === 'Done editing mask' && node.getClientRects().length > 0)`, 'Done editing mask');
+    await wait(120);
+  } else if ((await session.state()).selection.join() !== IMAGE) {
+    await session.click(IMAGE);
+  }
+  const reset = `() => [...document.querySelectorAll('.editor-inspector .mask-reset-segment')]
+    .find((node) => node.getClientRects().length > 0)`;
+  if (!await clickFound(reset, 'Reset mask')) {
+    flag('routing', `the Props tab offers no Reset mask for the cropped ${IMAGE}`
+      + ` (cropping ${await masking()}, selection [${(await session.state()).selection.join(', ')}])`);
+    return;
+  }
+  await wait(150);
+  const after = await read();
+  if (!after) {
+    flag('census', `Reset mask lost ${IMAGE}`);
+    return;
+  }
+  if (after.el.sourceBox) flag('census', `Reset mask left the crop ${JSON.stringify(after.el.sourceBox)}`);
+  const was = onSlide(before);
+  const is = onSlide(after);
+  const near = (a: number, b: number) => Math.abs(a - b) <= 1;
+  if (!near(was.x, is.x) || !near(was.y, is.y) || !near(was.w, is.w) || !near(was.h, is.h)) {
+    flag('census', `Reset mask moved the picture from ${JSON.stringify(was)} to ${JSON.stringify(is)}`);
+  }
+  if ((await session.state()).selection.join() !== IMAGE) {
+    flag('routing', `Reset mask changed the selection to [${(await session.state()).selection.join(', ')}]`);
+  }
 }
 
 function firstDiff(a: string, b: string): string {
