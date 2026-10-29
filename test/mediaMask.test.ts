@@ -5,6 +5,7 @@ import {
   fittedImageBox,
   paintedMediaBox,
   pannedSourceBox,
+  relinkTrimmedVideo,
   setCircularMask,
   type MaskRect,
 } from '../src/shared/mediaMask.js';
@@ -281,5 +282,45 @@ describe('panning a crop', () => {
     // Smaller than its window (letterboxed): stays inside it.
     expect(pannedSourceBox({ x: 0, y: 75, w: 800, h: 450 }, { w: 800, h: 600 }, 40, 500))
       .toEqual({ x: 0, y: 150, w: 800, h: 450 });
+  });
+});
+
+describe('relinking a trimmed video', () => {
+  type Video = Extract<SlideElement, { type: 'video' }>;
+  const video = (overrides: Partial<Video>): Video => ({
+    ...base, id: 'vid', type: 'video', w: 400, h: 400, src: 'assets/clip.mp4', fit: 'contain',
+    autoplay: true, loop: true, muted: true, controls: false, start: 2, end: 6, poster: null,
+    sourceBox: null, ...overrides,
+  });
+  const trimmed = { src: 'assets/clip.trim.mp4', width: 1920, height: 1080, duration: 4 };
+
+  it('keeps a square crop and a circle exactly as they were after a trim alone', () => {
+    // A 16:9 clip cropped to a square, and the same clip in a circle.
+    const square = video({ sourceBox: { x: -178, y: 0, w: 711, h: 400 } });
+    const circle = video({ maskShape: 'circle', w: 300, h: 300, sourceBox: { x: -117, y: 0, w: 533, h: 300 } });
+    for (const el of [square, circle]) {
+      const before = structuredClone(el);
+      relinkTrimmedVideo(el, { ...trimmed, cropped: false });
+      expect(el).toEqual({ ...before, src: trimmed.src, start: 0, end: null });
+    }
+  });
+
+  it('drops the old crop and takes the new proportions when ffmpeg cropped the frame', () => {
+    const el = video({ sourceBox: { x: -178, y: 0, w: 711, h: 400 } });
+    relinkTrimmedVideo(el, { ...trimmed, width: 800, height: 600, cropped: true });
+    expect(el).toMatchObject({ x: 10, y: 20, w: 400, h: 300, sourceBox: null, src: trimmed.src, start: 0, end: null });
+  });
+
+  it('lays a circle out again over the newly cropped frame, still round', () => {
+    const el = video({ maskShape: 'circle', w: 300, h: 300, sourceBox: { x: -117, y: 0, w: 533, h: 300 } });
+    relinkTrimmedVideo(el, { ...trimmed, width: 600, height: 800, cropped: true });
+    expect(el).toMatchObject({ x: 10, y: 20, w: 300, h: 300, maskShape: 'circle' });
+    // The new 3:4 frame covers the circle at its own aspect ratio.
+    const box = el.sourceBox!;
+    expect(box.w / box.h).toBeCloseTo(600 / 800, 2);
+    expect(box.x).toBeLessThanOrEqual(0);
+    expect(box.y).toBeLessThanOrEqual(0);
+    expect(box.x + box.w).toBeGreaterThanOrEqual(300);
+    expect(box.y + box.h).toBeGreaterThanOrEqual(300);
   });
 });
