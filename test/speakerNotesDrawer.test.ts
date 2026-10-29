@@ -81,6 +81,41 @@ describe('speaker notes drawer', () => {
     expect(store.canUndo()).toBe(false);
   });
 
+  it('keeps an agent save that lands while notes are being typed out of the notes\' undo step', () => {
+    const store = makeStore();
+    const drawer = new SpeakerNotesDrawer(host, store);
+    const type = (value: string) => {
+      drawer.textarea.value = value;
+      drawer.textarea.dispatchEvent(new window.Event('input'));
+    };
+    drawer.show();
+    drawer.textarea.dispatchEvent(new window.FocusEvent('focus'));
+    type('Re');
+    // An agent's page lands on the other slide while the field still has focus.
+    const agent = structuredClone(store.get().deck);
+    agent.slides[1].name = 'From the agent';
+    store.replaceWithHistory(agent, 'Agent edit');
+    type('Remember to pause');
+    drawer.textarea.dispatchEvent(new window.FocusEvent('blur'));
+    const slides = () => store.get().deck.slides;
+    expect(slides()[0].notes).toBe('Remember to pause');
+    expect(slides()[1].name).toBe('From the agent');
+
+    // Undoing the notes takes back only the notes.
+    store.undo();
+    expect(slides()[0].notes).toBe('');
+    expect(slides()[1].name).toBe('From the agent');
+    // Undoing again takes back the agent's save, and nothing comes back with it.
+    store.undo();
+    expect(slides()[1].name).toBe('');
+    expect(slides()[0].notes).toBe('');
+    expect(store.canUndo()).toBe(false);
+    store.redo();
+    store.redo();
+    expect(slides()[0].notes).toBe('Remember to pause');
+    expect(slides()[1].name).toBe('From the agent');
+  });
+
   it('marks the toggle when the current slide has notes and follows slide selection', () => {
     const store = makeStore();
     const drawer = new SpeakerNotesDrawer(host, store);

@@ -76,6 +76,8 @@ export interface AgentWorkspace {
   saveWatched?(name: string, html: string): Promise<WatchedSave>;
   /** A person editing the same deck at the same time, through the product. */
   human?: HumanPeer;
+  /** The desktop editor's page, for a person working in the app itself. */
+  editor?: Cdp;
   /** Everything the processes involved said, for a failure message. */
   logs(): string;
   close(): Promise<void>;
@@ -364,6 +366,7 @@ export async function desktopWorkspace(deck: Deck = agentFixtureDeck()): Promise
     kind: 'desktop',
     dir,
     deckDir: dir,
+    editor: cdp,
     run: (...args) => cliIn(dir, args),
     deck: async () => parseDeck((await session())!.deck),
     write: (name, html) => writeFile(join(dir, 'edit', name), html, 'utf8'),

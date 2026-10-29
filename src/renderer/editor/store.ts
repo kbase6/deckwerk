@@ -276,7 +276,13 @@ export class EditorStore {
     const anchor = this.cursorAnchor();
     const previous = this.state.deck;
     this.state = { ...this.state, deck: parseDeck(deck), dirty: true };
-    this.pushUndo(previous, this.state.deck, label);
+    const forward = diffDecks(previous, this.state.deck);
+    // A change landing while a transaction is open (an agent's page saved
+    // while the author types speaker notes) is its own undo step. Rebase the
+    // transaction past it, as applyRemote does, or its endTransaction diffs
+    // across this change and undoing the notes undoes the agent's slides too.
+    if (this.txnBase) this.txnBase = applyOpsLenient(this.txnBase, forward).deck;
+    this.pushUndo(previous, this.state.deck, label, forward);
     this.restoreCursor(anchor);
     this.recordHistory(label);
     this.onLocalEdit?.(previous, this.state.deck, label);

@@ -740,6 +740,54 @@ describe.skipIf(!electronBinary)('a hosted session', { timeout: 240_000 }, () =>
   });
 });
 
+describe.skipIf(!electronBinary)('a person in the desktop editor', { timeout: 240_000 }, () => {
+  it('keeps typing speaker notes while an agent saves another slide: the save lands, and undoing the notes leaves it', async () => {
+    const workspace = await open('desktop');
+    const editor = workspace.editor!;
+    // The window is hidden; let the notes field take focus all the same.
+    await editor.call('Emulation.setFocusEmulationEnabled', { enabled: true });
+    await editor.click('#canvas .notes-toggle', 'speaker notes toggle');
+    await until(() => editor.evaluate<boolean>(
+      `document.activeElement?.classList.contains('notes-drawer-text') === true`,
+    ), 'the notes field to take focus', 10_000);
+
+    // The person types on the first slide without pause while the agent's
+    // page for the last one compiles and lands.
+    let typing = true;
+    let typed = '';
+    const person = (async () => {
+      const words = 'Pause here and look at the room. ';
+      while (typing) {
+        const key = words[typed.length % words.length];
+        await editor.typeKeys(key);
+        typed += key;
+      }
+    })();
+    await workspace.write('work.html', (await exportPage(workspace, 'closing'))
+      .replace('Agent fixture closing', 'Agent fixture closing, revised'));
+    const result = await apply(workspace, 'work.html').finally(() => { typing = false; });
+    await person;
+    expect(landed(result, workspace).changes).toEqual({ replaced: ['closing'], inserted: [], deleted: [], moved: 0 });
+    expect(await editor.evaluate<string>(`document.querySelector('#canvas .notes-drawer-text').value`)).toBe(typed);
+
+    // Escape closes the drawer, which ends the notes edit.
+    await editor.key('Escape', 27);
+    let deck = await until(async () => {
+      const current = await workspace.deck();
+      return slideById(current, 'opening').notes === typed && current;
+    }, 'the typed notes to reach the deck', 20_000);
+    expect(plainText(slideById(deck, 'closing'))).toContain('Agent fixture closing, revised');
+
+    // Undo takes back the notes, and only the notes.
+    await editor.chord('z', 'KeyZ', 90, process.platform === 'darwin' ? 4 : 2);
+    deck = await until(async () => {
+      const current = await workspace.deck();
+      return slideById(current, 'opening').notes === '' && current;
+    }, 'undo to take back the notes', 20_000);
+    expect(plainText(slideById(deck, 'closing'))).toContain('Agent fixture closing, revised');
+  });
+});
+
 describe.skipIf(!electronBinary)('the decks this repository ships', { timeout: 240_000 }, () => {
   // Real decks — imported Keynote boxes, layouts, maths, builds — rather than
   // a fixture that only holds what someone thought of. An untouched export of

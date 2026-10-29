@@ -28,7 +28,7 @@ import { CANVAS_NOTICE_EVENT, EditorCanvas } from './canvas.js';
 import { CssEditor } from './cssEditor.js';
 import { Inspector } from './inspector.js';
 import { HistoryPanel } from './historyPanel.js';
-import { authoredHtmlSync, fileName } from './htmlCompile.js';
+import { authoredHtmlSync, compileStillHolds, fileName } from './htmlCompile.js';
 import { createShapeInsertPicker, createTableInsertPicker, insertText } from './elementCreation.js';
 import { createToolbarPicker, createToolbarSplitButton } from './exportPicker.js';
 import { showPdfExportDialog } from './pdfExportDialog.js';
@@ -338,9 +338,11 @@ function applyHtmlEdit(
     let stampedContents: string | null = null;
     try {
       const outcome = await runOperation(`Compiling ${name}…`, async (operation): Promise<HtmlSyncOutcome> => {
-        // Compiling takes a moment, and the user may edit during it. The
-        // operations address slides by id in a deck that has since been replaced,
-        // so compile again rather than apply them to a document that moved.
+        // Compiling takes a moment, and the user may edit during it. An edit to
+        // a slide the page governs outdates the compile, so compile again rather
+        // than apply it over that edit; one elsewhere (speaker notes being typed
+        // on another slide) does not, and the operations land on the deck as it
+        // now stands.
         for (let attempt = 0; attempt < 3; attempt++) {
           operation.update(`Laying out slides from ${name}`);
           const deck = store.get().deck;
@@ -350,7 +352,7 @@ function applyHtmlEdit(
             cssEditor.getValue(),
             options,
           );
-          if (store.get().deck !== deck) continue;
+          if (!compileStillHolds(deck, store.get().deck, file, slides)) continue;
           // Inline style the browser's parser dropped would otherwise vanish
           // silently: the page measured without it, yet the apply reads as clean.
           const warned = warnings.length === 0 ? ''
@@ -370,7 +372,7 @@ function applyHtmlEdit(
           });
           if (!transaction) return summarise(`${name} asks for no change${warned}`, []);
           operation.update(`Applying slides from ${name}`);
-          store.replaceWithHistory(applyAgentTransaction(deck, transaction), transaction.label);
+          store.replaceWithHistory(applyAgentTransaction(store.get().deck, transaction), transaction.label);
           await save();
           // Stamp the ids this compile assigned back into the file, so saving it
           // again replaces these slides rather than inserting them a second time
