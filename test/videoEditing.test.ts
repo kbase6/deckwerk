@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { emptyDeck } from '../src/shared/deck.js';
 import { EditorCanvas } from '../src/renderer/editor/canvas.js';
 import { Inspector } from '../src/renderer/editor/inspector.js';
@@ -189,6 +189,11 @@ describe('compact video inspector', () => {
   });
 
   it('reveals reset as a split-button segment only after mask editing is done', () => {
+    // The clip's metadata has arrived: a crop starts from where it is painted.
+    for (const [name, value] of [['videoWidth', 640], ['videoHeight', 360]] as const) {
+      const size = vi.spyOn(HTMLVideoElement.prototype, name, 'get').mockReturnValue(value);
+      onTestFinished(() => size.mockRestore());
+    }
     const { inspectorHost, store, inspector, canvas, canvasHost } = setup();
     inspector.onToggleMask = (id) => canvas.toggleMaskMode(id);
     inspector.maskingElement = () => canvas.maskingElement();

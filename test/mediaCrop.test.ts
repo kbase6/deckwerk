@@ -56,6 +56,15 @@ function installDomShims(): void {
     importAssets: async () => [],
     probeAsset: async () => ({ width: 640, height: 360, duration: 6 }),
   } as never;
+  // Loaded media: a crop starts from where the picture is painted, which
+  // needs its own size (jsdom decodes nothing, so it would never be known).
+  for (const [proto, w, h] of [
+    [HTMLImageElement.prototype, 'naturalWidth', 'naturalHeight'],
+    [HTMLVideoElement.prototype, 'videoWidth', 'videoHeight'],
+  ] as const) {
+    Object.defineProperty(proto, w, { configurable: true, get: () => 640 });
+    Object.defineProperty(proto, h, { configurable: true, get: () => 360 });
+  }
   for (const [name, paused] of [['play', false], ['pause', true]] as const) {
     Object.defineProperty(HTMLMediaElement.prototype, name, {
       configurable: true,

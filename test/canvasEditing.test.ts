@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { emptyDeck, type SlideElement } from '../src/shared/deck.js';
@@ -2090,6 +2090,11 @@ describe('inline text editing', () => {
   });
 
   it('records video cropping as one undoable action', () => {
+    // The clip's metadata has arrived: a crop starts from where it is painted.
+    for (const [name, value] of [['videoWidth', 640], ['videoHeight', 360]] as const) {
+      const size = vi.spyOn(HTMLVideoElement.prototype, name, 'get').mockReturnValue(value);
+      onTestFinished(() => size.mockRestore());
+    }
     const { store, canvas, host } = setup();
     const stage = host.querySelector<HTMLElement>('.stage')!;
     stage.getBoundingClientRect = () =>

@@ -6,7 +6,7 @@ import { EditorCanvas } from './canvas.js';
 import { ARRANGE_LABELS, arrangeSelection } from './arrange.js';
 import { setCircularMask } from '@shared/mediaMask.js';
 import { classifyMediaName, isPendingSrc } from '@shared/media.js';
-import { mediaNaturalSize } from './mediaNatural.js';
+import { MEDIA_LOADING_NOTICE, mediaNaturalSize } from './mediaNatural.js';
 import { Inspector } from './inspector.js';
 import { SlideRail } from './slideRail.js';
 import {
@@ -533,15 +533,16 @@ export function makeContextActions(
       if (el.type === 'image' || el.type === 'video') {
         items.push({
           label: el.maskShape === 'circle' ? 'Rectangular mask' : 'Circular mask',
-          action: () => store.updateSelected((target) => {
-            if (target.type === 'image' || target.type === 'video') {
-              setCircularMask(
-                target,
-                target.maskShape !== 'circle',
-                mediaNaturalSize(target.id),
-              );
-            }
-          }, { label: 'Mask shape' }),
+          action: () => {
+            let refused = false;
+            store.updateSelected((target) => {
+              if (target.type !== 'image' && target.type !== 'video') return;
+              if (!setCircularMask(target, target.maskShape !== 'circle', mediaNaturalSize(target.id))) {
+                refused = true;
+              }
+            }, { label: 'Mask shape' });
+            if (refused) deps.setStatusMessage(MEDIA_LOADING_NOTICE);
+          },
         });
       }
       if (el.type === 'video') {
