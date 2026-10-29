@@ -1,8 +1,17 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const source = (path: string): string => readFileSync(join(process.cwd(), path), 'utf8');
+
+/** A stylesheet with its comments blanked out, so line numbers still match. */
+const css = (path: string): string =>
+  source(path).replace(/\/\*[\s\S]*?\*\//g, (comment) => comment.replace(/[^\n]/g, ' '));
+
+/** Every file under src/renderer with this extension. */
+const rendererFiles = (extension: string): string[] =>
+  readdirSync(join(process.cwd(), 'src/renderer'), { recursive: true, encoding: 'utf8' })
+    .filter((file) => file.endsWith(extension)).map((file) => join('src/renderer', file));
 
 /** The custom properties declared in the block that `selector {` opens. */
 function tokens(css: string, selector: string): Record<string, string> {
@@ -57,6 +66,50 @@ describe('shared application chrome', () => {
     ]) {
       expect(source(stylesheet)).not.toMatch(/--(?:bg|panel|panel-2|line|text|muted|accent|accent-soft|green|yellow|danger)\s*:/);
     }
+  });
+
+  it('declares every token the chrome stylesheets read without a fallback', () => {
+    // A token nobody declares resolves to nothing: the border or fill vanishes
+    // in both themes, with no error anywhere.
+    const declared = new Set<string>();
+    for (const file of rendererFiles('.css')) {
+      for (const m of css(file).matchAll(/(--[\w-]+)\s*:/g)) declared.add(m[1]);
+    }
+    for (const file of rendererFiles('.ts')) {
+      for (const m of source(file).matchAll(/setProperty\(\s*['"`](--[\w-]+)/g)) declared.add(m[1]);
+    }
+    for (const stylesheet of ['src/renderer/appChrome.css', 'src/renderer/lightTheme.css', 'src/renderer/editor/editor.css']) {
+      const undeclared = [...css(stylesheet).matchAll(/var\(\s*(--[\w-]+)\s*\)/g)]
+        .map((m) => m[1]).filter((name) => !declared.has(name));
+      expect(undeclared, stylesheet).toEqual([]);
+    }
+  });
+
+  it('takes every editor colour from a token unless it looks the same in both themes', () => {
+    // lightTheme.css turns the palette over; a colour written out in editor.css
+    // stays as it is, so a dark-only literal leaves a dark patch in Light mode.
+    const themeIndependent = new Set([
+      // Black and white at any opacity: shadows, handles, text on accent fills.
+      '#fff', '#000', 'rgb(255 255 255)', 'rgb(0 0 0)',
+      // Drawn over the slide, which keeps its own colours in both themes:
+      // selection, guides, builds and Morph, masks, grid dots, spelling.
+      '#0a84ff', 'rgb(59 130 246)', '#ff2d55', '#f59e0b', 'rgb(245 158 11)', '#34d399', '#a78bfa',
+      'rgb(128 128 128)', 'rgb(140 140 140)', '#e5484d', '#3e8ef7',
+      // The colour picker's checkerboard, hue ramp and CSS badge.
+      '#c7c7c7', '#bbb', '#f00', '#ff0', '#0f0', '#0ff', '#00f', '#f0f', '#a86d00',
+    ]);
+    const normalize = (literal: string): string => {
+      const value = literal.toLowerCase();
+      if (value === 'white') return '#fff';
+      if (value === 'black') return '#000';
+      const rgb = value.match(/^rgba?\(\s*(\d+)[\s,]+(\d+)[\s,]+(\d+)/);
+      return rgb ? `rgb(${rgb[1]} ${rgb[2]} ${rgb[3]})` : value;
+    };
+    const editor = css('src/renderer/editor/editor.css');
+    const stray = [...editor.matchAll(/#[0-9a-f]{3,8}\b|rgba?\([^)]*\)|(?<![\w-])(?:white|black)(?![\w-])/gi)]
+      .filter((m) => !themeIndependent.has(normalize(m[0])))
+      .map((m) => `editor.css:${editor.slice(0, m.index).split('\n').length} ${m[0]}`);
+    expect(stray).toEqual([]);
   });
 
   it('keeps chrome text and muted text legible on every surface in both themes', () => {
