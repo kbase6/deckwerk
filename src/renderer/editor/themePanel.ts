@@ -28,6 +28,7 @@ import { numberField } from './inspector.js';
 import { lineSpacingValue } from '@shared/lineHeight.js';
 import { FIXED_LAYOUTS, LAYOUT_LABELS_BY_ID, masterTile } from './layoutPreview.js';
 import { barButton } from './shellWiring.js';
+import { undoShortcutLabel } from './slideRail.js';
 import type { EditorStore } from './store.js';
 import {
   createThemeGallery,
@@ -137,6 +138,8 @@ export function createThemePanel(deps: ThemePanelDeps): ThemePanel {
   let mastersHost: HTMLElement | null = null;
   let mastersKey = '';
   let modeButtons = new Map<ThemeMode, HTMLButtonElement>();
+  /** The Slide colors label and switch, whose tooltip names the theme. */
+  let slideColors: HTMLElement[] = [];
   let activeThemeHost: HTMLElement | null = null;
   let chooser: HTMLElement | null = null;
   let themeEditor: HTMLElement | null = null;
@@ -182,6 +185,13 @@ export function createThemePanel(deps: ThemePanelDeps): ThemePanel {
       const on = themeMode(theme) === mode;
       button.classList.toggle('selected', on);
       button.setAttribute('aria-pressed', String(on));
+    }
+    const pool = deckThemes(store.get().deck);
+    const name = themeById(baseThemeId(theme.id, pool), pool)?.name ?? theme.name;
+    for (const node of slideColors) {
+      node.title = `Switches every slide to the light or dark version of ${name}. `
+        + `${undoShortcutLabel()} undoes it. The editor window's own light or dark look `
+        + 'is under DeckWerk menu › Editor appearance.';
     }
   }
 
@@ -241,7 +251,7 @@ export function createThemePanel(deps: ThemePanelDeps): ThemePanel {
 
   /**
    * Put `theme` on every slide as one undo step, then report what kept its
-   * own look. Choosing a card, the Light/Dark switch and Done in the theme
+   * own look. Choosing a card, the Slide colors switch and Done in the theme
    * editor all come through here.
    */
   function restyle(theme: ThemePreset, label: string): void {
@@ -485,11 +495,12 @@ export function createThemePanel(deps: ThemePanelDeps): ThemePanel {
     modeRow.className = 'theme-default-row';
     const modeLabel = document.createElement('span');
     modeLabel.className = 'theme-default-label';
-    modeLabel.textContent = 'Default';
+    modeLabel.textContent = 'Slide colors';
     const modeToggle = document.createElement('div');
     modeToggle.className = 'theme-mode-toggle theme-default-mode';
     modeToggle.setAttribute('role', 'group');
-    modeToggle.setAttribute('aria-label', 'Deck default appearance');
+    modeToggle.setAttribute('aria-label', 'Slide colors');
+    slideColors = [modeLabel, modeToggle];
     modeButtons = new Map();
     for (const [value, label] of [['light', 'Light'], ['dark', 'Dark']] as const) {
       const button = document.createElement('button');
