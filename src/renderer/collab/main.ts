@@ -1092,6 +1092,8 @@ function buildTabs(): void {
 
 function showPanel(id: string): void {
   if (store.get().slideSelection.size > 1 && !DECK_LEVEL_PANELS.has(id)) return;
+  // Leaving Design ends a theme edit first, and asks when it has changes.
+  if (id !== 'themePanel' && themePanel.confirmDiscardDraft(() => showPanel(id))) return;
   activePanelId = id;
   for (const panel of PANELS) el(panel.id).hidden = panel.id !== id;
   for (const b of el('side-tabs').querySelectorAll('button')) {

@@ -1006,6 +1006,8 @@ let activePanelId = 'inspector';
 
 function showPanel(id: string): void {
   if (store.get().slideSelection.size > 1 && id !== 'themePanel' && id !== 'inspector') return;
+  // Leaving Design ends a theme edit first, and asks when it has changes.
+  if (id !== 'themePanel' && themePanel.confirmDiscardDraft(() => showPanel(id))) return;
   activePanelId = id;
   for (const panel of PANELS) {
     el(panel.id).hidden = panel.id !== id;
