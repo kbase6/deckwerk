@@ -13,7 +13,7 @@ export function createDeckWerkButton(): HTMLElement {
   button.className = 'brand-button';
   button.textContent = 'DeckWerk';
   button.setAttribute('aria-label', 'DeckWerk menu');
-  button.title = 'DeckWerk';
+  button.title = 'DeckWerk menu: About, editor appearance';
   return createToolbarPicker('DeckWerk', [
     { label: 'About DeckWerk', action: showAboutDialog },
     appearanceMenuSection(),

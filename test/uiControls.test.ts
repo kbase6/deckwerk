@@ -55,21 +55,29 @@ describe('shared editor controls', () => {
     expect(document.querySelector('[role="dialog"]')).toBeNull();
   });
 
-  it('offers the appearance as a radio group in the wordmark menu, System by default', () => {
+  it('offers the editor appearance as a radio group in the wordmark menu, Match system by default', () => {
     localStorage.removeItem('deckwerk.uiTheme');
     const brand = createDeckWerkButton();
     document.body.appendChild(brand);
-    const open = () => brand.querySelector<HTMLButtonElement>('.brand-button')!.click();
+    const wordmark = brand.querySelector<HTMLButtonElement>('.brand-button')!;
+    // The wordmark says what it holds, so the editor's light/dark is findable.
+    expect(wordmark.title).toBe('DeckWerk menu: About, editor appearance');
+    const open = () => wordmark.click();
     const radios = () => [...document.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')]
       .map((item) => `${item.textContent}:${item.getAttribute('aria-checked')}`);
 
     open();
-    expect(radios()).toEqual(['System:true', 'Light:false', 'Dark:false']);
+    const group = document.querySelector<HTMLElement>('[role="menu"] [role="group"]')!;
+    expect(group.getAttribute('aria-label')).toBe('Editor appearance');
+    expect(group.querySelector('.shape-menu-section-label')!.textContent).toBe('Editor appearance');
+    // It points to the other light/dark switch, the slides' own.
+    expect(group.textContent).toContain('Slide colors are in the Design tab');
+    expect(radios()).toEqual(['Match system:true', 'Light:false', 'Dark:false']);
     [...document.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')]
       .find((item) => item.textContent === 'Light')!.click();
     expect(document.documentElement.dataset.uiTheme).toBe('light');
     open();
-    expect(radios()).toEqual(['System:false', 'Light:true', 'Dark:false']);
+    expect(radios()).toEqual(['Match system:false', 'Light:true', 'Dark:false']);
     localStorage.removeItem('deckwerk.uiTheme');
   });
 
