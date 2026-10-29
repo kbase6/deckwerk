@@ -1202,8 +1202,11 @@ export function measureSlides(doc: Document): MeasuredSlide[] {
           const length = /^([+-]?[\d.]+)px$/.exec(resolved);
           return length ? Number(length[1]) : (box - size) / 2;
         };
+        // Keywords name their axis (`objectPositionOffset` is the same rule):
+        // a lone `top` is vertical, and `center left` is `left center`.
         const parts = position.toLowerCase().split(/\s+/);
-        const vertical = ['top', 'bottom'].includes(parts[0]) && parts.length === 2;
+        const vertical = parts.length <= 2
+          && (['top', 'bottom'].includes(parts[0]) || ['left', 'right'].includes(parts[1]));
         const [x, y] = vertical ? [parts[1], parts[0]] : parts;
         node.dataset.crop = [
           hundredth(shift.x + place(x ?? '50%', rect.width, drawn.w)),

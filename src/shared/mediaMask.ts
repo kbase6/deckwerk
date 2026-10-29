@@ -23,11 +23,11 @@ export function objectPositionOffset(
     left: '0%', top: '0%', center: '50%', right: '100%', bottom: '100%',
   };
   const parts = (value ?? '').trim().toLowerCase().split(/\s+/).filter(Boolean);
-  // `top left` and `left top` mean the same thing; a computed value is always
-  // horizontal-then-vertical, and a keyword pair is only ambiguous when it
-  // names an axis explicitly.
-  const swap = parts.length === 2
-    && ['top', 'bottom'].includes(parts[0]) && ['left', 'right'].includes(parts[1]);
+  // A computed value is always horizontal-then-vertical, but a keyword names
+  // its axis: `top left`, `top center` and `center left` are swapped, and a
+  // lone `top` or `bottom` is vertical, centring the horizontal.
+  const swap = parts.length <= 2
+    && (['top', 'bottom'].includes(parts[0]) || ['left', 'right'].includes(parts[1]));
   const ordered = swap ? [parts[1], parts[0]] : parts;
   const axis = (spec: string | undefined, boxSize: number, drawnSize: number): number => {
     const resolved = KEYWORDS[spec ?? ''] ?? spec ?? '50%';
