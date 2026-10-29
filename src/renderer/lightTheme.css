@@ -2,24 +2,24 @@
    active when <html data-ui-theme="light">; the slides keep their own theme. */
 :root[data-ui-theme="light"] {
   color-scheme: light;
-  --bg: #eceef2;
-  --panel: #f8f9fb;
-  --panel-2: #e9ecf1;
-  --line: #d3d7df;
-  --text: #1f2330;
-  --muted: #636a7b;
-  --accent: #3b63d8;
-  --accent-soft: rgb(59 99 216 / 12%);
-  --green: #3f8a2e;
-  --yellow: #a86f12;
-  --danger: #c93a54;
-  --shadow: 0 1px 2px rgb(0 0 0 / 12%);
+  --dw-bg: #eceef2;
+  --dw-panel: #f8f9fb;
+  --dw-panel-2: #e9ecf1;
+  --dw-line: #d3d7df;
+  --dw-text: #1f2330;
+  --dw-muted: #636a7b;
+  --dw-accent: #3b63d8;
+  --dw-accent-soft: rgb(59 99 216 / 12%);
+  --dw-green: #3f8a2e;
+  --dw-yellow: #a86f12;
+  --dw-danger: #c93a54;
+  --dw-shadow: 0 1px 2px rgb(0 0 0 / 12%);
 }
 
 /* The few chrome colours that are written out rather than taken from a token. */
 :root[data-ui-theme="light"] .canvas-host { background: #dfe2e8; }
 :root[data-ui-theme="light"] .canvas-host .stage {
-  box-shadow: 0 0 0 1px var(--line), 0 14px 40px rgb(0 0 0 / 16%);
+  box-shadow: 0 0 0 1px var(--dw-line), 0 14px 40px rgb(0 0 0 / 16%);
 }
 :root[data-ui-theme="light"] button.primary:hover:not(:disabled) { background: rgb(59 99 216 / 18%); }
 :root[data-ui-theme="light"] .rail-item.selected { background: rgb(59 99 216 / 7%); border-color: rgb(59 99 216 / 55%); }
@@ -27,4 +27,4 @@
 /* Modal backdrop: a soft scrim rather than the dark theme's near-black. */
 :root[data-ui-theme="light"] .workflow-overlay { background: rgb(31 35 48 / 28%); }
 /* Trim window: the ffmpeg command readout. The viewers stay dark, like the canvas. */
-:root[data-ui-theme="light"] #command { background: var(--panel-2); }
+:root[data-ui-theme="light"] #command { background: var(--dw-panel-2); }

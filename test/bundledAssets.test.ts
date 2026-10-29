@@ -67,7 +67,7 @@ describe('assets the app needs at run time', () => {
     expect(editorCss).toContain('@font-face');
     expect(editorCss).toContain('./fonts/Monaspace-Krypton-Var.woff2');
     const chromeCss = await readFile(join(process.cwd(), 'src/renderer/appChrome.css'), 'utf8');
-    expect(chromeCss).toContain('--mono: "Monaspace Krypton", monospace;');
+    expect(chromeCss).toContain('--dw-mono: "Monaspace Krypton", monospace;');
     expect(existsSync(join(process.cwd(), 'src/renderer/editor/fonts/Monaspace-Krypton-Var.woff2'))).toBe(true);
 
     const icon = await readFile(join(process.cwd(), 'resources/deckwerk-icon.svg'), 'utf8');
