@@ -2165,6 +2165,45 @@ describe('inline text editing', () => {
     expect(video.type === 'video' ? video.sourceBox : null).toEqual({ x: -80, y: -60, w: 800, h: 450 });
   });
 
+  /**
+   * Whether a pan moved nothing is decided when it ends. Restoring the
+   * uncropped original on every move that came back to the start swapped the
+   * media's page structure (crop wrapper ↔ bare tag) mid-gesture.
+   */
+  it('keeps an uncropped pan cropped mid-gesture, and restores it when the pan ends where it began', () => {
+    const { store, canvas, host } = setup();
+    const stage = host.querySelector<HTMLElement>('.stage')!;
+    stage.getBoundingClientRect = () =>
+      ({ left: 0, top: 0, width: 1920, height: 1080 }) as DOMRect;
+    store.commit((deck) => {
+      const target = deck.slides[0].elements.find((element) => element.id === 'video-1');
+      if (target?.type === 'video') target.fit = 'cover';
+    }, { history: false });
+    canvas.toggleMaskMode('video-1');
+    // An 800x360 picture covering the 640x360 window paints at -80,0 and can pan sideways.
+    const node = host.querySelector<HTMLVideoElement>('[data-element-id="video-1"] video')!;
+    Object.defineProperty(node, 'videoWidth', { configurable: true, value: 800 });
+    Object.defineProperty(node, 'videoHeight', { configurable: true, value: 360 });
+
+    const at = (type: string, clientX: number) => host.dispatchEvent(new PointerEvent(type, {
+      clientX, clientY: 480, bubbles: true, pointerId: 1, button: 0,
+    }));
+    const video = () => {
+      const el = store.slide!.elements.find((element) => element.id === 'video-1')!;
+      if (el.type !== 'video') throw new Error('expected video fixture');
+      return el;
+    };
+    at('pointerdown', 400);
+    at('pointermove', 360);
+    expect(video().sourceBox).toEqual({ x: -120, y: 0, w: 800, h: 360 });
+    at('pointermove', 400);
+    expect(video().sourceBox, 'back at the start mid-gesture dropped the crop').toEqual({ x: -80, y: 0, w: 800, h: 360 });
+    at('pointerup', 400);
+
+    expect(video()).toMatchObject({ x: 100, y: 300, w: 640, h: 360, sourceBox: null });
+    expect(store.canUndo(), 'a pan that ended where it began left an undo step').toBe(false);
+  });
+
   it('finishes mask editing when the user clicks outside the active mask', () => {
     const { store, canvas, host } = setup();
     const stage = host.querySelector<HTMLElement>('.stage')!;
