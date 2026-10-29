@@ -1137,9 +1137,14 @@ export class EditorCanvas {
     this.keptSelection.schedule();
     const { deck, slideIndex, selection } = this.store.get();
     const slide = deck.slides[slideIndex];
-    // Crop mode belongs to an object on this slide: leaving the slide, or the
-    // object going away (a delete, an undo, a collaborator), ends it.
-    if (this.maskingId && !slide?.elements.some((el) => el.id === this.maskingId)) {
+    // Crop mode belongs to the selected object on this slide: leaving the
+    // slide, the object going away (a delete, an undo, a collaborator), or
+    // the selection moving off it alone (Escape, Select All, a shift-click)
+    // ends it.
+    if (this.maskingId && (
+      selection.size !== 1 || !selection.has(this.maskingId)
+      || !slide?.elements.some((el) => el.id === this.maskingId)
+    )) {
       this.maskingId = null;
       this.onMaskModeChange?.(null);
     }
@@ -2647,7 +2652,10 @@ export class EditorCanvas {
     // allowed to sit just outside rounded/circular windows, so they count as
     // part of the active region even when their centre is outside the clip.
     if (this.maskingId) {
-      const mask = slide.elements.find((candidate) => candidate.id === this.maskingId);
+      // The same fitted frame the pan below tests, so a press in a letterboxed
+      // picture's empty bars ends the crop rather than moving the object.
+      const found = slide.elements.find((candidate) => candidate.id === this.maskingId);
+      const mask = found && this.editingFrame(found);
       const onActiveHandle = target.closest<HTMLElement>(
         `.handle[data-element-id="${CSS.escape(this.maskingId)}"]`,
       );
