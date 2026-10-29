@@ -1710,21 +1710,33 @@ function elementToHtml(element: SlideElement, build?: TimelineEntry, base?: stri
           element.paragraphSpacing !== undefined
             ? `--paragraph-spacing:${element.paragraphSpacing}px;` : '')}>${body}</div>`;
     }
-    case 'image':
-      if (element.sourceBox) {
+    case 'image': {
+      // A browser shows a PDF only in an `<embed>` — as an `<img>` it is a
+      // broken picture — so a PDF figure is written in the declared form, its
+      // inner `<embed>` drawn as the player draws it. The compile reads the
+      // wrapper's data attributes and never the embed (the sanitizer drops it).
+      const pdf = /\.pdf(?:$|[?#])/i.test(element.src);
+      if (element.sourceBox || pdf) {
+        const pdfSrc = `${element.src}#page=1&toolbar=0&navpanes=0`;
+        const inner = element.sourceBox
+          ? pdf
+            ? croppedMedia('embed', pdfSrc, element.sourceBox, ' type="application/pdf"')
+            : croppedMedia('img', element.src, element.sourceBox, ` alt="${escape(element.alt)}"`)
+          : `<embed src="${escape(pdfSrc)}" type="application/pdf" style="width:100%; height:100%;">`;
         return `  <div ${attrs} data-element="image"`
           + ` data-src="${escape(element.src)}" data-alt="${escape(element.alt)}"`
-          + ` data-fit="${element.fit}" data-crop="${boxAttr(element.sourceBox)}"`
+          + ` data-fit="${element.fit}"`
+          + `${element.sourceBox ? ` data-crop="${boxAttr(element.sourceBox)}"` : ''}`
           + effectsDataAttrs(element)
           + mediaDataAttrs(element)
           + ` ${styleAttr(position, inline, media(element), 'overflow:hidden;')}>`
-          + `${notAnObject(croppedMedia('img', element.src, element.sourceBox,
-            ` alt="${escape(element.alt)}"`))}</div>`;
+          + `${notAnObject(inner)}</div>`;
       }
       return `  <img ${attrs} src="${escape(element.src)}" alt="${escape(element.alt)}"`
         + effectsDataAttrs(element)
         + mediaDataAttrs(element)
         + ` ${styleAttr(position, inline, media(element), `object-fit:${element.fit};`)}>`;
+    }
     case 'video': {
       const flags = `${element.loop ? ' loop' : ''}${element.muted ? ' muted' : ''}`
         + `${element.autoplay ? ' autoplay' : ''}${element.controls ? ' controls' : ''}`;
@@ -1843,7 +1855,7 @@ function notAnObject(markup: string): string {
  * `object-fit` — is how a cropped photograph came out visibly squashed.
  */
 function croppedMedia(
-  tag: 'img' | 'video',
+  tag: 'img' | 'video' | 'embed',
   src: string,
   box: { x: number; y: number; w: number; h: number },
   extra: string,
