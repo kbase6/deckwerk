@@ -22,7 +22,7 @@ import { collabClientDir } from './support/collabClient.js';
  * A crop is free and Shift locks it; a resize keeps proportions. Vincent could
  * not crop a video in 2610_TRI_site_visit to a new shape: every crop handle
  * kept the window's proportions unless Shift was held, and unticking "Keep
- * aspect ratio" did nothing. Real media, the real Edit mask button, real
+ * aspect ratio" (now Fit: Stretch) did nothing. Real media, the real Edit mask button, real
  * pointer input; test/mediaCrop.test.ts walks every option.
  */
 const DECK_ID = 'crop-aspect';
@@ -129,17 +129,17 @@ describe.skipIf(!electronBinary)('cropping and resizing media', () => {
       ), 435 * scale + await cdp.evaluate<number>(
         `document.querySelector('#canvas .slide').getBoundingClientRect().top`,
       ));
-      // The inspector must be showing this element, still ticked and settled,
-      // before the click: on a slow machine it can still be the previous one's.
+      // The inspector must be showing this element, still at "Fit inside" and
+      // settled, before the click: on a slow machine it can still be the
+      // previous one's.
       await eventually(() => cdp.evaluate<boolean>(`(() => {
         const selection = [...window.store.get().selection];
-        const box = [...document.querySelectorAll('label.field-check')]
-          .find((n) => n.textContent.trim() === 'Keep aspect ratio')?.querySelector('input');
+        const fit = document.querySelector('#inspector select[aria-label="Fit"]');
         // A video's panel renders again once its clip length is probed,
         // shifting everything under a click aimed before that.
         const settled = !document.querySelector('#inspector')?.textContent.includes('Reading clip length');
-        return selection.length === 1 && selection[0] === ${JSON.stringify(id)} && box?.checked === true && settled;
-      })()`), `${id} never became the inspector's only, ticked selection`);
+        return selection.length === 1 && selection[0] === ${JSON.stringify(id)} && fit?.value === 'contain' && settled;
+      })()`), `${id} never became the inspector's only selection, at "Fit inside"`);
       const original = await saved(id, (el) => el.fit === 'contain', 'the fixture never loaded');
 
       await clickControl('.mask-action-row .panel-action', 'Edit mask');

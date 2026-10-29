@@ -2584,7 +2584,7 @@ describe('dragging does not disturb media', () => {
   });
 });
 
-describe('warping media with "Keep aspect ratio" off', () => {
+describe('warping media with Fit set to Stretch', () => {
   beforeEach(() => {
     document.body.replaceChildren();
   });
@@ -2597,7 +2597,7 @@ describe('warping media with "Keep aspect ratio" off', () => {
     )!;
     expect(before.style.objectFit).toBe('contain');
 
-    // Uncheck "Keep aspect ratio" — the inspector writes fit: 'fill'.
+    // Fit: Stretch — the inspector writes fit: 'fill'.
     store.select(['video-1']);
     store.updateSelected((el) => {
       if (el.type === 'video') el.fit = 'fill';
@@ -2840,18 +2840,18 @@ describe('same-kind multi-selection properties', () => {
     expect(optionSections.map((section) => section.querySelector('h4')?.textContent))
       .toEqual([
         'Playback',
+        'Fit',
         'Mask',
         'Border',
         'Effects',
       ]);
     expect(optionSections[0].querySelectorAll('.video-checkbox-grid > .field-check')).toHaveLength(4);
-    // Keep-aspect-ratio clips like the mask does, so it lives in that section.
-    expect(optionSections[1].textContent).toContain('Keep aspect ratio');
-    expect(optionSections[1].textContent).toContain('Corner radius');
-    expect(optionSections[1].textContent).toContain('Circular mask');
-    expect(optionSections[2].textContent).toContain('Color');
-    expect(optionSections[2].textContent).toContain('Width');
-    expect(optionSections[2].textContent).not.toContain('Corner radius');
+    expect(optionSections[1].querySelector('select[aria-label="Fit"]')).not.toBeNull();
+    expect(optionSections[2].textContent).toContain('Corner radius');
+    expect(optionSections[2].textContent).toContain('Circular mask');
+    expect(optionSections[3].textContent).toContain('Color');
+    expect(optionSections[3].textContent).toContain('Width');
+    expect(optionSections[3].textContent).not.toContain('Corner radius');
     const autoplay = [...videoGroup.querySelectorAll<HTMLLabelElement>('label')]
       .find((label) => label.querySelector('span')?.textContent === 'Autoplay')!
       .querySelector<HTMLInputElement>('input')!;

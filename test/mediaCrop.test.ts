@@ -6,16 +6,16 @@ import { Inspector } from '../src/renderer/editor/inspector.js';
 import { EditorStore, pasteFromClipboard } from '../src/renderer/editor/store.js';
 
 /**
- * Cropping and resizing pictures and videos under every "Keep aspect ratio"
- * setting, driven the way a person does it: the inspector's checkbox, its
- * Edit mask button, and pointer drags on the canvas handles.
+ * Cropping and resizing pictures and videos under every fit, driven the way a
+ * person does it: the inspector's Fit strip, its Edit mask button, and pointer
+ * drags on the canvas handles.
  *
- * Vincent unticked "Keep aspect ratio" on a video and the crop window still
+ * Vincent unticked "Keep aspect ratio" (now Fit: Stretch) on a video and the crop window still
  * kept its proportions: since #62 every media drag was locked unless Shift
  * was held. The rule now: a crop reshapes the window, never the picture, so
  * it is free whatever the box says and Shift locks it; a resize follows the
- * box, Shift inverting it; a circle never frees. New media starts with the
- * box ticked, so a resize keeps its proportions.
+ * fit, Shift inverting it; a circle never frees. New media starts at "Fit
+ * inside", so a resize keeps its proportions.
  */
 
 type Media = Extract<SlideElement, { type: 'image' | 'video' }>;
@@ -105,12 +105,21 @@ function setup(element: Media) {
     expect(label, `no "${text}" checkbox in the inspector`).toBeTruthy();
     return label!.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
   };
-  const keepAspectBox = () => checkbox('Keep aspect ratio');
-  /** Tick or untick the inspector's checkbox, as a click would. */
+  /** The hidden select that carries the Props tab's Fit strip. */
+  const fitSelect = () => {
+    const select = inspectorHost.querySelector<HTMLSelectElement>('select[aria-label="Fit"]');
+    expect(select, 'no Fit control in the inspector').toBeTruthy();
+    return select!;
+  };
+  /** The Fit strip's buttons, in order. */
+  const fitButtons = () =>
+    [...fitSelect().closest('.field-segmented')!.querySelectorAll<HTMLButtonElement>('.segment-button')];
+  /** Press one stop of the Fit strip, as a click would. */
+  const setFit = (fit: Fit) => fitButtons().find((b) => b.dataset.value === fit)!.click();
+  /** "Fit inside" keeps the picture's proportions; "Stretch" frees them. */
   const setKeepAspect = (on: boolean) => {
-    const box = keepAspectBox();
-    if (box.checked !== on) box.click();
-    expect(keepAspectBox().checked).toBe(on);
+    setFit(on ? 'contain' : 'fill');
+    expect(fitSelect().value).toBe(on ? 'contain' : 'fill');
   };
   /** Press the inspector's Edit mask / Done editing mask button. */
   const toggleMask = () =>
@@ -133,7 +142,7 @@ function setup(element: Media) {
     canvasHost.dispatchEvent(event('pointerup', start.x + dx, start.y + dy));
     return current();
   };
-  return { store, canvas, inspectorHost, current, checkbox, keepAspectBox, setKeepAspect, toggleMask, drag };
+  return { store, canvas, inspectorHost, current, checkbox, fitSelect, fitButtons, setFit, setKeepAspect, toggleMask, drag };
 }
 
 /** Where the whole picture sits on the slide: what a crop must never move or reshape. */
@@ -161,7 +170,7 @@ describe('cropping media in mask mode', () => {
     for (const keepAspect of [false, true]) {
       for (const shift of [false, true]) {
         const free = !shift;
-        const name = `${type}, "Keep aspect ratio" ${keepAspect ? 'on' : 'off'}${shift ? ', Shift held' : ''}`;
+        const name = `${type}, ${keepAspect ? '"Fit inside"' : '"Stretch"'}${shift ? ', Shift held' : ''}`;
 
         it(`${name}: every handle crops ${free ? 'freely' : 'in proportion'}, the picture stays put`, () => {
           for (const { handle, dx, dy, box } of FREE_DRAGS) {
@@ -182,7 +191,7 @@ describe('cropping media in mask mode', () => {
             }
             // Cropping, not scaling: the picture is exactly where and as big as it was.
             expect(picture(after), where).toEqual(before);
-            // The crop leaves the checkbox alone.
+            // The crop leaves the fit alone.
             expect(after.fit, where).toBe(keepAspect ? 'contain' : 'fill');
             expect(t.store.history()[0]?.label, where).toBe(`Crop ${type}`);
           }
@@ -192,26 +201,30 @@ describe('cropping media in mask mode', () => {
 
     it(`${type}: cover crops freely too, and Shift locks it`, () => {
       const t = setup(media(type, 'cover'));
-      expect(t.keepAspectBox().checked).toBe(true);
+      expect(t.fitSelect().value).toBe('cover');
       t.toggleMask();
       const free = t.drag('se', -200, -60);
       expect(free).toMatchObject({ w: 440, h: 300 });
       expect(ratio(t.drag('se', -100, -80, true))).toBeCloseTo(440 / 300, 1);
     });
 
-    it(`${type}: ticking or unticking the box mid-session changes nothing about the crop`, () => {
+    it(`${type}: changing the fit mid-session changes nothing about the crop`, () => {
       const t = setup(media(type, 'contain'));
       t.toggleMask();
       expect(t.drag('se', -200, -60)).toMatchObject({ w: 440, h: 300 });
-      t.setKeepAspect(false);
+      // Cropped now, so the Fit strip is off; an agent or an undo can still
+      // write the fit underneath the crop.
+      const setFit = (fit: Fit) => t.store.updateSelected((el) => {
+        if (el.type === 'image' || el.type === 'video') el.fit = fit;
+      });
+      setFit('fill');
       expect(t.drag('se', -40, -100)).toMatchObject({ w: 400, h: 200 });
-      t.setKeepAspect(true);
+      setFit('contain');
       expect(t.drag('e', -100, 0)).toMatchObject({ w: 300, h: 200 });
     });
 
     it(`${type}: an existing crop keeps cropping freely, and its picture never moves`, () => {
-      const t = setup(media(type, 'contain', { sourceBox: { x: -80, y: -40, w: 800, h: 450 } }));
-      t.setKeepAspect(false);
+      const t = setup(media(type, 'fill', { sourceBox: { x: -80, y: -40, w: 800, h: 450 } }));
       const before = picture(t.current());
       t.toggleMask();
       expect(t.drag('nw', 60, 100)).toMatchObject({ x: 460, y: 300, w: 580, h: 260 });
@@ -220,10 +233,9 @@ describe('cropping media in mask mode', () => {
     });
 
     it(`${type}: a circular mask stays round whatever the box and Shift say`, () => {
-      const t = setup(media(type, 'contain'));
+      const t = setup(media(type, 'fill'));
       t.checkbox('Circular mask').click();
       expect(t.current().maskShape).toBe('circle');
-      t.setKeepAspect(false);
       t.toggleMask();
       for (const shift of [false, true]) {
         const after = t.drag('se', -120, -20, shift);
@@ -244,12 +256,12 @@ describe('cropping media in mask mode', () => {
   }
 
   it('crops the slide 5 Minecraft video of 2610_TRI_site_visit freely', () => {
-    // The element exactly as it is saved in that deck: box unticked, already cropped.
+    // The element exactly as it is saved in that deck: stretched, already cropped.
     const t = setup(media('video', 'fill', {
       id: 'media', x: -128, y: 392, w: 758, h: 188, autoplay: true, muted: true,
       sourceBox: { x: 0, y: 0, w: 1040, h: 260 },
     }));
-    expect(t.keepAspectBox().checked).toBe(false);
+    expect(t.fitSelect().disabled).toBe(true);
     const before = picture(t.current());
     t.toggleMask();
     const after = t.drag('se', -150, 60);
@@ -260,17 +272,17 @@ describe('cropping media in mask mode', () => {
 
 describe('resizing media outside mask mode', () => {
   for (const type of ['video', 'image'] as const) {
-    it(`${type}, box unticked: stretches freely and stays unticked; Shift keeps proportions`, () => {
+    it(`${type}, Stretch: stretches freely and stays stretched; Shift keeps proportions`, () => {
       const t = setup(media(type, 'contain'));
       t.setKeepAspect(false);
       expect(t.drag('se', 160, -100)).toMatchObject({ w: 800, h: 260, fit: 'fill' });
       const locked = t.drag('se', 200, 10, true);
       expect(ratio(locked)).toBeCloseTo(800 / 260, 1);
       expect(locked.fit).toBe('fill');
-      expect(t.keepAspectBox().checked).toBe(false);
+      expect(t.fitSelect().value).toBe('fill');
     });
 
-    it(`${type}, box ticked: keeps proportions; Shift frees it and squashes the picture`, () => {
+    it(`${type}, Fit inside: keeps proportions; Shift frees it and squashes the picture`, () => {
       const t = setup(media(type, 'contain'));
       t.setKeepAspect(true);
       const locked = t.drag('se', 160, -100);
@@ -279,7 +291,7 @@ describe('resizing media outside mask mode', () => {
       expect(t.drag('e', -100, 0, true)).toMatchObject({ w: locked.w - 100, h: locked.h, fit: 'fill' });
     });
 
-    it(`${type}, cropped and unticked: the crop stretches with its box`, () => {
+    it(`${type}, cropped and stretched: the crop stretches with its box`, () => {
       const t = setup(media(type, 'fill', { sourceBox: { x: -80, y: -40, w: 800, h: 450 } }));
       expect(t.drag('e', -320, 0)).toMatchObject({
         w: 320, h: 360, sourceBox: { x: -40, y: -40, w: 400, h: 450 },
@@ -288,12 +300,12 @@ describe('resizing media outside mask mode', () => {
   }
 });
 
-describe('new media starts with "Keep aspect ratio" on', () => {
+describe('new media starts at "Fit inside"', () => {
   it('is the default the editor uses for every new picture and video', () => {
     expect(NEW_MEDIA_FIT).toBe('contain');
   });
 
-  it('a pasted video lands with the box ticked', async () => {
+  it('a pasted video lands at "Fit inside"', async () => {
     const t = setup(media('image', 'contain', { id: 'other', x: 0, y: 0, w: 100, h: 100 }));
     window.api.readClipboard = async () => ({
       kind: 'external-image',
@@ -302,6 +314,59 @@ describe('new media starts with "Keep aspect ratio" on', () => {
     expect(await pasteFromClipboard(t.store)).toEqual({ kind: 'elements', count: 1 });
     const [pasted] = t.store.selectedElements() as Media[];
     expect(pasted).toMatchObject({ type: 'video', fit: 'contain' });
-    expect(t.keepAspectBox().checked).toBe(true);
+    expect(t.fitSelect().value).toBe('contain');
   });
+});
+
+describe('the Fit control', () => {
+  const MASKED = { x: -80, y: -40, w: 800, h: 450 };
+  for (const type of ['image', 'video'] as const) {
+    it(`${type}: offers all three fits, so Stretch and back gives the same picture`, () => {
+      // BUG: an on/off "Keep aspect ratio" box over three values. Off and on
+      // again turned a picture that filled its frame into a letterboxed one.
+      const t = setup(media(type, 'cover'));
+      expect(t.fitButtons().map((b) => b.textContent)).toEqual(['Fit inside', 'Fill frame', 'Stretch']);
+      expect(t.fitSelect().value).toBe('cover');
+      const drawn = () => document.querySelector<HTMLElement>(`[data-element-id="media"] ${type === 'video' ? 'video' : 'img'}`)!;
+      for (const fit of ['fill', 'cover', 'contain', 'cover'] as const) {
+        t.setFit(fit);
+        expect(t.current().fit).toBe(fit);
+        expect(t.fitSelect().value).toBe(fit);
+        expect(drawn().style.objectFit).toBe(fit);
+      }
+      expect(t.store.history()[0]?.label).toBe('Change fit');
+    });
+
+    it(`${type}: sits outside the Mask section, which it has nothing to do with`, () => {
+      const t = setup(media(type, 'contain'));
+      const mask = [...t.inspectorHost.querySelectorAll<HTMLElement>('.insp-option-section')]
+        .find((section) => section.querySelector('h4')?.textContent === 'Mask')!;
+      expect(mask).toBeTruthy();
+      expect(mask.contains(t.fitSelect())).toBe(false);
+    });
+
+    it(`${type}: is off while the media is cropped, says why, and writes nothing`, () => {
+      // BUG: on a cropped picture the box changed nothing anyone could see.
+      const t = setup(media(type, 'cover', { sourceBox: MASKED }));
+      expect(t.fitSelect().disabled).toBe(true);
+      expect(t.fitButtons().every((b) => b.disabled)).toBe(true);
+      const field = t.fitSelect().closest<HTMLElement>('.field-segmented')!;
+      expect(field.title).toBe('Fit does not apply to a cropped picture or video');
+      t.setFit('fill');
+      expect(t.current().fit).toBe('cover');
+      expect(t.store.history()).toHaveLength(0);
+    });
+
+    it(`${type}: in a mixed selection, leaves the cropped one alone`, () => {
+      const t = setup(media(type, 'contain'));
+      const other = { ...media(type, 'cover', { sourceBox: MASKED }), id: 'other', x: 1100 } as Media;
+      t.store.commit((deck) => deck.slides[0].elements.push(other));
+      t.store.select(['media', 'other']);
+      expect(t.fitSelect().disabled).toBe(false);
+      expect(t.fitSelect().value).toBe('contain');
+      t.setFit('fill');
+      const fits = t.store.slide!.elements.map((el) => (el as Media).fit);
+      expect(fits).toEqual(['fill', 'cover']);
+    });
+  }
 });
