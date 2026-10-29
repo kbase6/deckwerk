@@ -3,7 +3,7 @@ import '../appChrome.css';
 import './editor.css';
 import '../collab/collab.css';
 import '../lightTheme.css';
-import { applyUiTheme } from '../uiTheme.js';
+import { applyUiTheme, setUiThemePreference } from '../uiTheme.js';
 import { applyAgentOperations, applyAgentTransaction, type AgentOperation } from '@shared/agent.js';
 import type { Deck, SlideElement } from '@shared/deck.js';
 import { emptyDeck } from '@shared/deck.js';
@@ -1086,6 +1086,18 @@ function scheduleSave(): void {
   }, 800);
 }
 
+// Closing or reloading the window must not drop what the autosave, the edit
+// history and theme.css are still holding back on their timers. Each write's
+// IPC leaves this window before the unload goes ahead; the main process
+// finishes it.
+// ponytail: an IPC already in flight queues this write behind it, which then
+// never leaves; awaiting it here would need the main process to hold the close.
+window.addEventListener('beforeunload', () => {
+  if (store.get().dirty) void save({ flushHistory: false }).catch(() => undefined);
+  void flushHistory().catch((error) => console.error('Could not save edit history:', error));
+  void cssEditor.flush();
+});
+
 let adoptGeneration = 0;
 
 async function adopt(
@@ -1334,6 +1346,7 @@ window.api.onDeckState((session) => {
 window.api.onThemeCss?.((css) => {
   if (css !== cssEditor.getValue()) cssEditor.setValue(css);
 });
+window.api.onEditorAppearance?.((appearance) => { setUiThemePreference(appearance); });
 window.api.onAgentSessionState?.((state) => {
   if (state.active) connectAgentSession(state);
   else {

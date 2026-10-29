@@ -69,7 +69,12 @@ export const IPC = {
   agentSessionStart: 'agentSession:start',
   agentSessionEnd: 'agentSession:end',
   agentSessionState: 'agentSession:state',
+  /** View › Editor appearance in the application menu chose light, dark or the system's. */
+  editorAppearance: 'ui:editorAppearance',
 } as const;
+
+/** The editor chrome's light/dark preference, as the application menu sets it. */
+export type EditorAppearance = 'system' | 'light' | 'dark';
 
 export interface AgentPanelMessage {
   id: string;

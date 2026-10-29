@@ -17,6 +17,7 @@ import type {
   DeckSession,
   DeckSessionSnapshot,
   DeckHistorySession,
+  EditorAppearance,
   ImportedAsset,
   PresentationImportResult,
   MediaInfo,
@@ -203,6 +204,8 @@ const api = {
   onDeckState: (fn: (s: DeckSession) => void): (() => void) =>
     on(IPC.deckState, fn),
   onThemeCss: (fn: (css: string) => void): (() => void) => on(IPC.themeCss, fn),
+  onEditorAppearance: (fn: (appearance: EditorAppearance) => void): (() => void) =>
+    on(IPC.editorAppearance, fn),
   onAgentRequest: (fn: (request: AgentRequest) => void): (() => void) =>
     on(IPC.agentRequest, fn),
   onAgentPanelState: (fn: (state: AgentPanelState) => void): (() => void) =>

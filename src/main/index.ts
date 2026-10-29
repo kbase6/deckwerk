@@ -3,7 +3,7 @@ import { writeFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { userInfo } from 'node:os';
 import { basename, dirname, extname, join, resolve, sep } from 'node:path';
-import { BrowserWindow, ClipboardItem, app, clipboard, ipcMain, nativeImage, screen, shell } from 'electron';
+import { BrowserWindow, ClipboardItem, Menu, app, clipboard, ipcMain, nativeImage, screen, shell } from 'electron';
 import type { Display, IpcMainInvokeEvent, WebContents } from 'electron';
 import { deckForExport, parseDeck, type Deck } from '@shared/deck.js';
 import type { DeckHistoryDocument } from '@shared/deckHistory.js';
@@ -47,6 +47,7 @@ import type {
   VideoPosterRequest,
   VideoPosterResult,
 } from '@shared/ipc.js';
+import { applicationMenuTemplate } from './appMenu.js';
 import { installAssetProtocol, registerAssetScheme } from './assetProtocol.js';
 import {
   createDeck,
@@ -596,6 +597,17 @@ app.whenReady().then(async () => {
     if (existsSync(developmentIcon)) app.dock?.setIcon(developmentIcon);
   }
 
+  Menu.setApplicationMenu(Menu.buildFromTemplate(applicationMenuTemplate({
+    platform: process.platform,
+    packaged: app.isPackaged,
+    // Every editor window applies it; the choice is stored in their shared
+    // localStorage, so the app's other windows follow through its storage event.
+    setEditorAppearance: (appearance) => {
+      for (const state of editorStates()) {
+        if (!state.editor.isDestroyed()) state.editor.webContents.send(IPC.editorAppearance, appearance);
+      }
+    },
+  })));
   installAssetProtocol();
   registerHandlers();
 
