@@ -783,6 +783,8 @@ type DragMode =
       origin: Rect;
       origins: Map<string, ResizeOrigin>;
       elementId: string;
+      /** The element as authored, which a crop back to the start restores. */
+      authored: Rect & { sourceBox: Rect | null };
     }
   | {
       kind: 'table-column-resize';
@@ -2794,6 +2796,10 @@ export class EditorCanvas {
           origin: { x: el.x, y: el.y, w: el.w, h: el.h },
           origins,
           elementId: el.id,
+          authored: {
+            x: found.x, y: found.y, w: found.w, h: found.h,
+            sourceBox: found.type === 'image' || found.type === 'video' ? found.sourceBox : null,
+          },
         };
         return;
       }
@@ -3147,7 +3153,7 @@ export class EditorCanvas {
           // Cropping, not scaling: the dragged edge moves, the picture stays
           // put, and the window stops at the picture's edge. `cropWindow`
           // keeps a rotated picture in place itself.
-          this.applyMaskResize(drag.elementId, r, o, constrained);
+          this.applyMaskResize(drag.elementId, r, o, constrained, drag.authored);
           break;
         }
         if (radians) {
@@ -6991,7 +6997,13 @@ export class EditorCanvas {
    * around under the cursor. That is the difference between cropping and
    * scaling. `rect` is in the element's unrotated frame; see `cropWindow`.
    */
-  private applyMaskResize(elementId: string, rect: Rect, origin: Rect, lockAspect: boolean): void {
+  private applyMaskResize(
+    elementId: string,
+    rect: Rect,
+    origin: Rect,
+    lockAspect: boolean,
+    authored: Rect & { sourceBox: Rect | null },
+  ): void {
     // The offset is measured from where the drag began, so it must be applied
     // to the crop as it was at that moment. Applying it to the *current* crop
     // would re-add the whole delta on every pointermove, and the media would
@@ -7004,7 +7016,13 @@ export class EditorCanvas {
         (e) => e.id === elementId,
       );
       if (!el || (el.type !== 'image' && el.type !== 'video')) return;
-      Object.assign(el, cropWindow(rect, origin, base, el.rot, lockAspect));
+      const next = cropWindow(rect, origin, base, el.rot, lockAspect);
+      const moved = next.w !== Math.round(origin.w) || next.h !== Math.round(origin.h)
+        || next.sourceBox.x !== Math.round(base.x) || next.sourceBox.y !== Math.round(base.y);
+      // Back at the start is the element as authored, so a crop that moved
+      // nothing (an edge dragged out past the picture) leaves neither an undo
+      // step nor a crop behind, as a pan that moved nothing does.
+      Object.assign(el, moved ? next : authored);
     });
   }
 
