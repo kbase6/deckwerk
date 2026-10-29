@@ -77,6 +77,13 @@ describe('design workspace dismissal', () => {
     expect(workspace.escape()).toBeNull();
   });
 
+  it('says that clicking a theme applies it to every slide, and how to undo it', () => {
+    setup().show(THEMES[0]);
+
+    expect(document.querySelector('.design-preview-workspace header p')!.textContent)
+      .toBe('Clicking a theme applies it to every slide; Ctrl+Z undoes it.');
+  });
+
   it('cancels the layout editor before leaving the theme preview', () => {
     const workspace = setup();
     workspace.show(THEMES[0]);

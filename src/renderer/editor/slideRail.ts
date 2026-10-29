@@ -47,7 +47,7 @@ export function slideNumbersLabel(indices: readonly number[]): string {
   return parts.join(', ');
 }
 
-function undoShortcutLabel(): string {
+export function undoShortcutLabel(): string {
   const platform = typeof navigator === 'undefined' ? '' : navigator.platform ?? '';
   return /Mac|iPhone|iPad/i.test(platform) ? '⌘Z' : 'Ctrl+Z';
 }
