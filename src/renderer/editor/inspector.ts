@@ -1698,7 +1698,7 @@ export class Inspector {
           if (element.type === 'image' || element.type === 'video') {
             setMediaMask(element, on);
           }
-        }),
+        }, { label: on ? 'Circular mask' : 'Rectangular mask' }),
       ),
     );
     masking.content.appendChild(maskSettings);

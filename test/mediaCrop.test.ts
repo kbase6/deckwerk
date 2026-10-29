@@ -4,6 +4,7 @@ import { emptyDeck, NEW_MEDIA_FIT, type SlideElement } from '../src/shared/deck.
 import { EditorCanvas } from '../src/renderer/editor/canvas.js';
 import { Inspector } from '../src/renderer/editor/inspector.js';
 import { EditorStore, pasteFromClipboard } from '../src/renderer/editor/store.js';
+import { makeContextActions, type ShellDeps } from '../src/renderer/editor/shellWiring.js';
 
 /**
  * Cropping and resizing pictures and videos under every "Keep aspect ratio"
@@ -256,6 +257,66 @@ describe('cropping media in mask mode', () => {
     expect(after).toMatchObject({ x: -128, y: 392, w: 608, h: 248 });
     expect(picture(after)).toEqual(before);
   });
+});
+
+describe('a picture made round by CSS border-radius: 50%', () => {
+  // Agent imports and older decks carry the circle as CSS, with no maskShape.
+  // Props reads it as a circular mask; the right-click menu and the canvas
+  // used to test maskShape only, so the menu offered to make it circular and
+  // crop mode treated its corners as part of the picture.
+  for (const type of ['video', 'image'] as const) {
+    const round = () => setup(media(type, 'fill', { style: { 'border-radius': '50%' } }));
+    const menu = (t: ReturnType<typeof setup>) => {
+      const items = () => makeContextActions(
+        { store: t.store, canvas: t.canvas } as unknown as ShellDeps, {} as never,
+      )(t.current()).flatMap((item) => (item === 'separator' ? [] : [item]));
+      return {
+        labels: () => items().map((item) => item.label),
+        run: (label: string) => {
+          const item = items().find((entry) => entry.label === label);
+          expect(item, `no "${label}" row`).toBeTruthy();
+          item!.action();
+        },
+      };
+    };
+
+    it(`${type}: the right-click menu agrees with Props, with the same History labels`, () => {
+      const t = round();
+      const m = menu(t);
+      expect(t.checkbox('Circular mask').checked).toBe(true);
+      expect(m.labels()).toContain('Rectangular mask');
+      expect(m.labels()).not.toContain('Circular mask');
+
+      m.run('Rectangular mask');
+      expect(t.current().maskShape).toBe('rect');
+      expect(t.checkbox('Circular mask').checked).toBe(false);
+      expect(t.store.history()[0]?.label).toBe('Rectangular mask');
+
+      m.run('Circular mask');
+      expect(t.current().maskShape).toBe('circle');
+      expect(t.checkbox('Circular mask').checked).toBe(true);
+      expect(t.store.history()[0]?.label).toBe('Circular mask');
+    });
+
+    it(`${type}: in crop mode its corners are outside the picture, and it keeps its shape`, () => {
+      const t = round();
+      const press = (x: number, y: number) => {
+        for (const kind of ['pointerdown', 'pointerup']) {
+          t.canvas['host'].dispatchEvent(new PointerEvent(kind, {
+            clientX: x, clientY: y, bubbles: true, pointerId: 1, button: 0,
+          }));
+        }
+      };
+      t.toggleMask();
+      press(720, 380);
+      expect(t.canvas.maskingElement(), 'a click inside the circle stays cropping').toBe('media');
+      press(410, 210);
+      expect(t.canvas.maskingElement(), 'a click in the corner is a click away').toBeNull();
+
+      t.toggleMask();
+      expect(ratio(t.drag('se', -120, -20))).toBeCloseTo(640 / 360, 1);
+    });
+  }
 });
 
 describe('resizing media outside mask mode', () => {
