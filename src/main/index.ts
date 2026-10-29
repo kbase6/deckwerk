@@ -3,7 +3,7 @@ import { writeFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { userInfo } from 'node:os';
 import { basename, dirname, extname, join, resolve, sep } from 'node:path';
-import { BrowserWindow, ClipboardItem, app, clipboard, ipcMain, nativeImage, screen, shell } from 'electron';
+import { BrowserWindow, ClipboardItem, app, clipboard, ipcMain, nativeImage, nativeTheme, screen, shell } from 'electron';
 import type { Display, IpcMainInvokeEvent, WebContents } from 'electron';
 import { deckForExport, parseDeck, type Deck } from '@shared/deck.js';
 import type { DeckHistoryDocument } from '@shared/deckHistory.js';
@@ -94,6 +94,7 @@ import {
   type DeckWindowState,
 } from './deckWindows.js';
 import {
+  appBackground,
   cascadedEditorBounds,
   createEditorWindow,
   createPdfWindow,
@@ -761,6 +762,14 @@ function registerHandlers(): void {
     } catch {
       return null;
     }
+  });
+
+  // Each window reports the light/dark choice it keeps in localStorage (the
+  // only place it is stored); dialogs, menus and its background follow it.
+  ipcMain.on(IPC.uiThemeSet, (event, preference: unknown) => {
+    if (preference !== 'system' && preference !== 'light' && preference !== 'dark') return;
+    nativeTheme.themeSource = preference;
+    BrowserWindow.fromWebContents(event.sender)?.setBackgroundColor(appBackground());
   });
 
   ipcMain.handle(IPC.deckSaveAs, async (event, operationId?: string): Promise<DeckSession | null> => {
