@@ -669,6 +669,9 @@ async function toggleAgentPanel(): Promise<void> {
   }
 }
 
+/** Collaborate has no sign-in: say so plainly whenever it starts. */
+const OPEN_ON_NETWORK = 'Anyone on your local network can open and edit this presentation.';
+
 async function startSharing(): Promise<void> {
   try {
     if (activeSessionMode === 'collaboration') {
@@ -695,7 +698,7 @@ async function startSharing(): Promise<void> {
       });
       connectAgentSession(connection);
     });
-    setStatusMessage('Collaboration link copied to clipboard.');
+    setStatusMessage(`Collaboration link copied. ${OPEN_ON_NETWORK}`);
   } catch (err) {
     setStatusMessage(`Collaboration failed: ${err instanceof Error ? err.message : err}`);
   }
@@ -805,7 +808,7 @@ function connectAgentSession(connection: AgentSessionConnection): void {
       publishAgentPresence();
       queueAgentSessionSnapshot();
       setStatusMessage(activeSessionMode === 'collaboration'
-        ? 'Collaboration connected — edits and cursors sync live.'
+        ? `Collaboration connected. ${OPEN_ON_NETWORK}`
         : 'Filesystem agent connected — edits sync live.');
     },
     onDeckReplaced: (deck, label, options) => {

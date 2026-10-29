@@ -212,6 +212,11 @@ describe.skipIf(!electronBinary || noWindowManager)('desktop collaboration hando
       && document.querySelector('#canvas [data-element-id="handoff-title"]')
     )`), 'native desktop editor did not join collaboration in place');
     expect(Date.now() - collaborationStartedAt).toBeLessThan(3_000);
+    // Collaborate has no sign-in, so starting it says plainly who can get in.
+    await eventually(async () => editor!.evaluate<boolean>(`Boolean(
+      document.querySelector('#status')?.textContent
+        ?.includes('Anyone on your local network can open and edit this presentation.')
+    )`), 'Collaborate did not say the deck is open to the local network');
 
     const wsUrl = await editor.evaluate<string>(`window.api.startCollab({
       agent: false,

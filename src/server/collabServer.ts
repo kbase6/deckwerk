@@ -284,6 +284,11 @@ export interface CollabServerOptions {
   /** Directory holding the built browser client; may be absent in dev (vite proxy). */
   clientDir?: string;
   port?: number;
+  /**
+   * Interface to listen on. Defaults to every interface (`0.0.0.0`), except in
+   * `agentMode`, whose only clients are on this machine: there it defaults to
+   * loopback, so a desktop Agent session never opens the deck to the network.
+   */
   host?: string;
   /**
    * Hosted-session mode: the desktop app sharing the one deck it has open.
@@ -354,9 +359,9 @@ export interface RunningCollabServer {
 export async function startCollabServer(options: CollabServerOptions): Promise<RunningCollabServer> {
   const rootDir = resolve(options.rootDir);
   const clientDir = options.clientDir;
-  const host = options.host ?? '0.0.0.0';
   const hostedDeckId = options.hostedDeckId;
   const agentMode = Boolean(options.agentMode);
+  const host = options.host ?? (agentMode ? '127.0.0.1' : '0.0.0.0');
   const localAgents = options.localAgents;
   /**
    * The wire copy of oversized video. Deck assets are whatever the author
