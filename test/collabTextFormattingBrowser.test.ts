@@ -63,7 +63,7 @@ const PANEL = '#inspector';
 const ALIGN_BUTTON = (index: number) => `${PANEL} .align-button:nth-of-type(${index + 1})`;
 // Scope to the typography colour: the panel also carries slide background and
 // border colour fields, and picking the wrong one would pass for the wrong reason.
-const COLOR_TRIGGER = `${PANEL} .field-color .color-picker-trigger[aria-label^="Colour"]`;
+const COLOR_TRIGGER = `${PANEL} .field-color .color-picker-trigger[aria-label^="Color"]`;
 const SWATCH = (color: string) => `.color-picker-popover .color-picker-palette-button[title="${color}"]`;
 const CLEAR_COLOR = '.color-picker-popover .color-picker-clear';
 const HEX_INPUT = '.color-picker-popover input[aria-label="Hex color"]';

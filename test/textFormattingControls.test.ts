@@ -231,7 +231,7 @@ describe('text formatting from the inspector controls', () => {
       .map((node) => node.textContent?.trim());
 
     expect(labels('.text-typography-options .field > span')).toEqual([
-      'Text style', 'Font family', 'Font size', 'Font weight', 'Style', 'Colour',
+      'Text style', 'Font family', 'Font size', 'Font weight', 'Style', 'Color',
     ]);
     expect(labels('.text-layout-options .field > span')).toEqual([
       'Size box to text', 'Auto-fit text to box', 'Disable automatic line breaks', 'List',
@@ -302,7 +302,7 @@ describe('text formatting from the inspector controls', () => {
 
   it('picks a theme colour swatch, then clears back to the theme default', () => {
     const { store, canvasHost, inspectorHost } = setup([textElement('text-1')]);
-    const trigger = () => field(inspectorHost, 'Colour')
+    const trigger = () => field(inspectorHost, 'Color')
       .querySelector<HTMLButtonElement>('.color-picker-trigger')!;
 
     trigger().click();
@@ -324,7 +324,7 @@ describe('text formatting from the inspector controls', () => {
 
   it('sets an arbitrary colour from the hex box and keeps opacity as authored', () => {
     const { store, inspectorHost } = setup([textElement('text-1')]);
-    field(inspectorHost, 'Colour')
+    field(inspectorHost, 'Color')
       .querySelector<HTMLButtonElement>('.color-picker-trigger')!.click();
 
     const picker = document.querySelector<HTMLElement>('.color-picker-popover')!;
@@ -384,7 +384,7 @@ describe('text formatting from the inspector controls', () => {
     const { store, canvasHost, inspectorHost } = setup([
       textElement('text-1', { html: '<ul><li>First</li><li>Second</li></ul>' }),
     ]);
-    const trigger = () => field(inspectorHost, 'Marker colour')
+    const trigger = () => field(inspectorHost, 'Marker color')
       .querySelector<HTMLButtonElement>('.color-picker-trigger')!;
 
     trigger().click();
@@ -408,7 +408,7 @@ describe('text formatting from the inspector controls', () => {
     closePopover();
     trigger().click();
     const clear = document.querySelector<HTMLButtonElement>('.color-picker-clear')!;
-    expect(clear.textContent).toBe('Follow text colour');
+    expect(clear.textContent).toBe('Follow text color');
     clear.click();
     expect(textOf(store, 'text-1').html).toBe('<ul><li>First</li><li>Second</li></ul>');
   });
@@ -427,7 +427,7 @@ describe('text formatting from the inspector controls', () => {
     window.getSelection()!.addRange(caret);
     document.dispatchEvent(new Event('selectionchange'));
 
-    field(inspectorHost, 'Marker colour')
+    field(inspectorHost, 'Marker color')
       .querySelector<HTMLButtonElement>('.color-picker-trigger')!.click();
     document.querySelector<HTMLButtonElement>(
       '.color-picker-palette-button[title="#ff8800"]',
@@ -787,7 +787,7 @@ describe('text formatting from the inspector controls', () => {
     type(field(inspectorHost, 'Font size').querySelector<HTMLInputElement>('input')!, '48');
     type(field(inspectorHost, 'Font weight').querySelector<HTMLInputElement>('input')!, '450');
 
-    field(inspectorHost, 'Colour')
+    field(inspectorHost, 'Color')
       .querySelector<HTMLButtonElement>('.color-picker-trigger')!.click();
     document.querySelectorAll<HTMLButtonElement>('.color-picker-palette-button')[1].click();
     alignButtons(inspectorHost)[1].click();
@@ -1388,7 +1388,7 @@ describe('text formatting from the inspector controls', () => {
       textElement('text-1', { html: TABLE_WORD_HTML }),
     ]);
     const { content } = selectTableWord(canvas, canvasHost);
-    const trigger = () => field(inspectorHost, 'Colour')
+    const trigger = () => field(inspectorHost, 'Color')
       .querySelector<HTMLButtonElement>('.color-picker-trigger')!;
 
     trigger().click();
@@ -1722,7 +1722,7 @@ describe('text formatting across a multi-selection', () => {
     const spacing = () => field(inspectorHost, 'Paragraph spacing')
       .querySelector<HTMLInputElement>('input')!;
     expect(spacing().placeholder).toBe('Mixed');
-    expect(field(inspectorHost, 'Colour (mixed)')).toBeTruthy();
+    expect(field(inspectorHost, 'Color (mixed)')).toBeTruthy();
     expect([...field(inspectorHost, 'Text style').querySelectorAll('option')].map((option) => option.textContent))
       .toEqual(['Title', 'Body', 'Caption', 'None']);
 
@@ -1777,7 +1777,7 @@ describe('text formatting across a multi-selection', () => {
       textElement('text-1'),
       textElement('text-2', { y: 400 }),
     ]);
-    field(inspectorHost, 'Colour')
+    field(inspectorHost, 'Color')
       .querySelector<HTMLButtonElement>('.color-picker-trigger')!.click();
     document.querySelectorAll<HTMLButtonElement>('.color-picker-palette-button')[1].click();
 
@@ -1865,7 +1865,7 @@ describe('the layout preset as formatting', () => {
   }
 
   const presetSelect = (host: HTMLElement): HTMLSelectElement =>
-    field(host, 'Preset').querySelector<HTMLSelectElement>('select')!;
+    field(host, 'Layout').querySelector<HTMLSelectElement>('select')!;
 
   it('offers the layout presets once the selection is the slide itself', () => {
     const { store, inspectorHost } = layoutHarness();
@@ -1916,7 +1916,7 @@ describe('the layout preset as formatting', () => {
     store.updateSelected((element) => {
       if (element.type === 'text') element.html = 'Authored <b>title</b>';
     }, { label: 'inline bold' });
-    field(inspectorHost, 'Colour').querySelector<HTMLButtonElement>('.color-picker-trigger')!.click();
+    field(inspectorHost, 'Color').querySelector<HTMLButtonElement>('.color-picker-trigger')!.click();
     document.querySelectorAll<HTMLButtonElement>('.color-picker-palette-button')[0].click();
     expect(textOf(store, 'text-title').style.color).toBe('#112233');
 

@@ -177,7 +177,7 @@ describe.skipIf(!runnable)('clipboard screenshot paste in Electron Chromium', ()
     // The host is the deck's own key (see assetProtocol.ts); the path is the asset.
     expect(pasted.src).toMatch(/^deck:\/\/[^/]+\/assets\/Screenshot\.[a-f0-9]{8}\.png$/);
     expect(pasted.selected).toBe(true);
-    expect(pasted.status).toContain('Pasted 1 element');
+    expect(pasted.status).toContain('Pasted 1 object');
 
     const assets = await readdir(join(deckDir, 'assets'));
     expect(assets).toHaveLength(1);
@@ -252,7 +252,7 @@ describe.skipIf(!runnable)('clipboard screenshot paste in the headless-server We
     ), 20_000);
 
     expect(pasted.selected).toBe(true);
-    expect(pasted.status).toContain('Pasted 1 element');
+    expect(pasted.status).toContain('Pasted 1 object');
 
     const liveDeck = await eventually(async () => {
       const response = await fetch(`http://127.0.0.1:${server!.port}/api/deck?deck=clipboard-web`);

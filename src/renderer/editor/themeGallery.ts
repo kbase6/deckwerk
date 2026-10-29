@@ -69,7 +69,7 @@ export function createThemePreviewCard(
 
   const swatches = document.createElement('span');
   swatches.className = 'theme-card-swatches';
-  swatches.setAttribute('aria-label', `${theme.name} colour palette`);
+  swatches.setAttribute('aria-label', `${theme.name} color palette`);
   for (const color of theme.palette) {
     const swatch = document.createElement('span');
     swatch.className = 'theme-card-swatch';

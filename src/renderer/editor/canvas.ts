@@ -5743,7 +5743,7 @@ export class EditorCanvas {
     }
     if (offsets) this.restoreTextRange(content, offsets);
     this.focusTextSurface(content);
-    this.commitLiveTextDom(value ? 'Change list marker colour' : 'Make list markers follow text colour');
+    this.commitLiveTextDom(value ? 'Change list marker color' : 'Make list markers follow text color');
     return true;
   }
 
@@ -6392,7 +6392,7 @@ export class EditorCanvas {
   private applyTextSelectionStyle(property: TextRunStyleProperty, value: string): boolean {
     const label = property === 'fontFamily' ? 'Change selected text font'
       : property === 'fontSize' ? 'Change selected text size'
-        : property === 'color' ? 'Change selected text colour'
+        : property === 'color' ? 'Change selected text color'
           : property === 'fontWeight' ? 'Change selected text weight'
             : property === 'fontStyle' ? 'Change selected text italic'
               : property === 'verticalAlign' ? 'Change selected text baseline'
@@ -6667,7 +6667,7 @@ export class EditorCanvas {
       cell.style[property] = value ?? '';
       if (!cell.getAttribute('style')?.trim()) cell.removeAttribute('style');
     }
-    this.commitTableDom(property === 'color' ? 'Change table text colour' : 'Change table cell colour');
+    this.commitTableDom(property === 'color' ? 'Change table text color' : 'Change table cell color');
   }
 
   applyTableCellTextStyle(

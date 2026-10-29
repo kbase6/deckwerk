@@ -183,7 +183,7 @@ describe.skipIf(!electronBinary)('copy and paste between decks in the browser ed
     await cdp().evaluate(`void window.store.select(['image-a', 'video-a'])`);
     const token = await copyInApp();
     expect(token.startsWith('deckwerk-clipboard:')).toBe(true);
-    await copied('Copied 2 elements.');
+    await copied('Copied 2 objects.');
 
     await openDeck(DECK_B, '#canvas .slide');
     await pasteInApp(token);
@@ -206,7 +206,7 @@ describe.skipIf(!electronBinary)('copy and paste between decks in the browser ed
     expect(await rendered(image.id)).toBe(true);
     expect(await rendered(video.id)).toBe(true);
     expect(await cdp().evaluate<string>(`document.getElementById('status')?.textContent ?? ''`))
-      .toContain('Pasted 2 elements.');
+      .toContain('Pasted 2 objects.');
 
     const persisted = await eventually(
       async () => serverDeck(DECK_B),
