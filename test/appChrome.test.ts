@@ -59,6 +59,21 @@ describe('shared application chrome', () => {
     }
   });
 
+  it('keeps its palette in a namespace a deck theme.css does not use', () => {
+    // A deck's theme.css loads into the chrome's own document, so a token both
+    // declare on :root is one value: the deck's --accent recoloured the chrome,
+    // or the chrome's replaced the deck's on its slides.
+    for (const stylesheet of ['src/renderer/appChrome.css', 'src/renderer/lightTheme.css', 'src/renderer/editor/editor.css']) {
+      for (const [, block] of source(stylesheet).matchAll(/:root(?:\[[^\]]*\])?\s*\{([^}]*)\}/g)) {
+        for (const [, name] of block.matchAll(/(--[\w-]+)\s*:/g)) expect(name, stylesheet).toMatch(/^--dw-/);
+      }
+    }
+    // The slide's own styles never lean on the chrome's palette.
+    for (const stylesheet of ['src/renderer/player/player.css', 'src/renderer/player/type.css']) {
+      expect(source(stylesheet)).not.toMatch(/var\(--dw-/);
+    }
+  });
+
   it('keeps chrome text and muted text legible on every surface in both themes', () => {
     const dark = tokens(source('src/renderer/appChrome.css'), ':root');
     const light = { ...dark, ...tokens(source('src/renderer/lightTheme.css'), ':root[data-ui-theme="light"]') };
