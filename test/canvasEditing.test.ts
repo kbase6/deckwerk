@@ -2068,7 +2068,7 @@ describe('inline text editing', () => {
     stage.getBoundingClientRect = () =>
       ({ left: 0, top: 0, width: 1920, height: 1080 }) as DOMRect;
     canvas.contextActions = (element) => element?.type === 'video'
-      ? [{ label: 'Edit mask (crop)', action: () => canvas.toggleMaskMode(element.id) }]
+      ? [{ label: 'Crop', action: () => canvas.toggleMaskMode(element.id) }]
       : [];
     host.dispatchEvent(new MouseEvent('contextmenu', {
       clientX: 300, clientY: 400, bubbles: true,
@@ -2156,7 +2156,7 @@ describe('inline text editing', () => {
     // The window has not moved; the picture inside it has.
     expect(video).toMatchObject({ x: 100, y: 300, w: 640, h: 360 });
     expect(video.sourceBox).toEqual({ x: -120, y: -85, w: 800, h: 450 });
-    expect(store.history()[0]?.label).toBe('Move video in mask');
+    expect(store.history()[0]?.label).toBe('Reposition video in crop');
     expect(canvas.maskingElement()).toBe('video-1');
 
     // One undoable step, back to where the picture was.
@@ -2840,7 +2840,7 @@ describe('same-kind multi-selection properties', () => {
     expect(optionSections.map((section) => section.querySelector('h4')?.textContent))
       .toEqual([
         'Playback',
-        'Mask',
+        'Crop & corners',
         'Border',
         'Effects',
       ]);
@@ -2848,7 +2848,7 @@ describe('same-kind multi-selection properties', () => {
     // Keep-aspect-ratio clips like the mask does, so it lives in that section.
     expect(optionSections[1].textContent).toContain('Keep aspect ratio');
     expect(optionSections[1].textContent).toContain('Corner radius');
-    expect(optionSections[1].textContent).toContain('Circular mask');
+    expect(optionSections[1].textContent).toContain('Crop to circle');
     expect(optionSections[2].textContent).toContain('Color');
     expect(optionSections[2].textContent).toContain('Width');
     expect(optionSections[2].textContent).not.toContain('Corner radius');
@@ -2860,7 +2860,8 @@ describe('same-kind multi-selection properties', () => {
     autoplay.dispatchEvent(new Event('change', { bubbles: true }));
     expect(store.selectedElements().map((element) => element.type === 'video' && element.autoplay))
       .toEqual([true, true]);
-    expect(videoGroup.textContent).not.toContain('Edit mask');
+    expect(videoGroup.textContent).not.toContain('Crop…');
+    expect(videoGroup.textContent).not.toMatch(/mask/i);
     expect(videoGroup.textContent).not.toContain('Trim');
   });
 });

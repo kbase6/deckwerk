@@ -33,7 +33,7 @@ import { collabClientDir } from './support/collabClient.js';
  *
  * The invariants: **looking at a slide never edits it; a crop moves only the
  * edge dragged, never the picture; the window never shows past the picture;
- * geometry is whole pixels.** Real media, the real Edit mask button, real CDP
+ * geometry is whole pixels.** Real media, the real Crop… button, real CDP
  * pointer input; test/mediaCrop.test.ts walks the arithmetic.
  */
 const DECK_ID = 'crop-outline-bugs';
@@ -247,13 +247,13 @@ const clickControl = async (selector: string, text: string) => {
 
 const enterCrop = async (id: string, box: Rect) => {
   await select(id, box);
-  await clickControl('.mask-action-row .panel-action', 'Edit mask');
+  await clickControl('.mask-action-row .panel-action', 'Crop…');
   await eventually(() => cdp.evaluate<boolean>(`!!document.querySelector('#canvas .sel-box.masking')`),
     `${id}: mask mode never began`);
 };
 
 const leaveCrop = async () => {
-  await clickControl('.mask-action-row .panel-action', 'Done editing mask');
+  await clickControl('.mask-action-row .panel-action', 'Done cropping');
   await eventually(() => cdp.evaluate<boolean>(`!document.querySelector('#canvas .sel-box.masking')`),
     'mask mode never ended');
 };

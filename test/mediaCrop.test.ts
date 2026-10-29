@@ -8,7 +8,7 @@ import { EditorStore, pasteFromClipboard } from '../src/renderer/editor/store.js
 /**
  * Cropping and resizing pictures and videos under every "Keep aspect ratio"
  * setting, driven the way a person does it: the inspector's checkbox, its
- * Edit mask button, and pointer drags on the canvas handles.
+ * Crop… button, and pointer drags on the canvas handles.
  *
  * Vincent unticked "Keep aspect ratio" on a video and the crop window still
  * kept its proportions: since #62 every media drag was locked unless Shift
@@ -112,7 +112,7 @@ function setup(element: Media) {
     if (box.checked !== on) box.click();
     expect(keepAspectBox().checked).toBe(on);
   };
-  /** Press the inspector's Edit mask / Done editing mask button. */
+  /** Press the inspector's Crop… / Done cropping button. */
   const toggleMask = () =>
     inspectorHost.querySelector<HTMLButtonElement>('.mask-action-row .panel-action')!.click();
   /** Drag one of the element's handles by (dx, dy) on the 1:1 stage. */
@@ -221,8 +221,9 @@ describe('cropping media in mask mode', () => {
 
     it(`${type}: a circular mask stays round whatever the box and Shift say`, () => {
       const t = setup(media(type, 'contain'));
-      t.checkbox('Circular mask').click();
+      t.checkbox('Crop to circle').click();
       expect(t.current().maskShape).toBe('circle');
+      expect(t.store.history()[0]?.label).toBe('Crop to circle');
       t.setKeepAspect(false);
       t.toggleMask();
       for (const shift of [false, true]) {

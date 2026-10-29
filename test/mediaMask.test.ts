@@ -78,7 +78,7 @@ describe('circular mask geometry', () => {
   });
 
   it('is stable when applied a second time', () => {
-    // Toggling the checkbox off and on, or Reset mask on a circle, re-runs the
+    // Toggling the checkbox off and on, or Reset crop on a circle, re-runs the
     // layout on an element that already carries the crop. It must not creep.
     for (const box of boxes) {
       for (const natural of naturals) {

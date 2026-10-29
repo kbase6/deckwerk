@@ -526,13 +526,13 @@ export function makeContextActions(
       }
       if (el.type === 'image' || el.type === 'video') {
         items.push('separator', {
-          label: canvas.maskingElement() === el.id ? 'Done editing mask' : 'Edit mask (crop)',
+          label: canvas.maskingElement() === el.id ? 'Done cropping' : 'Crop',
           action: () => canvas.toggleMaskMode(el.id),
         });
       }
       if (el.type === 'image' || el.type === 'video') {
         items.push({
-          label: el.maskShape === 'circle' ? 'Rectangular mask' : 'Circular mask',
+          label: el.maskShape === 'circle' ? 'Crop to rectangle' : 'Crop to circle',
           action: () => store.updateSelected((target) => {
             if (target.type === 'image' || target.type === 'video') {
               setCircularMask(
@@ -541,7 +541,7 @@ export function makeContextActions(
                 mediaNaturalSize(target.id),
               );
             }
-          }, { label: 'Mask shape' }),
+          }, { label: el.maskShape === 'circle' ? 'Crop to rectangle' : 'Crop to circle' }),
         });
       }
       if (el.type === 'video') {

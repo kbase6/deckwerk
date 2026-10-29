@@ -22,7 +22,7 @@ import { collabClientDir } from './support/collabClient.js';
  * A crop is free and Shift locks it; a resize keeps proportions. Vincent could
  * not crop a video in 2610_TRI_site_visit to a new shape: every crop handle
  * kept the window's proportions unless Shift was held, and unticking "Keep
- * aspect ratio" did nothing. Real media, the real Edit mask button, real
+ * aspect ratio" did nothing. Real media, the real Crop… button, real
  * pointer input; test/mediaCrop.test.ts walks every option.
  */
 const DECK_ID = 'crop-aspect';
@@ -142,7 +142,7 @@ describe.skipIf(!electronBinary)('cropping and resizing media', () => {
       })()`), `${id} never became the inspector's only, ticked selection`);
       const original = await saved(id, (el) => el.fit === 'contain', 'the fixture never loaded');
 
-      await clickControl('.mask-action-row .panel-action', 'Edit mask');
+      await clickControl('.mask-action-row .panel-action', 'Crop…');
       await eventually(() => cdp.evaluate<boolean>(`!!document.querySelector('#canvas .sel-box.masking')`), 'mask mode never began');
 
       // With the box ticked, the window still follows the pointer: wider than
@@ -159,7 +159,7 @@ describe.skipIf(!electronBinary)('cropping and resizing media', () => {
       expect(locked.w / locked.h, `${id} locked crop`).toBeCloseTo(free.w / free.h, 1);
       expect(picture(locked), `${id} picture moved or reshaped`).toEqual(picture(original));
 
-      await clickControl('.mask-action-row .panel-action', 'Done editing mask');
+      await clickControl('.mask-action-row .panel-action', 'Done cropping');
       await eventually(() => cdp.evaluate<boolean>(`!document.querySelector('#canvas .sel-box.masking')`), 'mask mode never ended');
 
       // Outside mask mode a corner drag resizes, keeping the proportions.

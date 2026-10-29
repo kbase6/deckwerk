@@ -178,7 +178,7 @@ describe('compact video inspector', () => {
       .toEqual([
         'Playback',
         'Trim',
-        'Mask',
+        'Crop & corners',
         'Border',
         'Effects',
       ]);
@@ -188,7 +188,7 @@ describe('compact video inspector', () => {
     expect(inspectorHost.textContent).not.toContain('Crop with the handles');
   });
 
-  it('reveals reset as a split-button segment only after mask editing is done', () => {
+  it('reveals a Reset crop button only after cropping is done', () => {
     const { inspectorHost, store, inspector, canvas, canvasHost } = setup();
     inspector.onToggleMask = (id) => canvas.toggleMaskMode(id);
     inspector.maskingElement = () => canvas.maskingElement();
@@ -196,13 +196,15 @@ describe('compact video inspector', () => {
     store.select(['video-1']);
 
     let actions = inspectorHost.querySelector('.mask-action-row')!;
-    expect(actions.querySelector('.panel-action')?.textContent).toBe('Edit mask');
-    expect(actions.querySelector('button[title="Reset mask"]')).toBeNull();
+    const resetButton = () => [...actions.querySelectorAll<HTMLButtonElement>('button')]
+      .find((node) => node.textContent === 'Reset crop');
+    expect(actions.querySelector('.panel-action')?.textContent).toBe('Crop…');
+    expect(resetButton()).toBeUndefined();
 
     actions.querySelector<HTMLButtonElement>('.panel-action')!.click();
     actions = inspectorHost.querySelector('.mask-action-row')!;
-    expect(actions.querySelector('.panel-action')?.textContent).toBe('Done editing mask');
-    expect(actions.querySelector('button[title="Reset mask"]')).toBeNull();
+    expect(actions.querySelector('.panel-action')?.textContent).toBe('Done cropping');
+    expect(resetButton()).toBeUndefined();
 
     const handle = canvasHost.querySelector<HTMLElement>(
       '.handle-se[data-element-id="video-1"]',
@@ -220,12 +222,15 @@ describe('compact video inspector', () => {
     actions = inspectorHost.querySelector('.mask-action-row')!;
     actions.querySelector<HTMLButtonElement>('.panel-action')!.click();
     actions = inspectorHost.querySelector('.mask-action-row')!;
-    expect(actions.querySelector('.panel-action')?.textContent).toBe('Edit mask');
-    const reset = actions.querySelector<HTMLButtonElement>('button[title="Reset mask"]')!;
-    expect(reset.textContent).toBe('×');
-    expect(reset.classList.contains('mask-reset-segment')).toBe(true);
+    expect(actions.querySelector('.panel-action')?.textContent).toBe('Crop…');
+    // A worded button, styled like the Crop… button beside it, not a bare ×.
+    const reset = resetButton()!;
+    expect(reset).toBeDefined();
+    expect(reset.classList.contains('panel-action')).toBe(true);
     expect(actions.classList.contains('has-reset')).toBe(true);
+    expect(inspectorHost.textContent).not.toMatch(/mask/i);
     reset.click();
+    expect(store.history()[0]?.label).toBe('Reset crop');
 
     const video = store.selectedElements()[0];
     expect(video.type).toBe('video');

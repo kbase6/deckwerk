@@ -631,7 +631,7 @@ export class Inspector {
     const active = this.maskingElement?.() === elementId;
 
     wrap.appendChild(button(
-      active ? 'Done editing mask' : 'Edit mask',
+      active ? 'Done cropping' : 'Crop…',
       () => this.onToggleMask?.(elementId),
       'panel-action',
     ));
@@ -640,9 +640,8 @@ export class Inspector {
       .selectedElements()
       .find((e) => e.id === elementId);
     if (el && (el.type === 'image' || el.type === 'video') && el.sourceBox && !active) {
-      const reset = smallButton(
-        '×',
-        'Reset mask',
+      const reset = button(
+        'Reset crop',
         () => this.store.updateSelected((target) => {
           if (target.type !== 'image' && target.type !== 'video') return;
           target.sourceBox = null;
@@ -652,9 +651,9 @@ export class Inspector {
           if (target.maskShape === 'circle') {
             setCircularMask(target, true, mediaNaturalSize(target.id));
           }
-        }, { label: 'Reset mask' }),
+        }, { label: 'Reset crop' }),
+        'panel-action',
       );
-      reset.classList.add('mask-reset-segment');
       wrap.classList.add('has-reset');
       wrap.appendChild(reset);
     }
@@ -664,7 +663,7 @@ export class Inspector {
   /** Rounded corners clip media, so keep them with the other mask controls. */
   private mediaMaskControls(elementId: string): HTMLElement {
     const el = this.store.selectedElements().find((element) => element.id === elementId);
-    const masking = optionSection('Mask', 'media-masking-options', 'non-destructive');
+    const masking = optionSection('Crop & corners', 'media-masking-options', 'original kept');
     if (!el || (el.type !== 'image' && el.type !== 'video')) return masking.section;
 
     const settings = document.createElement('div');
@@ -681,12 +680,12 @@ export class Inspector {
     // true circle whatever the media's aspect ratio. Mask editing then drags
     // the picture around behind that fixed window.
     settings.appendChild(
-      checkboxField('Circular mask', editableCircularMask(el), (on) =>
+      checkboxField('Crop to circle', editableCircularMask(el), (on) =>
         this.store.updateSelected((target) => {
           if (target.type === 'image' || target.type === 'video') {
             setMediaMask(target, on);
           }
-        }, { label: on ? 'Circular mask' : 'Rectangular mask' })),
+        }, { label: on ? 'Crop to circle' : 'Crop to rectangle' })),
     );
     masking.content.appendChild(settings);
     // 'contain' letterboxes inside the box (aspect ratio fixed); 'fill'
@@ -1677,7 +1676,7 @@ export class Inspector {
       playback.content.appendChild(flags);
       wrap.appendChild(playback.section);
     }
-    const masking = optionSection('Mask', 'media-masking-options', 'non-destructive');
+    const masking = optionSection('Crop & corners', 'media-masking-options', 'original kept');
     const maskSettings = document.createElement('div');
     maskSettings.className = 'media-mask-settings';
     maskSettings.append(
@@ -1692,7 +1691,7 @@ export class Inspector {
         { unit: 'px' },
       ),
       mixedCheckboxField(
-        'Circular mask',
+        'Crop to circle',
         commonValue(media.map(editableCircularMask)),
         (on) => this.store.updateSelected((element) => {
           if (element.type === 'image' || element.type === 'video') {

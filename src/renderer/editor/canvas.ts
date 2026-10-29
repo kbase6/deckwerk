@@ -2813,7 +2813,7 @@ export class EditorCanvas {
         // Uncropped media pans from the implicit crop of its painted picture,
         // so the whole gesture is one undoable step that restores `sourceBox: null`.
         this.maskOrigin = paintedMediaBox(masked, mediaNaturalSize(masked.id, this.slideLayer));
-        this.store.beginTransaction(`Move ${masked.type} in mask`);
+        this.store.beginTransaction(`Reposition ${masked.type} in crop`);
         this.drag = {
           kind: 'mask-pan',
           elementId: masked.id,
@@ -3492,7 +3492,7 @@ export class EditorCanvas {
     }
     openContextMenu(menu, { x: ev.clientX, y: ev.clientY });
     // A document-level pointerdown used to remove the menu *before* its row
-    // could receive click, making actions such as Edit mask appear inert.
+    // could receive click, making actions such as Crop appear inert.
     menu.addEventListener('pointerdown', (event) => event.stopPropagation());
     const close = () => menu.remove();
     setTimeout(() => document.addEventListener('pointerdown', close, { once: true }), 0);
