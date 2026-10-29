@@ -322,8 +322,8 @@ describe.skipIf(!electronBinary)('mode flags and focus lifecycle', () => {
     const stored = await session.storedHtml(TEXT_B);
     expect(stored, 'the typed text reached the store').toContain('esc1');
 
-    // Leave the UI on the Props tab for later cases.
-    await session.cdp.clickByText('#side-tabs button', 'Props', 'Props tab');
+    // Leave the UI on the Format tab for later cases.
+    await session.cdp.clickByText('#side-tabs button', 'Format', 'Format tab');
     await wait(100);
   });
 });

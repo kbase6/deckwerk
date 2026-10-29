@@ -409,6 +409,8 @@ button.bar-person:focus-visible { outline: 2px solid var(--accent); outline-offs
   color: var(--muted);
 }
 .chat-bell[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); }
+/* The other tabs shorten first, so the unread count never disappears. */
+#side-tabs button[data-panel="chat"] { min-width: max-content; }
 #side-tabs button .chat-tab-badge {
   display: inline-block;
   min-width: 16px;

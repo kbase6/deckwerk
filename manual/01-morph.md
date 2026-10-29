@@ -2,9 +2,9 @@
 
 Morph animates matching objects from one slide into the next. Objects that are identical across slides don't change at all. Objects that are different, but not paired, fade out or in.
 
-Select the first slide in the transition, then find **Morph** under **Props**.
+Select the first slide in the transition, then find **Morph** under **Format**.
 
-> Screenshot placeholder: The Morph controls in the Props sidebar.
+> Screenshot placeholder: The Morph controls in the Format tab.
 
 ### Auto-pair
 
