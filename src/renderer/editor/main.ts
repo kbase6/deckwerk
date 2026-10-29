@@ -946,7 +946,7 @@ async function importPresentation(
   }
 }
 
-/** The Theme sidebar tab, shared with the browser collab shell. */
+/** The Design sidebar tab, shared with the browser collab shell. */
 const designWorkspace = new DesignWorkspace({
   canvasHost: el('canvas'),
   store,

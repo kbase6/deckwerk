@@ -2492,6 +2492,24 @@ describe('theming through the panel, the rail and the inspector', () => {
     expect(computed(canvasHost, fresh.id).fontSize).toBe('60px');
   });
 
+  it('points the locked size field in the layout editor at the tab and button that change sizes', () => {
+    const { store, inspector, inspectorHost, panel } = themedSetup([[textElement('title', IMPORTED_TITLE)]]);
+    inspector.editsLayoutMasters = true;
+    store.select([]);
+    store.select(['title']);
+
+    // The tooltip names "<tab> › <button>". Follow it: the button must be on
+    // the Design tab's panel, and pressing it must offer the theme's sizes.
+    const pointer = /under (.+) › (.+)$/.exec(sizeField(inspectorHost).title);
+    expect(pointer?.[1]).toBe('Design');
+    const button = panelButton(panel.element, pointer?.[2] ?? '');
+    expect(button, `a Design tab button labelled "${pointer?.[2]}"`).toBeDefined();
+    button.click();
+    const sizeLabels = [...panel.element.querySelectorAll<HTMLElement>('.theme-role-size span')]
+      .map((node) => node.textContent);
+    expect(sizeLabels).toContain('Title size');
+  });
+
   it('changes a theme weight and typeface the same way', () => {
     const { store, canvasHost, panel } = themedSetup([[textElement('title', IMPORTED_TITLE)]]);
     chooseCard(panel.element, 'hacker');
