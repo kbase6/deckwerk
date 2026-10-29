@@ -336,6 +336,9 @@ function buildSession(cdp: Cdp, startingSlides: unknown[]): CrossSession {
         await wait(80);
       }
       await cdp.evaluate(`(() => {
+        // A walk may end in crop mode, which the selection reset below does
+        // not end on its own (item 1 of concepts_brief.md).
+        window.canvas.toggleMaskMode(null);
         window.store.commit((deck) => {
           const starting = ${JSON.stringify(startingSlides)};
           // A walk may have confirmed deleting both slides and then redone
