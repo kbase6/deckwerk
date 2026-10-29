@@ -279,7 +279,6 @@ export class DesignWorkspace {
     const masterInspector = new Inspector(inspectorHost, masterStore);
     masterInspector.editsLayoutMasters = true;
     wireCanvasInspector(masterCanvas, masterInspector);
-    masterInspector.onEditLayouts = (layout) => masterStore.selectSlide(LAYOUTS.indexOf(layout));
 
     const renderRail = (): void => {
       const state = masterStore.get();

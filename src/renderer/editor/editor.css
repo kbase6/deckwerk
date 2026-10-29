@@ -2715,7 +2715,6 @@ input[type="range"] { accent-color: var(--accent); border: 0; background: transp
 .design-preview-label small { color: var(--muted); font-size: 11px; }
 .design-preview-freeform { grid-column: 1 / -1; width: calc(50% - 9px); }
 
-.theme-section-action { width: 100%; margin-top: 8px; }
 .theme-layout-summary {
   display: block;
   width: 100%;
@@ -4648,7 +4647,6 @@ button.ghost:hover:not(:disabled) { color: var(--text); background: transparent;
 .theme-default-mode { flex: 1; }
 .theme-edit-button { margin-left: auto; }
 .design-masters { margin-top: 12px; }
-.design-masters-row { justify-content: space-between; margin-top: 8px; }
 .theme-editor-actions { display: flex; gap: 6px; margin-top: 8px; }
 .theme-change-report { margin-top: 10px; }
 .theme-change-report > .insp-hint { margin: 8px 0 0; }
