@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, watch } from 'node:fs';
+import { existsSync, mkdirSync, watch, type FSWatcher } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { userInfo } from 'node:os';
@@ -431,121 +431,158 @@ function watchDeck(state: DeckWindowState): void {
   let deckTimer: NodeJS.Timeout | null = null;
   let themeTimer: NodeJS.Timeout | null = null;
   const htmlTimers = new Map<string, NodeJS.Timeout>();
-  try {
-    const editDir = join(dir, HTML_EDIT_DIR);
-    mkdirSync(editDir, { recursive: true });
-    // Watch the folder, not the two files inside it. Every careful writer of
-    // deck.json — our own saveDeck, the collaboration server, git, and any
-    // editor a human points at theme.css — replaces the file by rename, and a
-    // watch bound to a path stops receiving events the moment that path gets a
-    // new inode. Watching the directory survives replacement.
-    const onDeckChanged = (): void => {
-      // Debounced: editors and agents often write in bursts.
-      if (deckTimer) clearTimeout(deckTimer);
-      deckTimer = setTimeout(async () => {
-        try {
-          const { readFile } = await import('node:fs/promises');
-          const raw = await readFile(join(dir, 'deck.json'), 'utf8');
-          // Our own autosave fires this watcher too. Byte-comparing against
-          // what we wrote is the only reliable echo test: comparing decks
-          // fails on key order, and that false mismatch caused a full reload
-          // that yanked the editor back to slide 1 a second after any edit.
-          if (raw === state.lastSavedDeckJson) return;
-          // Closing a watcher does not cancel the debounce it already
-          // scheduled. A reload belonging to the deck this window had before an
-          // Open or Save As must not land in the session that replaced it.
-          if (!state.session || state.session.dir !== dir) return;
-          // Watching the folder also catches writes nobody here made that
-          // change nothing — a script or checkout laying down identical
-          // content. Reloading those would broadcast a deck the windows
-          // already have, for no reason.
-          if (raw === serializeDeck(state.session.deck)) return;
-          const deck = await loadDeck(dir);
-          state.session.deck = deck;
-          broadcastDeck(state);
-        } catch {
-          // Half-written JSON mid-save; the next event will retry.
-        }
-      }, 200);
-    };
-    const onThemeChanged = (): void => {
-      if (themeTimer) clearTimeout(themeTimer);
-      themeTimer = setTimeout(async () => {
+  const editDir = join(dir, HTML_EDIT_DIR);
+  // Each watcher starts on its own. One that cannot (a theme in a folder that
+  // does not exist yet, an edit/ that cannot be created) used to take every
+  // watcher after it down too, silently, and an agent's saves went nowhere.
+  const startWatcher = (label: string, start: () => FSWatcher): void => {
+    const fail = (error: unknown): void =>
+      sendWatchNotice(state, `Not watching ${label} for changes: ${firstLine(error)}`);
+    try {
+      state.watchers.push(start().on('error', fail));
+    } catch (error) {
+      fail(error);
+    }
+  };
+  // Watch the folder, not the two files inside it. Every careful writer of
+  // deck.json — our own saveDeck, the collaboration server, git, and any
+  // editor a human points at theme.css — replaces the file by rename, and a
+  // watch bound to a path stops receiving events the moment that path gets a
+  // new inode. Watching the directory survives replacement.
+  const onDeckChanged = (): void => {
+    // Debounced: editors and agents often write in bursts.
+    if (deckTimer) clearTimeout(deckTimer);
+    deckTimer = setTimeout(async () => {
+      try {
+        const { readFile } = await import('node:fs/promises');
+        const raw = await readFile(join(dir, 'deck.json'), 'utf8');
+        // Our own autosave fires this watcher too. Byte-comparing against
+        // what we wrote is the only reliable echo test: comparing decks
+        // fails on key order, and that false mismatch caused a full reload
+        // that yanked the editor back to slide 1 a second after any edit.
+        if (raw === state.lastSavedDeckJson) return;
+        // Closing a watcher does not cancel the debounce it already
+        // scheduled. A reload belonging to the deck this window had before an
+        // Open or Save As must not land in the session that replaced it.
         if (!state.session || state.session.dir !== dir) return;
-        const css = await loadTheme(state.session.dir, state.session.deck.theme);
-        state.themeCss = css;
-        for (const win of windowsOf(state)) win.webContents.send(IPC.themeCss, css);
-      }, 200);
-    };
-    // notes.md is the hand-editable mirror of the slides' notes. A change goes
-    // to the editor renderer, which applies it to the slides as an undoable
-    // edit and autosaves; that save rewrites deck.json and, normalised,
-    // notes.md itself. Our own write of the file is recognised by content:
-    // what is on disk already says exactly what the deck says.
-    let notesTimer: NodeJS.Timeout | null = null;
-    const onNotesChanged = (): void => {
-      if (notesTimer) clearTimeout(notesTimer);
-      notesTimer = setTimeout(async () => {
+        // Watching the folder also catches writes nobody here made that
+        // change nothing — a script or checkout laying down identical
+        // content. Reloading those would broadcast a deck the windows
+        // already have, for no reason.
+        if (raw === serializeDeck(state.session.deck)) return;
+        const deck = await loadDeck(dir);
+        state.session.deck = deck;
+        broadcastDeck(state);
+      } catch (error) {
+        // Half-written JSON mid-save: the next event retries, and its reload
+        // replaces this notice. A file that stays broken is not ignored silently.
+        if (state.session?.dir === dir) sendWatchNotice(state, `Could not reload deck.json: ${firstLine(error)}`);
+      }
+    }, 200);
+  };
+  const onThemeChanged = (): void => {
+    if (themeTimer) clearTimeout(themeTimer);
+    themeTimer = setTimeout(async () => {
+      if (!state.session || state.session.dir !== dir) return;
+      const css = await loadTheme(state.session.dir, state.session.deck.theme);
+      state.themeCss = css;
+      for (const win of windowsOf(state)) win.webContents.send(IPC.themeCss, css);
+    }, 200);
+  };
+  // notes.md is the hand-editable mirror of the slides' notes. A change goes
+  // to the editor renderer, which applies it to the slides as an undoable
+  // edit and autosaves; that save rewrites deck.json and, normalised,
+  // notes.md itself. Our own write of the file is recognised by content:
+  // what is on disk already says exactly what the deck says.
+  let notesTimer: NodeJS.Timeout | null = null;
+  const onNotesChanged = (): void => {
+    if (notesTimer) clearTimeout(notesTimer);
+    notesTimer = setTimeout(async () => {
+      try {
+        if (!state.session || state.session.dir !== dir) return;
+        const { readFile } = await import('node:fs/promises');
+        const contents = await readFile(join(dir, SPEAKER_NOTES_FILE), 'utf8');
+        if (contents === serializeSpeakerNotes(state.session.deck)) return;
+        if (state.editor.isDestroyed()) return;
+        state.editor.webContents.send(IPC.speakerNotesEdit, contents);
+      } catch {
+        // Deleted or mid-write; the next event will retry.
+      }
+    }, 200);
+  };
+  // A theme kept in a subfolder is not visible to a non-recursive directory
+  // watch, so that case keeps its own path watcher.
+  const themeInDeckRoot = !themeFile.includes('/') && !themeFile.includes(sep);
+  startWatcher('the deck folder', () => watch(dir, (_event, filename) => {
+    const name = filename ? String(filename) : '';
+    if (name === 'deck.json') onDeckChanged();
+    else if (name === SPEAKER_NOTES_FILE) onNotesChanged();
+    else if (themeInDeckRoot && name === themeFile) onThemeChanged();
+  }));
+  if (!themeInDeckRoot) startWatcher(themeFile, () => watch(join(dir, themeFile), onThemeChanged));
+  // Saving an authoring file is the everyday way slides change, so it must
+  // be cheap: the contents go straight to the editor's renderer, which is
+  // already a browser and lays them out in an offscreen iframe. Nothing is
+  // spawned, and the compile is measured by the engine that will draw it.
+  startWatcher(`${HTML_EDIT_DIR}/`, () => {
+    mkdirSync(editDir, { recursive: true });
+    return watch(editDir, (_event, filename) => {
+      if (!filename || !isAuthoringFileName(String(filename))) return;
+      const path = resolve(editDir, String(filename));
+      // `.scratchpad/` holds persistent Agent preview evidence. Only direct
+      // children of edit/ are authored documents whose saves update slides.
+      if (dirname(path) !== editDir) return;
+      const previous = htmlTimers.get(path);
+      if (previous) clearTimeout(previous);
+      htmlTimers.set(path, setTimeout(async () => {
+        htmlTimers.delete(path);
         try {
-          if (!state.session || state.session.dir !== dir) return;
-          const { readFile } = await import('node:fs/promises');
-          const contents = await readFile(join(dir, SPEAKER_NOTES_FILE), 'utf8');
-          if (contents === serializeSpeakerNotes(state.session.deck)) return;
-          if (state.editor.isDestroyed()) return;
-          state.editor.webContents.send(IPC.speakerNotesEdit, contents);
-        } catch {
-          // Deleted or mid-write; the next event will retry.
-        }
-      }, 200);
-    };
-    // A theme kept in a subfolder is not visible to a non-recursive directory
-    // watch, so that case keeps its own path watcher.
-    const themeInDeckRoot = !themeFile.includes('/') && !themeFile.includes(sep);
-    state.watchers.push(
-      watch(dir, (_event, filename) => {
-        const name = filename ? String(filename) : '';
-        if (name === 'deck.json') onDeckChanged();
-        else if (name === SPEAKER_NOTES_FILE) onNotesChanged();
-        else if (themeInDeckRoot && name === themeFile) onThemeChanged();
-      }),
-      ...(themeInDeckRoot ? [] : [watch(join(dir, themeFile), onThemeChanged)]),
-      // Saving an authoring file is the everyday way slides change, so it must
-      // be cheap: the contents go straight to the editor's renderer, which is
-      // already a browser and lays them out in an offscreen iframe. Nothing is
-      // spawned, and the compile is measured by the engine that will draw it.
-      watch(editDir, (_event, filename) => {
-        if (!filename || !isAuthoringFileName(String(filename))) return;
-        const path = resolve(editDir, String(filename));
-        // `.scratchpad/` holds persistent Agent preview evidence. Only direct
-        // children of edit/ are authored documents whose saves update slides.
-        if (dirname(path) !== editDir) return;
-        const previous = htmlTimers.get(path);
-        if (previous) clearTimeout(previous);
-        htmlTimers.set(path, setTimeout(async () => {
-          htmlTimers.delete(path);
-          try {
-            // A save is not necessarily atomic; see readSettledFile for why
-            // the read waits for the write to finish rather than giving up.
-            const contents = await readSettledFile(path);
-            if (/<html[\s>]/i.test(contents) && !/<\/html>/i.test(contents)) return;
-            // The editor's own export lands here too; that event is an echo.
-            if (state.lastWrittenHtml.get(path) === contents) {
-              state.lastWrittenHtml.delete(path);
-              return;
+          // A save is not necessarily atomic; see readSettledFile for why
+          // the read waits for the write to finish rather than giving up.
+          const contents = await readSettledFile(path);
+          if (/<html[\s>]/i.test(contents) && !/<\/html>/i.test(contents)) {
+            // Still unfinished once the write settled: say so, or the save
+            // looks like it simply did nothing.
+            if (state.session?.dir === dir) {
+              sendWatchNotice(state, `Ignored ${basename(path)}: it has no closing </html> tag, so it looks unfinished`);
             }
-            if (!state.session || state.session.dir !== dir) return;
-            if (state.editor.isDestroyed()) return;
-            state.editor.webContents.send(IPC.htmlEdit, { path, contents });
-          } catch (error) {
-            console.error(`Could not read HTML edit ${path}:`, error);
+            return;
           }
-        }, 200));
-      }),
-    );
-  } catch {
-    // A brand-new deck may not have both files yet; watching resumes on the
-    // next setSession.
-  }
+          // The editor's own export lands here too; that event is an echo.
+          if (state.lastWrittenHtml.get(path) === contents) {
+            state.lastWrittenHtml.delete(path);
+            return;
+          }
+          if (!state.session || state.session.dir !== dir) return;
+          if (state.editor.isDestroyed()) return;
+          state.editor.webContents.send(IPC.htmlEdit, { path, contents });
+        } catch (error) {
+          console.error(`Could not read HTML edit ${path}:`, error);
+        }
+      }, 200));
+    });
+  });
+}
+
+/**
+ * Tell the person at this document's editor what its watchers could not do,
+ * in the status bar. A deck named on the command line is watched before its
+ * window has a page to say it in, so that notice waits for the page.
+ */
+function sendWatchNotice(state: DeckWindowState, text: string): void {
+  console.warn(text);
+  const { editor } = state;
+  if (editor.isDestroyed()) return;
+  const send = (): void => {
+    if (!editor.isDestroyed()) editor.webContents.send(IPC.watchNotice, text);
+  };
+  if (editor.webContents.isLoading()) editor.webContents.once('did-finish-load', send);
+  else send();
+}
+
+/** An error's first line: loadDeck's schema errors run to many. */
+function firstLine(error: unknown): string {
+  return (error instanceof Error ? error.message : String(error)).split('\n')[0];
 }
 
 /** Push deck changes to one document's windows so they never show stale content. */

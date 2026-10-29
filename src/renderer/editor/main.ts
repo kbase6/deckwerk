@@ -1184,17 +1184,28 @@ const operationProgress = new DelayedOperationProgress(({ message, busy }) => {
 
 window.api.onOperationProgress?.((progress) => operationProgress.update(progress));
 
-async function runOperation<T>(
+/** Settles once the operation the status bar is showing has ended. */
+let operationEnded: Promise<unknown> = Promise.resolve();
+
+function runOperation<T>(
   initialMessage: string,
   action: (operation: OperationHandle) => Promise<T>,
 ): Promise<T> {
   const operation = operationProgress.begin(initialMessage);
-  try {
-    return await action(operation);
-  } finally {
-    operation.finish();
-  }
+  const run = (async () => {
+    try {
+      return await action(operation);
+    } finally {
+      operation.finish();
+    }
+  })();
+  operationEnded = run.catch(() => undefined);
+  return run;
 }
+
+// A deck is watched before its window has finished opening it, and the open's
+// progress text would wipe a notice that arrived meanwhile: show it after.
+window.api.onWatchNotice?.((text) => void operationEnded.then(() => setStatusMessage(text)));
 
 function setStatusMessage(text: string): void {
   statusMessage = text;

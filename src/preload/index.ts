@@ -217,6 +217,9 @@ const api = {
    */
   htmlAdopt: (path: string, contents: string, expected: string): Promise<void> =>
     ipcRenderer.invoke(IPC.htmlAdopt, path, contents, expected),
+  /** A watcher could not start, or ignored a file it saw saved. */
+  onWatchNotice: (fn: (text: string) => void): (() => void) =>
+    on(IPC.watchNotice, fn),
   /** The deck's `notes.md` was saved outside the editor. */
   onSpeakerNotesEdit: (fn: (contents: string) => void): (() => void) =>
     on(IPC.speakerNotesEdit, fn),
