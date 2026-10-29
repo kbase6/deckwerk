@@ -990,7 +990,7 @@ async function slideNumbers(
     return;
   }
   const box = `() => [...document.querySelectorAll('.editor-inspector .field-check')]
-    .find((field) => field.querySelector('span')?.textContent === 'Show slide numbers'
+    .find((field) => field.querySelector('span')?.textContent === 'Show slide numbers (all slides)'
       && field.getClientRects().length > 0)?.querySelector('input')`;
   const read = () => cdp.evaluate<{ on: boolean; expected: string | null; shown: string | null; checked: boolean | null }>(`(() => {
     const state = window.store.get();

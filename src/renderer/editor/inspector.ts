@@ -571,7 +571,7 @@ export class Inspector {
     layout.append(layoutLabel, layoutSelect);
     section.content.appendChild(layout);
     if (!this.editsLayoutMasters) {
-      const numbering = checkboxField('Show slide numbers', this.store.get().deck.showSlideNumbers, (on) => {
+      const numbering = checkboxField('Show slide numbers (all slides)', this.store.get().deck.showSlideNumbers, (on) => {
         this.store.commit((deck) => {
           deck.showSlideNumbers = on;
         }, { label: on ? 'Show slide numbers' : 'Hide slide numbers' });

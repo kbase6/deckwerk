@@ -8,11 +8,11 @@ Select the first slide in the transition, then find **Morph** under **Props**.
 
 ### Auto-pair
 
-Click **Enable and Auto-Pair**. DeckWerk enables the transition to the next slide and pairs objects it can match confidently, including related text, media, and shapes.
+Click **Enable Morph and auto-pair**. DeckWerk enables the transition to the next slide and pairs objects it can match confidently, including related text, media, and shapes.
 
 Auto-pair deliberately leaves uncertain objects alone. Open the Morph editor if a match is missing or wrong.
 
-Select several consecutive slides before clicking **Enable Morph & Auto-Pair** to apply it across the whole run.
+Select several consecutive slides before clicking **Enable Morph and auto-pair** to apply it across the whole run.
 
 > Screenshot placeholder: An auto-paired source and target slide.
 
@@ -24,4 +24,4 @@ Use **×** to remove one pair or **Clear pairs** to start over. Click **Done** w
 
 > Screenshot placeholder: Manually pairing two objects in the Morph editor.
 
-Duration and motion curve apply to Morph throughout the deck.
+Duration applies to this transition only. **Motion curve (all Morphs)** applies to every Morph in the deck.
