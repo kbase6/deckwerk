@@ -14,7 +14,7 @@ import { EditorStore, pasteFromClipboard } from '../src/renderer/editor/store.js
  * kept its proportions: since #62 every media drag was locked unless Shift
  * was held. The rule now: a crop reshapes the window, never the picture, so
  * it is free whatever the box says and Shift locks it; a resize follows the
- * box, Shift inverting it; a circle never frees. New media starts with the
+ * box, and Shift locks it too; a circle never frees. No drag writes the box. New media starts with the
  * box ticked, so a resize keeps its proportions.
  */
 
@@ -270,14 +270,21 @@ describe('resizing media outside mask mode', () => {
       expect(t.keepAspectBox().checked).toBe(false);
     });
 
-    it(`${type}, box ticked: keeps proportions; Shift frees it and squashes the picture`, () => {
-      const t = setup(media(type, 'contain'));
-      t.setKeepAspect(true);
-      const locked = t.drag('se', 160, -100);
-      expect(ratio(locked)).toBeCloseTo(16 / 9, 1);
-      expect(locked.fit).toBe('contain');
-      expect(t.drag('e', -100, 0, true)).toMatchObject({ w: locked.w - 100, h: locked.h, fit: 'fill' });
-    });
+    for (const fit of ['contain', 'cover'] as const) {
+      it(`${type}, box ticked (${fit}): keeps proportions with or without Shift, and stays ticked`, () => {
+        const t = setup(media(type, fit));
+        expect(t.keepAspectBox().checked).toBe(true);
+        const locked = t.drag('se', 160, -100);
+        expect(ratio(locked)).toBeCloseTo(16 / 9, 1);
+        expect(locked.fit).toBe(fit);
+        // Shift used to free the box and save the picture stretched.
+        const shifted = t.drag('e', -100, 0, true);
+        expect(shifted.w).toBe(locked.w - 100);
+        expect(ratio(shifted)).toBeCloseTo(16 / 9, 1);
+        expect(shifted.fit).toBe(fit);
+        expect(t.keepAspectBox().checked).toBe(true);
+      });
+    }
 
     it(`${type}, cropped and unticked: the crop stretches with its box`, () => {
       const t = setup(media(type, 'fill', { sourceBox: { x: -80, y: -40, w: 800, h: 450 } }));

@@ -19,7 +19,8 @@ import {
 import { collabClientDir } from './support/collabClient.js';
 
 /**
- * A crop is free and Shift locks it; a resize keeps proportions. Vincent could
+ * A crop is free and Shift locks it; a resize keeps proportions, Shift or
+ * not, and never saves the picture stretched. Vincent could
  * not crop a video in 2610_TRI_site_visit to a new shape: every crop handle
  * kept the window's proportions unless Shift was held, and unticking "Keep
  * aspect ratio" did nothing. Real media, the real Edit mask button, real
@@ -54,7 +55,7 @@ const media = (id: string, type: 'image' | 'video', x: number, src: string) => (
 type Saved = { x: number; y: number; w: number; h: number; fit: string; sourceBox: { x: number; y: number; w: number; h: number } | null };
 
 describe.skipIf(!electronBinary)('cropping and resizing media', () => {
-  it('crops freely, in proportion with Shift, and resizes in proportion', { timeout: 120_000 }, async () => {
+  it('crops freely, in proportion with Shift, and resizes in proportion with or without Shift', { timeout: 120_000 }, async () => {
     workDir = await mkdtemp(join(tmpdir(), 'crop-aspect-'));
     const decksRoot = join(workDir, 'decks');
     const deckDir = join(decksRoot, DECK_ID);
@@ -166,6 +167,13 @@ describe.skipIf(!electronBinary)('cropping and resizing media', () => {
       await dragCorner(id, 90, -20, false);
       const resized = await saved(id, (el) => el.w > locked.w + 30, 'the resize never saved');
       expect(resized.w / resized.h, `${id} resize kept its proportions`).toBeCloseTo(locked.w / locked.h, 1);
+
+      // Shift locks a resize as it locks a crop. It used to free the box and
+      // save the picture stretched, unticking "Keep aspect ratio" for good.
+      await dragCorner(id, 90, -20, true);
+      const shifted = await saved(id, (el) => el.w > resized.w + 30, 'the Shift resize never saved');
+      expect(shifted.w / shifted.h, `${id} Shift resize kept its proportions`).toBeCloseTo(locked.w / locked.h, 1);
+      expect(shifted.fit, `${id} Shift resize wrote the fit`).toBe('contain');
     }
   });
 });
