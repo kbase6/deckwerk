@@ -23,7 +23,7 @@ import {
   syncSlideNumber,
 } from '../player/render.js';
 import { decodeImage } from '../player/imageDecode.js';
-import { cropWindow, fittedImageBox, paintedMediaBox, pannedSourceBox } from '@shared/mediaMask.js';
+import { cropWindow, fittedImageBox, paintedMediaBox, pannedSourceBox, resizeMediaBox } from '@shared/mediaMask.js';
 import { mediaNaturalSize } from './mediaNatural.js';
 import { DecodedVideoPool, releaseDecodedVideo } from '../player/decodedVideoPool.js';
 import { ungateVideoLoad } from '../player/mediaLoadGate.js';
@@ -2930,10 +2930,11 @@ export class EditorCanvas {
 
         const ids = new Set(drag.origin.keys());
         // Snap to the boxes the author can see: a rotated neighbour's on-screen
-        // extent is its rotated bounding box.
+        // extent is its rotated bounding box, a letterboxed picture's is the
+        // picture.
         const others = slide.elements
           .filter((e) => !ids.has(e.id))
-          .map((e) => rotatedBounds(e));
+          .map((e) => rotatedBounds(this.editingFrame(e)));
 
         // Snap the group by its bounding box, then apply one delta to all
         // members, so relative positions inside a multi-selection are preserved.
@@ -2941,8 +2942,8 @@ export class EditorCanvas {
         // author is lining up; a move is a pure translation, so the delta the
         // snap produces applies unchanged to the unrotated positions.
         const bounds = unionRect([...drag.origin.entries()].map(([id, origin]) => {
-          const rot = slide.elements.find((e) => e.id === id)?.rot ?? 0;
-          return rot ? rotatedBounds({ ...origin, rot } as SlideElement) : origin;
+          const el = slide.elements.find((e) => e.id === id);
+          return el ? rotatedBounds(this.editingFrame({ ...el, ...origin } as SlideElement)) : origin;
         }));
         const moved = { ...bounds, x: bounds.x + dx, y: bounds.y + dy };
         const snapped = commandModifier(ev)
@@ -3110,10 +3111,11 @@ export class EditorCanvas {
           : clampResize(rect, o, edges);
 
         // Guides align to what is on screen, which for a rotated neighbour is
-        // its rotated bounding box, not its unrotated one.
+        // its rotated bounding box, not its unrotated one, and for a
+        // letterboxed picture is the picture, not its empty frame.
         const others = slide.elements
           .filter((e) => !drag.origins.has(e.id))
-          .map((e) => rotatedBounds(e));
+          .map((e) => rotatedBounds(this.editingFrame(e)));
         // A rotated element's own edges are not axis-aligned, so there is
         // nothing meaningful to snap them to; snapping it would only nudge the
         // box away from the pointer. Alt suspends snapping outright.
@@ -3176,16 +3178,7 @@ export class EditorCanvas {
           // Resizing a cropped element scales the whole picture with its
           // window, so the crop composition is preserved — without this, a
           // resize silently re-crops instead of scaling.
-          if ((el.type === 'image' || el.type === 'video') && origin.sourceBox) {
-            const fx = el.w / origin.w;
-            const fy = el.h / origin.h;
-            el.sourceBox = {
-              x: Math.round(origin.sourceBox.x * fx),
-              y: Math.round(origin.sourceBox.y * fy),
-              w: Math.max(1, Math.round(origin.sourceBox.w * fx)),
-              h: Math.max(1, Math.round(origin.sourceBox.h * fy)),
-            };
-          }
+          if (el.type === 'image' || el.type === 'video') resizeMediaBox(el, el.w, el.h, origin);
           if ((el.type === 'image' || el.type === 'video') && origin.fit) {
             // A freed picture squashes with its box: it fills the box (or its
             // scaled crop) exactly instead of letterboxing inside it. Letting
@@ -3247,7 +3240,7 @@ export class EditorCanvas {
           // be made exactly level.
           const others = slide.elements
             .filter((e) => !drag.origins.has(e.id))
-            .map((e) => rotatedBounds(e));
+            .map((e) => rotatedBounds(this.editingFrame(e)));
           const snapped = snapPoint(point, deck.canvas, others, threshold, {
             x: [anchor.x],
             y: [anchor.y],
@@ -7009,12 +7002,13 @@ export class EditorCanvas {
   }
 
   /**
-   * An element as the editor outlines and drags it. An uncropped `contain`
-   * picture is fitted to the picture it paints, so its outline sits on the
-   * picture and a resize or crop starts from it; the deck keeps its frame
-   * until such a gesture writes one, so looking at a slide never edits it.
+   * An element as the editor outlines, drags and snaps to it, and as Props
+   * shows it. An uncropped `contain` picture is fitted to the picture it
+   * paints, so its outline sits on the picture and a resize or crop starts
+   * from it; the deck keeps its frame until such a gesture or a typed value
+   * writes one, so looking at a slide never edits it.
    */
-  private editingFrame<T extends SlideElement>(el: T): T {
+  editingFrame<T extends SlideElement>(el: T): T {
     if (el.type !== 'image' || el.layoutMasterId) return el;
     const box = fittedImageBox(el, mediaNaturalSize(el.id, this.slideLayer));
     return box ? { ...el, ...box } : el;
