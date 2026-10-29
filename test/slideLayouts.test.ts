@@ -77,7 +77,7 @@ describe('slide layouts', () => {
     document.body.appendChild(host);
     new Inspector(host, store);
 
-    expect(host.querySelector('.insp-title')?.textContent).toBe('slide');
+    expect(host.querySelector('.insp-title')?.textContent).toBe('This slide');
     expect([...host.querySelectorAll('.insp-subtitle')].map((heading) => heading.textContent))
       .toEqual(['Layout', 'Morph']);
     expect([...host.querySelectorAll<HTMLElement>('.insp-group')]
@@ -114,7 +114,7 @@ describe('slide layouts', () => {
 
     store.selectSlide(1, true);
 
-    expect(host.querySelector('.insp-title')?.textContent).toBe('slides');
+    expect(host.querySelector('.insp-title')?.textContent).toBe('Slides');
     expect([...host.querySelectorAll('.insp-subtitle')].map((heading) => heading.textContent))
       .toEqual(['Layout', 'Morph']);
     const layout = [...host.querySelectorAll<HTMLSelectElement>('select')].find((select) =>

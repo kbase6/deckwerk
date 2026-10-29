@@ -20,6 +20,7 @@ import { sameDeckDrawing, type EditorStore } from './store.js';
 import { LAYOUT_LABELS, applySlideLayout, type SlideLayout } from './slideLayouts.js';
 import { elementFollowsLayout, layoutGeometryFor, realignElementToLayout } from '@shared/layoutMasters.js';
 import { MorphPanel } from './morphPanel.js';
+import { elementTypeName } from './elementLabel.js';
 import { fontFamilyField, primaryFamily } from './fontPicker.js';
 import {
   deckTheme,
@@ -454,7 +455,7 @@ export class Inspector {
     this.host.replaceChildren();
     if (selected.length > 0) this.morphPanel.dismiss();
     if (slideSelection.size > 1 && selected.length === 0) {
-      this.host.appendChild(sectionTitle('slides'));
+      this.host.appendChild(sectionTitle('Slides'));
       this.host.appendChild(hint(`${slideSelection.size} slides selected`));
       this.host.appendChild(this.slideLayoutSection(this.store.selectedSlides()));
       this.appendMorph();
@@ -462,14 +463,14 @@ export class Inspector {
     }
 
     if (selected.length === 0) {
-      this.host.appendChild(sectionTitle('slide'));
+      this.host.appendChild(sectionTitle('This slide'));
       const slide = deck.slides[slideIndex];
       if (slide) this.host.appendChild(this.slideLayoutSection([slide]));
       this.appendMorph();
       return;
     }
     if (selected.length > 1) {
-      this.host.appendChild(sectionTitle(`${selected.length} elements`));
+      this.host.appendChild(sectionTitle(`${selected.length} objects`));
       this.host.appendChild(this.alignSection());
       this.host.appendChild(this.geometrySection(selected));
       const first = selected[0];
@@ -507,10 +508,10 @@ export class Inspector {
     if (el.type === 'image' || el.type === 'video') {
       const header = document.createElement('div');
       header.className = 'type-heading-row';
-      header.append(sectionTitle(el.type), mediaSourceButton(el.src));
+      header.append(sectionTitle(elementTypeName(el)), mediaSourceButton(el.src));
       this.host.appendChild(header);
     } else {
-      this.host.appendChild(sectionTitle(el.type));
+      this.host.appendChild(sectionTitle(elementTypeName(el)));
     }
     this.host.appendChild(this.geometrySection(selected));
     const specific = this.typeSection(el);
