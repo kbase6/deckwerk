@@ -31,8 +31,8 @@ import { sidebarSelectionProbes } from './support/selectionSession.js';
  * resizing a selected word from the sidebar's Font size field,
  * panning and zooming the view with a plain mouse and the keyboard, the
  * Props tab's line Ends control on one or both lines, its Show slide numbers
- * box, the zoom bar's Gridlines toggle, and dragging a crop window by the
- * whole length of one of its edges.
+ * box, its Text fit choice for a text box, the zoom bar's Gridlines toggle,
+ * and dragging a crop window by the whole length of one of its edges.
  *
  * After EVERY step five oracles run: the whole-editor invariant set from
  * selectionSession, keystroke routing via per-step nonce strings, an element
@@ -158,7 +158,7 @@ type OpName =
   | 'rail hop' | 'undo' | 'redo' | 'undo round-trip' | 'delete selection'
   | 'cmd+a' | 'click with stray hover' | 'rail multi-delete' | 'stack key' | 'spelling fix'
   | 'size from sidebar' | 'viewport gesture' | 'line ends' | 'slide numbers' | 'gridlines'
-  | 'crop edge drag' | 'theme pick';
+  | 'crop edge drag' | 'theme pick' | 'text fit';
 
 interface Violation { seed: number; step: number; op: OpName; oracle: string; detail: string }
 
@@ -441,6 +441,7 @@ function chooseOp(next: () => number, pre: CrossState): OpName {
   add('gridlines', 1);
   add('theme pick', 1);
   if (pre.elements.includes(IMAGE)) add('crop edge drag', 2);
+  if (targets.some((id) => id !== IMAGE)) add('text fit', 2);
   return pick(next, ops);
 }
 
@@ -675,6 +676,9 @@ async function performOp(
       return 'same';
     case 'crop edge drag':
       await cropEdgeDrag(next, flag);
+      return 'same';
+    case 'text fit':
+      await textFit(next, pre, flag);
       return 'same';
     case 'rail multi-delete': {
       // Select both slides in the rail with real clicks, then a deletion key.
@@ -972,6 +976,85 @@ async function lineEnds(
   if (othersAfter !== before) {
     flag('census', `Ends: ${value} changed an unselected object; diff: ${firstDiff(before, othersAfter)}`);
   }
+}
+
+/**
+ * Select one text box with a real click and choose its Text fit in the Props
+ * tab by keyboard type-ahead. The box stores exactly the choice — never both
+ * "grow the box" and "shrink the text", since a box sized to its text is
+ * never fitted — the canvas fits exactly what the model says to, the control
+ * shows the choice, and nothing else on the slide changes.
+ */
+const TEXT_FIT_FIELD = '#inspector .text-layout-options > .field:first-child select';
+
+async function textFit(
+  next: () => number,
+  pre: CrossState,
+  flag: (oracle: 'routing' | 'census', detail: string) => void,
+): Promise<void> {
+  const { cdp } = session;
+  const id = pick(next, targetsOn(pre).filter((target) => target !== IMAGE));
+  await session.clickEmpty();
+  await session.click(id);
+  const selected = (await session.state()).selection;
+  if (selected.join() !== id) {
+    flag('routing', `clicking ${id} selected [${selected.join(', ')}]`);
+    return;
+  }
+  const shown = () => cdp.evaluate<string | null>(`(() => {
+    const select = document.querySelector(${JSON.stringify(TEXT_FIT_FIELD)});
+    return select && select.closest('.field').querySelector('span')?.textContent === 'Text fit'
+      ? select.value : null;
+  })()`);
+  const was = await shown();
+  if (was === null) {
+    flag('routing', `the Props tab shows no Text fit control for ${id}`);
+    return;
+  }
+  // Type-ahead moves to the next match, so asking for the option already
+  // showing would walk away from it and back: choose another one.
+  const value = pick(next, ['off', 'grow', 'shrink'].filter((choice) => choice !== was));
+  const others = () => cdp.evaluate<string>(`JSON.stringify(window.store.slide.elements
+    .filter((e) => e.id !== ${JSON.stringify(id)}))`);
+  const before = await others();
+  await cdp.chooseByKeys(TEXT_FIT_FIELD, value, `Text fit: ${value}`);
+  await wait(150);
+  if (TRACE) console.log(`  Text fit: ${was} -> ${value} on ${id}, editing was ${pre.editing}`);
+  const after = await cdp.evaluate<{
+    autoSize: boolean;
+    autoFit: boolean;
+    fits: boolean;
+    expectedFits: boolean;
+    selection: string[];
+  }>(`(() => {
+    const el = window.store.slide.elements.find((e) => e.id === ${JSON.stringify(id)});
+    const node = document.querySelector(${JSON.stringify(elementSelector(id))});
+    return {
+      autoSize: el.autoSize === true,
+      autoFit: el.autoFit === true,
+      fits: node?.dataset.autoFit === 'true',
+      expectedFits: Boolean((el.autoFit || el.noWrap) && !el.autoSize),
+      selection: [...window.store.get().selection],
+    };
+  })()`);
+  const stored = after.autoSize ? 'grow' : after.autoFit ? 'shrink' : 'off';
+  if (after.autoSize && after.autoFit) flag('census', `Text fit: ${value} left ${id} both growing its box and shrinking its text`);
+  if (stored !== value) flag('census', `Text fit: ${value} stored ${stored} on ${id}`);
+  if (after.fits !== after.expectedFits) {
+    flag('census', `Text fit: ${value} on ${id}: the canvas ${after.fits ? 'fits' : 'does not fit'} the text, the model says otherwise`);
+  }
+  const now = await shown();
+  if (now !== value) flag('routing', `after Text fit: ${value} the control shows ${now}`);
+  if (after.selection.join() !== id) {
+    flag('routing', `Text fit: ${value} changed the selection to [${after.selection.join(', ')}]`);
+  }
+  const othersAfter = await others();
+  if (othersAfter !== before) {
+    flag('census', `Text fit: ${value} changed another object; diff: ${firstDiff(before, othersAfter)}`);
+  }
+  // The dropdown keeps the keyboard, where Backspace is not a slide command;
+  // click back onto the slide, as `size from sidebar` clicks back into the text.
+  await session.clickEmpty();
 }
 
 /**

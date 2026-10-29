@@ -212,16 +212,44 @@ describe('text formatting from the inspector controls', () => {
 
   it('sizes a box to its text from the inspector, turning auto-fit off with it', () => {
     const { store, inspectorHost } = setup([textElement('text-1', { autoFit: true })]);
-    const toggle = () => field(inspectorHost, 'Size box to text')
-      .querySelector<HTMLInputElement>('input[type="checkbox"]')!;
-    expect(toggle().checked).toBe(false);
+    const fit = () => field(inspectorHost, 'Text fit').querySelector<HTMLSelectElement>('select')!;
+    expect(fit().value).toBe('shrink');
+    expect([...fit().options].map((option) => option.textContent))
+      .toEqual(['Off', 'Grow box to fit text', 'Shrink text to fit box']);
 
-    toggle().click();
+    pick(fit(), 'grow');
     expect(store.slide!.elements[0]).toMatchObject({ autoSize: true, autoFit: false });
-    expect(toggle().checked).toBe(true);
+    expect(fit().value).toBe('grow');
 
-    toggle().click();
+    pick(fit(), 'off');
     expect(store.slide!.elements[0]).not.toHaveProperty('autoSize');
+    expect(store.slide!.elements[0]).toMatchObject({ autoFit: false });
+  });
+
+  // Turning auto-fit on used to leave "Size box to text" on, and a box sized
+  // to its text is never fitted, so the text kept overflowing.
+  it('fits the text to a box that was sized to its text when auto-fit goes on', () => {
+    const { store, canvasHost, inspectorHost } = setup([textElement('text-1', { autoSize: true })]);
+    const fit = () => field(inspectorHost, 'Text fit').querySelector<HTMLSelectElement>('select')!;
+    expect(fit().value).toBe('grow');
+    pick(fit(), 'shrink');
+    expect(store.slide!.elements[0]).toMatchObject({ autoFit: true });
+    expect(store.slide!.elements[0]).not.toHaveProperty('autoSize');
+    expect(nodeOf(canvasHost, 'text-1').dataset.autoFit).toBe('true');
+  });
+
+  it('sets one text fit across several boxes, never leaving one both growing and shrinking', () => {
+    const { store, inspectorHost } = setup([
+      textElement('text-1', { autoSize: true }),
+      textElement('text-2', { autoFit: true }),
+    ]);
+    const fit = () => field(inspectorHost, 'Text fit').querySelector<HTMLSelectElement>('select')!;
+    expect(fit().value).toBe('__mixed__');
+    pick(fit(), 'shrink');
+    for (const element of store.slide!.elements) {
+      expect(element).toMatchObject({ autoFit: true });
+      expect(element).not.toHaveProperty('autoSize');
+    }
   });
 
   it('keeps the exhaustive formatting matrix synchronized with the shipped text and table controls', () => {
@@ -234,7 +262,7 @@ describe('text formatting from the inspector controls', () => {
       'Text style', 'Font family', 'Font size', 'Font weight', 'Style', 'Colour',
     ]);
     expect(labels('.text-layout-options .field > span')).toEqual([
-      'Size box to text', 'Auto-fit text to box', 'Disable automatic line breaks', 'List',
+      'Text fit', 'Keep on one line', 'List',
       'Align', 'Vertical', 'Paragraph spacing', 'Line spacing',
     ]);
     expect(labels('.text-format-buttons button')).toEqual(['B', 'I', 'U', 'x²', 'x₂']);

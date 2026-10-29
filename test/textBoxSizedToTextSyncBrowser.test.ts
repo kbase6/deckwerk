@@ -24,7 +24,7 @@ import { collabClientDir } from './support/collabClient.js';
  * a hosted session the server answers every keystroke with one — carries the
  * size each box had when it was last really edited. The fit used to run a
  * frame after the render that put those sizes back, so each of them was
- * painted for a frame: turning "Size box to text" on flashed the other labels,
+ * painted for a frame: choosing "Grow box to fit text" flashed the other labels,
  * typing into one label made every other label flicker, and the label being
  * typed into jumped back to its old width every few keys and was left there
  * when the edit ended.
@@ -115,20 +115,24 @@ describe.skipIf(!electronBinary)('text boxes sized to their text, in a hosted se
     })()`);
     const phase = (name: string) => cdp.evaluate(`window.__phase = ${JSON.stringify(name)}`);
 
-    // Switch "Size box to text" on for the wrapping box.
+    // Choose "Grow box to fit text" for the wrapping box.
     let at = await centre('column');
     await cdp.clickAt(at.x, at.y);
     await eventually(async () => cdp.evaluate<boolean>(`[...document.querySelectorAll('.field')]
-      .some((f) => f.getBoundingClientRect().width > 0 && f.textContent.trim().startsWith('Size box to text'))`),
-    'the inspector never offered Size box to text');
+      .some((f) => f.getBoundingClientRect().width > 0 && f.querySelector('span')?.textContent === 'Text fit')`),
+    'the inspector never offered Text fit');
     await phase('toggle');
-    await cdp.evaluate(`[...document.querySelectorAll('.field')]
-      .find((f) => f.getBoundingClientRect().width > 0 && f.textContent.trim().startsWith('Size box to text'))
-      .querySelector('input').click()`);
+    await cdp.evaluate(`(() => {
+      const select = [...document.querySelectorAll('.field')]
+        .find((f) => f.getBoundingClientRect().width > 0 && f.querySelector('span')?.textContent === 'Text fit')
+        .querySelector('select');
+      select.value = 'grow';
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+    })()`);
     const column = (await eventually(async () => {
       const s = await size('column');
       return s && s.h < 300 ? s : null;
-    }, 'switching Size box to text on never fitted the box'))!;
+    }, 'choosing Grow box to fit text never fitted the box'))!;
     await new Promise((resolve) => setTimeout(resolve, 500));
     const toggled = (await painted()).filter((p) => p.phase === 'toggle');
     // The box went straight to its fitted size; the labels were never repainted.

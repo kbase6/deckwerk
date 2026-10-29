@@ -1441,27 +1441,16 @@ export class Inspector {
       { none: 'None', ...Object.fromEntries(ROLE_ORDER.map((role) => [`role-${role}`, ROLE_LABELS[role]])) },
     ));
 
-    wrap.appendChild(mixedCheckboxField(
-      'Size box to text',
-      commonValue(texts.map((text) => Boolean(text.autoSize))),
-      (on) => this.store.updateSelected((element) => {
-        if (element.type === 'text') setTextAutoSize(element, on);
-      }, { label: on ? 'Size box to text' : 'Stop sizing box to text' }),
+    wrap.appendChild(mixedSelectField(
+      'Text fit', TEXT_FITS,
+      commonValue(texts.map(textFit)),
+      (v) => this.store.updateSelected((element) => {
+        if (element.type === 'text') setTextFit(element, v as TextFit);
+      }, { label: textFitLabel(v as TextFit) }),
+      TEXT_FIT_LABELS,
     ));
     wrap.appendChild(mixedCheckboxField(
-      'Auto-fit text to box',
-      commonValue(texts.map((text) => Boolean(text.autoFit))),
-      (on) => this.store.updateSelected((element) => {
-        if (element.type === 'text') {
-          element.autoFit = on;
-          if (on && element.style['font-size']) {
-            setWholeTextStyle(element, 'font-size', element.style['font-size']);
-          }
-        }
-      }),
-    ));
-    wrap.appendChild(mixedCheckboxField(
-      'Disable automatic line breaks',
+      'Keep on one line',
       commonValue(texts.map(editableTextNoWrap)),
       (on) => this.store.updateSelected((element) => {
         if (element.type === 'text') setTextNoWrap(element, on);
@@ -1469,11 +1458,12 @@ export class Inspector {
     ));
     if (texts.some(editableTextNoWrap)) {
       wrap.appendChild(mixedSelectField(
-        'Compress by', ['shrink', 'condense'],
+        'If too long', ['shrink', 'condense'],
         commonValue(texts.map((text) => text.noWrapMode ?? 'shrink')),
         (v) => this.store.updateSelected((element) => {
           if (element.type === 'text') element.noWrapMode = v as 'shrink' | 'condense';
         }),
+        NO_WRAP_MODE_LABELS,
       ));
     }
 
@@ -1838,34 +1828,25 @@ export class Inspector {
           layout.caption.title =
             'Table rows automatically fit their contents. Drag the outer handles or blue column dividers to resize.';
         } else {
-          layout.content.appendChild(checkboxField('Size box to text', Boolean(el.autoSize), (on) =>
+          layout.content.appendChild(mixedSelectField('Text fit', TEXT_FITS, textFit(el), (v) =>
             this.store.updateSelected((target) => {
-              if (target.type === 'text') setTextAutoSize(target, on);
-            }, { label: on ? 'Size box to text' : 'Stop sizing box to text' }),
-          ));
-          layout.content.appendChild(checkboxField('Auto-fit text to box', Boolean(el.autoFit), (on) =>
-            this.store.updateSelected((target) => {
-              if (target.type === 'text') {
-                target.autoFit = on;
-                if (on && target.style['font-size']) {
-                  setWholeTextStyle(target, 'font-size', target.style['font-size']);
-                }
-              }
-            }, { label: on ? 'Enable text auto-fit' : 'Disable text auto-fit' }),
-          ));
-          layout.content.appendChild(checkboxField('Disable automatic line breaks', editableTextNoWrap(el), (on) =>
+              if (target.type === 'text') setTextFit(target, v as TextFit);
+            }, { label: textFitLabel(v as TextFit) }),
+          TEXT_FIT_LABELS));
+          layout.content.appendChild(checkboxField('Keep on one line', editableTextNoWrap(el), (on) =>
             this.store.updateSelected((target) => {
               if (target.type === 'text') setTextNoWrap(target, on);
-            }, { label: on ? 'Disable automatic line breaks' : 'Enable automatic line breaks' }),
+            }, { label: on ? 'Keep on one line' : 'Allow line breaks' }),
           ));
         }
 
         if (!el.table && editableTextNoWrap(el)) {
-          layout.content.appendChild(selectField(
-            'Compress by', ['shrink', 'condense'], el.noWrapMode ?? 'shrink',
+          layout.content.appendChild(mixedSelectField(
+            'If too long', ['shrink', 'condense'], el.noWrapMode ?? 'shrink',
             (v) => this.store.updateSelected((target) => {
               if (target.type === 'text') target.noWrapMode = v as 'shrink' | 'condense';
-            }, { label: 'Change no-wrap compression' }),
+            }, { label: `If too long: ${NO_WRAP_MODE_LABELS[v]}` }),
+            NO_WRAP_MODE_LABELS,
           ));
         }
 
@@ -2918,16 +2899,43 @@ function clearLegacyMediaBorder(
   element.style = style;
 }
 
+type TextFit = 'off' | 'grow' | 'shrink';
+const TEXT_FITS: TextFit[] = ['off', 'grow', 'shrink'];
+const TEXT_FIT_LABELS: Record<TextFit, string> = {
+  off: 'Off',
+  grow: 'Grow box to fit text',
+  shrink: 'Shrink text to fit box',
+};
+const NO_WRAP_MODE_LABELS: Record<string, string> = {
+  shrink: 'Shrink text',
+  condense: 'Narrow letters',
+};
+
+function textFitLabel(fit: TextFit): string {
+  return fit === 'off' ? 'Turn text fit off' : TEXT_FIT_LABELS[fit];
+}
+
+/** What the renderer does: a box sized to its text is never fitted (`render.ts`). */
+function textFit(element: Extract<SlideElement, { type: 'text' }>): TextFit {
+  if (element.autoSize) return 'grow';
+  return element.autoFit ? 'shrink' : 'off';
+}
+
 /**
  * A box sized to its text hugs it, so shrinking the text to fit the box has
- * nothing to do; turning the one on turns the other off.
+ * nothing to do (the renderer never fits it): the panel offers the two as one
+ * choice, so choosing either turns the other off.
  */
-function setTextAutoSize(element: Extract<SlideElement, { type: 'text' }>, on: boolean): void {
-  if (on) {
+function setTextFit(element: Extract<SlideElement, { type: 'text' }>, fit: TextFit): void {
+  if (fit === 'grow') {
     element.autoSize = true;
     element.autoFit = false;
-  } else {
-    delete element.autoSize;
+    return;
+  }
+  delete element.autoSize;
+  element.autoFit = fit === 'shrink';
+  if (fit === 'shrink' && element.style['font-size']) {
+    setWholeTextStyle(element, 'font-size', element.style['font-size']);
   }
 }
 

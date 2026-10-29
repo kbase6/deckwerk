@@ -120,7 +120,7 @@ describe('text auto-fit', () => {
     expect(content.dataset.fittedScaleX).toBeUndefined();
   });
 
-  it('exposes auto-fit as an undoable text-box checkbox', () => {
+  it('exposes auto-fit as an undoable text fit choice', () => {
     const deck = emptyDeck('Auto-fit');
     deck.slides[0].elements.push({
       id: 'text', type: 'text', x: 0, y: 0, w: 400, h: 100, rot: 0, z: 1,
@@ -132,13 +132,14 @@ describe('text auto-fit', () => {
     new Inspector(host, store);
     store.select(['text']);
     const label = [...host.querySelectorAll('label')].find((candidate) =>
-      candidate.textContent?.includes('Auto-fit text to box'))!;
-    const checkbox = label.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
+      candidate.querySelector('span')?.textContent === 'Text fit')!;
+    const select = label.querySelector<HTMLSelectElement>('select')!;
 
-    expect(checkbox.checked).toBe(false);
-    checkbox.click();
+    expect(select.value).toBe('off');
+    select.value = 'shrink';
+    select.dispatchEvent(new Event('change', { bubbles: true }));
     expect(store.selectedElements()[0]).toMatchObject({ autoFit: true });
-    expect(store.history()[0].label).toBe('Enable text auto-fit');
+    expect(store.history()[0].label).toBe('Shrink text to fit box');
 
     store.undo();
     const restored = store.selectedElements()[0];
@@ -159,7 +160,7 @@ describe('text auto-fit', () => {
     new Inspector(host, store);
     store.select(['text']);
     const label = [...host.querySelectorAll('label')].find((candidate) =>
-      candidate.textContent?.includes('Disable automatic line breaks'))!;
+      candidate.textContent?.includes('Keep on one line'))!;
     const checkbox = label.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
     expect(checkbox.checked).toBe(true);
 
