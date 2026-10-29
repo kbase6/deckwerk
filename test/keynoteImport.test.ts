@@ -660,6 +660,31 @@ describe('keynote importer', () => {
     expect(result.scale_tiny_canvas).toBe(2);
   }, 60_000);
 
+  // An image at its own proportions draws the same as 'contain' and as
+  // 'fill'; 'contain' also keeps them when the box is resized in the editor.
+  // One stretched on purpose stays 'fill', so it still looks as it did.
+  it('imports a picture at its own proportions as "Fit inside", and a stretched one as "Stretch"', () => {
+    const stdout = execFileSync(PYTHON, ['-c', [
+      'import json, tempfile, types',
+      'from pathlib import Path',
+      'from PIL import Image',
+      'from importers.keynote.import_keynote import Importer, Report',
+      'with tempfile.TemporaryDirectory() as tmp:',
+      '    out = Path(tmp)',
+      "    (out / 'assets').mkdir()",
+      "    Image.new('RGB', (400, 200)).save(out / 'assets' / 'wide.png')",
+      '    imp = Importer(objects={}, datas={}, pkg=None, out_dir=out, report=Report(), canvas=(1920.0, 1080.0))',
+      "    imp.copy_data = lambda ref: 'assets/wide.png'",
+      '    imp._apply_media_style = lambda element, obj: None',
+      "    image = types.SimpleNamespace(super=types.SimpleNamespace(accessibility_description=''))",
+      '    fits = {}',
+      "    for name, (w, h) in {'own': (576, 288), 'within 1%': (576, 290), 'stretched': (576, 400)}.items():",
+      "        fits[name] = imp._convert_image_el(image, {'x': 0.0, 'y': 0.0, 'w': w, 'h': h, 'rot': 0.0}, 0)['fit']",
+      'print(json.dumps(fits))',
+    ].join('\n')], { encoding: 'utf8', cwd: process.cwd() });
+    expect(JSON.parse(stdout)).toEqual({ own: 'contain', 'within 1%': 'contain', stretched: 'fill' });
+  }, 60_000);
+
   it('reports a clear error for a file that is not a Keynote deck', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'kn-bad-'));
     try {

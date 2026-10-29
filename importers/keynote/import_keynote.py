@@ -189,6 +189,30 @@ def _human_bytes(count: float) -> str:
     raise AssertionError("unreachable: the loop returns on its last unit")
 
 
+def _media_fit(path: Path, frame_w: float, frame_h: float) -> str:
+    """The fit for a picture drawn into a `frame_w` x `frame_h` frame.
+
+    'contain' when the frame has the picture's own proportions (within 1%),
+    where it draws all but identically to 'fill' and a resize in the editor
+    keeps them; 'fill' for a picture stretched on purpose, or one whose size
+    cannot be read, so it still looks as it did. Only new imports ask:
+    decks already on disk keep the fit they have.
+    """
+    try:
+        from PIL import Image
+
+        with Image.open(path) as img:
+            width, height = img.size
+            # A browser shows the picture turned as its EXIF says.
+            if img.getexif().get(0x0112) in (5, 6, 7, 8):
+                width, height = height, width
+    except Exception:
+        return "fill"
+    if width <= 0 or height <= 0 or frame_w <= 0 or frame_h <= 0:
+        return "fill"
+    return "contain" if abs((frame_w / frame_h) / (width / height) - 1) <= 0.01 else "fill"
+
+
 class Package:
     """Read-only access to a .key document, in every shape one travels in.
 
@@ -2249,12 +2273,15 @@ class Importer:
             box = visible
 
         element = self._base(box, z, "image")
+        frame = source_box or box
         element.update(
             {
                 "src": src,
                 # 'fill' matches Keynote's displayed box exactly for uncropped
-                # images; a cropped one is placed by sourceBox instead.
-                "fit": "fill",
+                # images; a cropped one is placed by sourceBox instead. A
+                # picture at its own proportions is 'contain', which draws
+                # the same and keeps them when the box is resized.
+                "fit": _media_fit(self.out_dir / src, frame["w"], frame["h"]),
                 "alt": description,
                 "sourceBox": source_box,
             }
