@@ -39,6 +39,9 @@ let following = false;
 export function applyUiTheme(): UiTheme {
   const theme = resolveUiTheme();
   document.documentElement.dataset.uiTheme = theme;
+  // The desktop app's native parts (dialogs, menus, the window behind the
+  // page) follow the same choice; the browser client has no such bridge.
+  window.api?.setUiTheme?.(storedUiThemePreference());
   if (!following) {
     following = true;
     if (typeof matchMedia === 'function') {
