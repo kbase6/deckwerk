@@ -34,7 +34,7 @@ import {
 } from '@shared/themes.js';
 import { ARRANGE_LABELS, arrangeSelection } from './arrange.js';
 import { COLOR_LIVE_END, COLOR_LIVE_START, colorField, colorForInput } from './colorPicker.js';
-import { editableCircularMask, setCircularMask } from '@shared/mediaMask.js';
+import { editableCircularMask, resetCrop, setCircularMask } from '@shared/mediaMask.js';
 import {
   hasTextBox,
   setTextBoxBorder,
@@ -629,18 +629,7 @@ export class Inspector {
       const reset = smallButton(
         '×',
         'Reset mask',
-        () => this.updateMediaMasks((target) => {
-          const cropped = target.sourceBox;
-          target.sourceBox = null;
-          // A circle has no corners to fill, so dropping the crop entirely
-          // would leave slide showing through it. Re-centre the picture in the
-          // circle instead -- that is what "the whole frame" means here.
-          if (target.maskShape !== 'circle' || setCircularMask(target, true, mediaNaturalSize(target.id))) {
-            return true;
-          }
-          target.sourceBox = cropped;
-          return false;
-        }, 'Reset mask'),
+        () => this.updateMediaMasks((target) => resetCrop(target, mediaNaturalSize(target.id)), 'Reset mask'),
       );
       reset.classList.add('mask-reset-segment');
       wrap.classList.add('has-reset');

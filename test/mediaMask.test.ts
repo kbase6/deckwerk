@@ -5,6 +5,7 @@ import {
   fittedImageBox,
   paintedMediaBox,
   pannedSourceBox,
+  resetCrop,
   setCircularMask,
   type MaskRect,
 } from '../src/shared/mediaMask.js';
@@ -288,6 +289,45 @@ describe('dragging a crop window', () => {
       expect(Math.abs(cropped.x + cropped.sourceBox.x - (origin.x + picture.x))).toBeLessThanOrEqual(0.5);
       expect(Math.abs(cropped.y + cropped.sourceBox.y - (origin.y + picture.y))).toBeLessThanOrEqual(0.5);
     }
+  });
+});
+
+describe('resetting a crop', () => {
+  it('keeps the crop when a circle cannot be reset until the picture loads', () => {
+    const el = image({ w: 300, h: 300, maskShape: 'circle', sourceBox: { x: -100, y: 0, w: 600, h: 300 } });
+    const before = structuredClone(el);
+    expect(resetCrop(el, null)).toBe(false);
+    expect(el).toEqual(before);
+  });
+
+  it('re-centres a circle declared by CSS without changing its window', () => {
+    const el = image({ w: 300, h: 300, style: { 'border-radius': '50%' }, sourceBox: { x: -500, y: -20, w: 900, h: 450 } });
+    resetCrop(el, { w: 2, h: 1 });
+    expect(el).toMatchObject({ w: 300, h: 300, sourceBox: { x: -150, y: 0, w: 600, h: 300 } });
+  });
+
+  it('restores the whole picture where it was, rather than squeezing it into the window', () => {
+    for (const rot of [0, 30]) {
+      // A 4:3 picture cropped to a 200x150 window, panned off-centre.
+      const crop = { x: -120, y: -40, w: 400, h: 300 };
+      const el = image({ x: 500, y: 300, w: 200, h: 150, rot, sourceBox: crop, style: { 'object-position': '10px 20px' } });
+      const natural = { w: 800, h: 600 };
+      const before = pictureCentre(el, rot, crop);
+      resetCrop(el, natural);
+      expect(el).toMatchObject({ w: 400, h: 300, sourceBox: null, style: {} });
+      // Exactly the picture, so no fit letterboxes, stretches or re-covers it.
+      expect(paintedMediaBox(el, natural)).toEqual({ x: 0, y: 0, w: 400, h: 300 });
+      const after = pictureCentre(el, rot, { x: 0, y: 0, w: el.w, h: el.h });
+      expect(Math.abs(after.x - before.x)).toBeLessThanOrEqual(0.5);
+      expect(Math.abs(after.y - before.y)).toBeLessThanOrEqual(0.5);
+      expect([el.x, el.y, el.w, el.h].every(Number.isInteger)).toBe(true);
+    }
+  });
+
+  it('re-centres a circle in its window instead of dropping the crop', () => {
+    const el = image({ x: 100, y: 100, w: 300, h: 300, maskShape: 'circle', sourceBox: { x: -500, y: -20, w: 900, h: 450 } });
+    resetCrop(el, { w: 2, h: 1 });
+    expect(el).toMatchObject({ x: 100, y: 100, w: 300, h: 300, sourceBox: { x: -150, y: 0, w: 600, h: 300 } });
   });
 });
 
