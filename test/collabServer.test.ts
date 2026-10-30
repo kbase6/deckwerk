@@ -121,6 +121,33 @@ describe('collab server', () => {
     expect(Number.isNaN(Date.parse(decks[0].editedAt!))).toBe(false);
   });
 
+  it('confirms a flush only after preceding document and theme edits are on disk', async () => {
+    const { client, welcome } = await connect('Closing editor');
+    client.send({ kind: 'txn', txnId: 'last-edit', baseSeq: welcome.seq, label: 'Last edit',
+      ops: [{ op: 'updateDeck', title: 'Saved before leaving' }] });
+    client.send({ kind: 'theme', css: '/* saved before leaving */' });
+    client.send({ kind: 'flush', id: 'closing' });
+    expect(await client.nextOfKind('flushed')).toEqual({ kind: 'flushed', id: 'closing' });
+    expect(JSON.parse(await readFile(join(deckDir, 'deck.json'), 'utf8')).title).toBe('Saved before leaving');
+    expect(await readFile(join(deckDir, 'theme.css'), 'utf8')).toBe('/* saved before leaving */');
+  });
+
+  it('reports a flush failure and can save the same theme after the failure is fixed', async () => {
+    const { client } = await connect('Closing editor');
+    const theme = join(deckDir, 'theme.css');
+    await rm(theme);
+    await mkdir(theme);
+    try {
+      client.send({ kind: 'theme', css: '/* retry me */' });
+      client.send({ kind: 'flush', id: 'failed-save' });
+      expect((await client.nextOfKind('flushed')).error).toMatch(/EISDIR/);
+    } finally {
+      await rm(theme, { recursive: true });
+      await server.flush();
+    }
+    expect(await readFile(theme, 'utf8')).toBe('/* retry me */');
+  });
+
   it('returns a compact deck-wide transcript in reading order with neighboring slides', async () => {
     const base = `http://127.0.0.1:${server.port}`;
     const transcript = await (await fetch(`${base}/api/text?deck=${DECK_ID}`)).json() as any;

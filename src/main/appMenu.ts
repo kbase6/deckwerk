@@ -67,7 +67,7 @@ export function applicationMenuTemplate(options: {
         {
           label: 'Editor appearance',
           submenu: [
-            appearance('System', 'system'),
+            appearance('Match system', 'system'),
             appearance('Light', 'light'),
             appearance('Dark', 'dark'),
           ],

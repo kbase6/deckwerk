@@ -64,6 +64,7 @@ ipcRenderer.on(IPC.deckKey, (_e, key: string) => {
 const api = {
   /** A PNG data URL of this window as it looks now; null if it could not be read. */
   captureWindow: (): Promise<string | null> => ipcRenderer.invoke(IPC.windowCapture),
+  finishEditorUnload: (saved: boolean): Promise<void> => ipcRenderer.invoke(IPC.editorUnload, saved),
   /** Native dialogs, menus and the window background follow this, not the OS. */
   setUiTheme: (preference: 'system' | 'light' | 'dark'): void =>
     ipcRenderer.send(IPC.uiThemeSet, preference),

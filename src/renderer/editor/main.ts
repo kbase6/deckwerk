@@ -88,17 +88,19 @@ const store = new EditorStore(emptyDeck());
 installWindowApiPosterProvider();
 let historySaveTimer: ReturnType<typeof setTimeout> | null = null;
 let historyDirty = false;
+let historySaving: Promise<void> = Promise.resolve();
 
 async function flushHistory(dir = store.get().dir): Promise<void> {
   if (historySaveTimer) {
     clearTimeout(historySaveTimer);
     historySaveTimer = null;
   }
-  if (!dir || !historyDirty) return;
+  if (!dir || !historyDirty) return historySaving;
   const history = store.persistedHistory();
   historyDirty = false;
+  historySaving = window.api.saveDeckHistory(dir, history);
   try {
-    await window.api.saveDeckHistory(dir, history);
+    await historySaving;
   } catch (error) {
     historyDirty = true;
     throw error;
@@ -1076,20 +1078,58 @@ function scheduleSave(): void {
   if (saveTimer) clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
     saveTimer = null;
-    void save({ flushHistory: false });
+    void save({ flushHistory: false }).catch((error) => setStatusMessage(`Could not save presentation: ${error}`));
   }, 800);
 }
 
-// Closing or reloading the window must not drop what the autosave, the edit
-// history and theme.css are still holding back on their timers. Each write's
-// IPC leaves this window before the unload goes ahead; the main process
-// finishes it.
-// ponytail: an IPC already in flight queues this write behind it, which then
-// never leaves; awaiting it here would need the main process to hold the close.
-window.addEventListener('beforeunload', () => {
-  if (store.get().dirty) void save({ flushHistory: false }).catch(() => undefined);
-  void flushHistory().catch((error) => console.error('Could not save edit history:', error));
-  void cssEditor.flush();
+let unloadSnapshot: { deck: Deck; css: string } | null = null;
+let savingForUnload = false;
+let inputComposing = false;
+window.addEventListener('compositionstart', () => { inputComposing = true; }, true);
+window.addEventListener('compositionend', () => { inputComposing = false; }, true);
+
+// Cancel once, save with the renderer alive, then repeat the close or reload.
+window.addEventListener('beforeunload', (event) => {
+  const commitInputs = () => {
+    if (inputComposing) throw new Error('Finish entering text before closing the presentation.');
+    (document.activeElement as HTMLElement | null)?.blur();
+    canvas.endTextEditing();
+  };
+  if (unloadSnapshot && !inputComposing) {
+    commitInputs();
+    if (unloadSnapshot.deck === store.get().deck && unloadSnapshot.css === cssEditor.getValue()
+      && !store.get().dirty && !historyDirty) return;
+    unloadSnapshot = null;
+  }
+  event.preventDefault();
+  event.returnValue = '';
+  if (savingForUnload) return;
+  savingForUnload = true;
+  void runOperation('Saving presentation before leaving…', async (operation) => {
+    commitInputs();
+    for (;;) {
+      const deck = store.get().deck;
+      const css = cssEditor.getValue();
+      operation.update('Saving theme.css…');
+      await cssEditor.flush();
+      operation.update('Saving presentation…');
+      if (agentSessionReady) await agentSessionBridge?.flush();
+      await save({ flushHistory: false });
+      operation.update('Saving edit history…');
+      await flushHistory();
+      commitInputs();
+      if (deck === store.get().deck && css === cssEditor.getValue()) break;
+    }
+  }).then(async () => {
+    unloadSnapshot = { deck: store.get().deck, css: cssEditor.getValue() };
+    savingForUnload = false;
+    await window.api.finishEditorUnload(true);
+  }).catch(async (error) => {
+    unloadSnapshot = null;
+    savingForUnload = false;
+    await window.api.finishEditorUnload(false);
+    setStatusMessage(`Could not leave the presentation: ${error instanceof Error ? error.message : error}`);
+  });
 });
 
 let adoptGeneration = 0;

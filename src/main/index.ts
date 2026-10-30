@@ -150,6 +150,7 @@ let collabMode: 'window' | 'agent-background' | 'collaboration-background' | nul
 let collabOwner: DeckWindowState | null = null;
 let agentSessionReturn: Promise<void> | null = null;
 let quitting = false;
+const closingEditors = new Set<number>();
 const localAgents = new LocalAgentRegistry();
 let desktopAgentParticipantId: string | null = null;
 
@@ -398,6 +399,9 @@ function createEditorState(query = '', bounds?: WindowContinuityState): DeckWind
   const win = createEditorWindow(query, bounds);
   const state = registerEditorWindow(win);
   attachRendererHealth(win);
+  const editorId = win.webContents.id;
+  win.on('close', () => closingEditors.add(editorId));
+  win.on('closed', () => closingEditors.delete(editorId));
   win.on('closed', () => closeDocument(state));
   return state;
 }
@@ -692,12 +696,38 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   quitting = true;
-  for (const state of editorStates()) void state.agentRuntime.close();
+});
+
+let shutdownComplete = false;
+let shuttingDown = false;
+app.on('will-quit', (event) => {
+  if (shutdownComplete) return;
+  event.preventDefault();
+  if (shuttingDown) return;
+  shuttingDown = true;
   localAgents.close();
-  void collabServer?.close();
+  // Renderers have saved before their windows closed; now finish server writes.
+  void Promise.all([agentSessionReturn, collabServer?.close()]).catch((error) => {
+    console.error('Could not finish collaboration shutdown:', error);
+  }).finally(() => {
+    shutdownComplete = true;
+    setImmediate(() => app.quit());
+  });
 });
 
 function registerHandlers(): void {
+  ipcMain.handle(IPC.editorUnload, (event, saved: unknown) => {
+    const state = requireOwner(event);
+    if (event.sender !== state.editor.webContents) throw new Error('Only an editor can finish closing its document');
+    const closing = closingEditors.delete(event.sender.id);
+    if (saved !== true) {
+      quitting = false;
+      return;
+    }
+    if (quitting) app.quit();
+    else if (closing) state.editor.close();
+    else state.editor.webContents.reloadIgnoringCache();
+  });
   ipcMain.handle(IPC.deckNew, async (event, operationId?: string): Promise<DeckSession | null> => {
     const res = await showSaveDialog({
       title: 'New deck',

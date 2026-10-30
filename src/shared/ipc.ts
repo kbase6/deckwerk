@@ -17,6 +17,7 @@ export const IPC = {
   deckSyncSnapshot: 'deck:syncSnapshot',
   deckSaveAs: 'deck:saveAs',
   windowCapture: 'window:capture',
+  editorUnload: 'editor:unload',
   /** The editor's light/dark preference, for the parts the OS draws. */
   uiThemeSet: 'uiTheme:set',
   deckHistoryLoad: 'deckHistory:load',

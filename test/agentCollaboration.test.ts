@@ -818,6 +818,22 @@ describe.skipIf(!electronBinary)('a hosted session', { timeout: 240_000 }, () =>
 });
 
 describe.skipIf(!electronBinary)('a person in the desktop editor', { timeout: 240_000 }, () => {
+  it('saves an agent revision and a person’s still-open text edit before closing', async () => {
+    const workspace = await open('desktop');
+    await workspace.write('work.html', (await exportPage(workspace, 'closing'))
+      .replace('Agent fixture closing', 'Agent fixture closing, revised'));
+    landed(await apply(workspace, 'work.html'), workspace);
+    const editor = workspace.editor!;
+    await editor.doubleClick('#canvas [data-element-id="opening-title"]', 'the opening title');
+    await editor.call('Input.insertText', { text: 'Person saved on close' });
+    await editor.evaluate('window.close()').catch(() => undefined);
+    const deck = await until(async () => {
+      const saved = JSON.parse(await readFile(join(workspace.deckDir, 'deck.json'), 'utf8')) as Deck;
+      return plainText(slideById(saved, 'opening')).includes('Person saved on close') && saved;
+    }, 'the active text edit to reach disk before the editor closes', 10_000);
+    expect(plainText(slideById(deck, 'closing'))).toContain('Agent fixture closing, revised');
+  });
+
   it('keeps typing speaker notes while an agent saves another slide: the save lands, and undoing the notes leaves it', async () => {
     const workspace = await open('desktop');
     const editor = workspace.editor!;

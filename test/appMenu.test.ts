@@ -43,7 +43,7 @@ describe('application menu', () => {
       platform: 'darwin', packaged: true, setEditorAppearance: (value) => chosen.push(value),
     });
     const options = menu('Editor appearance', menu('View', template));
-    expect(options.map((item) => item.label)).toEqual(['System', 'Light', 'Dark']);
+    expect(options.map((item) => item.label)).toEqual(['Match system', 'Light', 'Dark']);
     for (const item of options) (item.click as () => void)();
     expect(chosen).toEqual(['system', 'light', 'dark']);
   });

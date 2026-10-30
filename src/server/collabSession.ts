@@ -51,6 +51,12 @@ export interface CollabSessionEvents {
  */
 export class CollabSession {
   private saveTimer: NodeJS.Timeout | null = null;
+  private deckDirty = false;
+  private themeDirty = false;
+  private deckWriting = false;
+  private themeWriting = false;
+  private deckWrite: Promise<void> = Promise.resolve();
+  private themeWrite: Promise<void> = Promise.resolve();
   /**
    * What the last autosave wrote, and the file it left: a watcher event for
    * a deck.json with this inode, size and mtime is that save's own echo,
@@ -141,7 +147,8 @@ export class CollabSession {
     if (this.closed) return;
     this.themeCss = css;
     this.lastSavedTheme = css;
-    void saveTheme(this.dir, this.deck.theme, css).catch((error) => {
+    this.themeDirty = true;
+    void this.persistTheme().catch((error) => {
       console.error(`theme save failed: ${String(error)}`);
     });
     if (this.lastSaved) this.versions.offer(this.versionContent(this.lastSaved.chunks));
@@ -178,8 +185,9 @@ export class CollabSession {
     if (this.saveTimer) {
       clearTimeout(this.saveTimer);
       this.saveTimer = null;
-      await this.persist();
     }
+    await this.persist();
+    await this.persistTheme();
     await this.chat.flush();
     await this.history.flush();
     // Not the versions: flush runs on every mirror listing and download, and
@@ -217,10 +225,11 @@ export class CollabSession {
 
   private schedulePersist(): void {
     if (this.closed) return;
+    this.deckDirty = true;
     if (this.saveTimer) clearTimeout(this.saveTimer);
     this.saveTimer = setTimeout(() => {
       this.saveTimer = null;
-      void this.persist();
+      void this.persist().catch((error) => console.error(`deck save failed: ${String(error)}`));
     }, SAVE_DEBOUNCE_MS);
   }
 
@@ -230,16 +239,44 @@ export class CollabSession {
    * to nothing however large the deck (test/collabStalls.test.ts).
    */
   private async persist(): Promise<void> {
-    try {
-      const deck = this.deck;
+    if (!this.deckDirty) return this.deckWrite;
+    this.deckDirty = false;
+    this.deckWriting = true;
+    const deck = this.deck;
+    const writing = this.deckWrite.catch(() => undefined).then(async () => {
       const chunks = this.serializer.serialize(deck);
       await writeDeckChunks(this.dir, DECK_FILE, chunks);
       const info = await stat(join(this.dir, DECK_FILE));
       this.lastSaved = { chunks, ino: info.ino, size: info.size, mtimeMs: info.mtimeMs };
       await saveSpeakerNotes(this.dir, deck);
       this.versions.offer(this.versionContent(chunks));
+    });
+    this.deckWrite = writing;
+    try {
+      await writing;
     } catch (error) {
-      console.error(`deck save failed: ${String(error)}`);
+      this.deckDirty = true;
+      throw error;
+    } finally {
+      if (this.deckWrite === writing) this.deckWriting = false;
+    }
+  }
+
+  private async persistTheme(): Promise<void> {
+    if (!this.themeDirty) return this.themeWrite;
+    this.themeDirty = false;
+    this.themeWriting = true;
+    const css = this.themeCss;
+    const theme = this.deck.theme;
+    const writing = this.themeWrite.catch(() => undefined).then(() => saveTheme(this.dir, theme, css));
+    this.themeWrite = writing;
+    try {
+      await writing;
+    } catch (error) {
+      this.themeDirty = true;
+      throw error;
+    } finally {
+      if (this.themeWrite === writing) this.themeWriting = false;
     }
   }
 
@@ -282,7 +319,7 @@ export class CollabSession {
       // folder by two writers stays unsupported, as above; this only decides
       // which way that race resolves, and losing an edit a user just made in
       // the app is the worse direction.)
-      if (this.saveTimer) return;
+      if (this.saveTimer || this.deckDirty || this.deckWriting) return;
       const deck = await loadDeck(this.dir);
       const before = this.deck;
       // Something outside the server (a script, `slide-agent history
@@ -307,6 +344,7 @@ export class CollabSession {
   }
 
   private async reloadThemeFromDisk(): Promise<void> {
+    if (this.themeDirty || this.themeWriting) return;
     try {
       const css = await loadTheme(this.dir, this.deck.theme);
       if (css === this.lastSavedTheme) return;

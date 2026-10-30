@@ -108,6 +108,7 @@ export class CollabBridge {
   private socket: WebSocket | null = null;
   private shadow: Deck | null = null;
   private pending: Array<{ txnId: string; label: string; ops: AgentOperation[] }> = [];
+  private flushes = new Map<string, (error?: string) => void>();
   private undoStack: UndoEntry[] = [];
   private redoStack: UndoEntry[] = [];
   private replayingHistory = false;
@@ -169,6 +170,7 @@ export class CollabBridge {
       }
     });
     socket.addEventListener('close', (event) => {
+      for (const finish of this.flushes.values()) finish('The collaboration connection closed before saving finished.');
       if (this.closed) return;
       this.hooks.onConnectionChange?.(false);
       // 4003 is the server refusing this identity (access revoked, or never
@@ -208,6 +210,7 @@ export class CollabBridge {
   }
 
   close(): void {
+    for (const finish of this.flushes.values()) finish('The collaboration connection closed before saving finished.');
     this.closed = true;
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
@@ -282,6 +285,25 @@ export class CollabBridge {
 
   sendTheme(css: string): void {
     this.send({ kind: 'theme', css });
+  }
+
+  /** Wait for document and theme edits sent before this call to reach disk. */
+  flush(): Promise<void> {
+    if (!this.shadow || this.socket?.readyState !== WebSocket.OPEN) {
+      return Promise.reject(new Error('Reconnect to collaboration before closing the presentation.'));
+    }
+    return new Promise<void>((resolve, reject) => {
+      const id = crypto.randomUUID();
+      const timer = setTimeout(() => finish('Collaboration has not confirmed the save. Try again once it reconnects.'), 10_000);
+      const finish = (error?: string) => {
+        clearTimeout(timer);
+        this.flushes.delete(id);
+        if (error) reject(new Error(error));
+        else resolve();
+      };
+      this.flushes.set(id, finish);
+      this.send({ kind: 'flush', id });
+    });
   }
 
   /**
@@ -425,6 +447,9 @@ export class CollabBridge {
         return;
       case 'theme':
         this.hooks.onThemeCss(message.css);
+        return;
+      case 'flushed':
+        this.flushes.get(message.id)?.(message.error);
         return;
       case 'media':
         setMediaVariants(message.variants);
