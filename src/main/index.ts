@@ -1496,7 +1496,7 @@ function registerHandlers(): void {
     });
 
     const info = await probeMedia(absolute);
-    const result: TrimResult = { src: relative, ...info };
+    const result: TrimResult = { src: relative, ...info, cropped: req.crop !== null };
     // The editor is what relinks the element; the trim window only reports.
     requireOwner(event).editor.webContents.send(IPC.trimDone, result);
     return result;

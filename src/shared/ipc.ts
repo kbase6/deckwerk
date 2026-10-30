@@ -305,6 +305,8 @@ export interface TrimResult {
   width: number | null;
   height: number | null;
   duration: number | null;
+  /** Whether ffmpeg cropped the frame; without a crop it keeps the source's size. */
+  cropped: boolean;
 }
 
 export interface TrimProgress {

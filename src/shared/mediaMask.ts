@@ -1,4 +1,5 @@
 import type { SlideElement } from './deck.js';
+import type { TrimResult } from './ipc.js';
 import { cssMediaRadius } from './nativeCss.js';
 
 type MediaElement = Extract<SlideElement, { type: 'image' | 'video' }>;
@@ -313,4 +314,30 @@ export function setCircularMask(
   el.h = layout.h;
   el.sourceBox = layout.sourceBox;
   return true;
+}
+
+/**
+ * Point a video at the file the trim window wrote for it. The trim is baked
+ * into that file, so the in/out points reset, or they would clip the clip.
+ *
+ * A trim alone keeps the frame, so the box, the crop and the mask still
+ * describe it and stay as they are. An ffmpeg crop makes a new frame: the old
+ * crop described the old one and goes, the box takes the new proportions, and
+ * a circular mask is laid out again over the new frame so it stays round.
+ */
+export function relinkTrimmedVideo(
+  el: Extract<SlideElement, { type: 'video' }>,
+  result: TrimResult,
+): void {
+  el.src = result.src;
+  el.start = 0;
+  el.end = null;
+  if (!result.cropped) return;
+  el.sourceBox = null;
+  if (!result.width || !result.height) return;
+  if (editableCircularMask(el)) {
+    setCircularMask(el, true, { w: result.width, h: result.height });
+  } else {
+    el.h = Math.round((el.w * result.height) / result.width);
+  }
 }

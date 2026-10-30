@@ -10,6 +10,7 @@ import { emptyDeck } from '@shared/deck.js';
 import type { AgentSessionConnection, AuthoredHtmlFile, PresentationImportResult } from '@shared/ipc.js';
 import { captureEditorView, decodeEditorView, restoreEditorView } from '@shared/editorView.js';
 import { setIdSuffix } from '@shared/geometry.js';
+import { relinkTrimmedVideo } from '@shared/mediaMask.js';
 import { adoptAuthoredIds, describeHtmlSync, htmlSyncSummary, pageStampOf, stampPage } from '@shared/htmlSlides.js';
 import { rangeForSlideSelection } from '@shared/presentationRange.js';
 import {
@@ -1254,18 +1255,9 @@ window.api.onTrimDone((result) => {
   store.commit((deck) => {
     for (const slide of deck.slides) {
       const element = slide.elements.find((e) => e.id === targetId);
-      if (!element || element.type !== 'video') continue;
-      element.src = result.src;
-      // The trim is baked into the file, so the non-destructive in/out points
-      // must reset or they'd clip the already-clipped result.
-      element.start = 0;
-      element.end = null;
-      if (result.width && result.height) {
-        // Keep the on-slide width and adopt the crop's new aspect ratio.
-        element.h = Math.round((element.w * result.height) / result.width);
-      }
+      if (element?.type === 'video') relinkTrimmedVideo(element, result);
     }
-  });
+  }, { label: 'Trim video' });
   void save();
 });
 
