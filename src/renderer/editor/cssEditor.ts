@@ -15,6 +15,8 @@ export class CssEditor {
   private view: EditorView;
   private styleTag: HTMLStyleElement;
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
+  private dirty = false;
+  private saving: Promise<void> = Promise.resolve();
 
   constructor(
     host: HTMLElement,
@@ -39,7 +41,7 @@ export class CssEditor {
           const text = update.state.doc.toString();
           this.styleTag.textContent = rewriteCssAssetUrls(text, this.resolveSrc);
           this.onChange?.();
-          this.scheduleSave(text);
+          this.scheduleSave();
         }),
       ],
     });
@@ -56,6 +58,7 @@ export class CssEditor {
       clearTimeout(this.saveTimer);
       this.saveTimer = null;
     }
+    this.dirty = false;
   }
 
   getValue(): string {
@@ -69,19 +72,29 @@ export class CssEditor {
 
   /** Flush any pending write, for use before presenting or quitting. */
   async flush(): Promise<void> {
-    if (!this.saveTimer) return;
-    clearTimeout(this.saveTimer);
+    if (this.saveTimer) clearTimeout(this.saveTimer);
     this.saveTimer = null;
-    await this.persist(this.getValue());
+    if (!this.dirty) return this.saving;
+    const text = this.getValue();
+    this.dirty = false;
+    const saving = this.saving.catch(() => undefined).then(() => this.persist(text));
+    this.saving = saving;
+    try {
+      await saving;
+    } catch (error) {
+      this.dirty = true;
+      throw error;
+    }
   }
 
-  private scheduleSave(text: string): void {
+  private scheduleSave(): void {
+    this.dirty = true;
     if (this.saveTimer) clearTimeout(this.saveTimer);
     // Long enough not to write on every keystroke, short enough that the file
     // on disk is never meaningfully behind the screen.
     this.saveTimer = setTimeout(() => {
       this.saveTimer = null;
-      void this.persist(text);
+      void this.flush().catch((error) => console.error('Could not save theme.css:', error));
     }, 500);
   }
 }

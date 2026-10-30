@@ -10,7 +10,7 @@ import {
   findTarget,
   stopBrowser,
 } from './browserSession.js';
-import { isEditorTarget, launchDesktopApp, materializeDesktopApp } from './desktopApp.js';
+import { isEditorTarget, launchDesktopApp, materializeDesktopApp, type RunningApp } from './desktopApp.js';
 
 /**
  * Launch the REAL desktop app (main process, preload, autosave — no collab
@@ -24,12 +24,14 @@ import { isEditorTarget, launchDesktopApp, materializeDesktopApp } from './deskt
 export interface DesktopEditor {
   cdp: Cdp;
   deckDir: string;
+  app: RunningApp;
   close: () => Promise<void>;
 }
 
 export async function launchDesktopEditor(
   textId: string,
   textHtml: string,
+  args: string[] = [],
 ): Promise<DesktopEditor> {
   const workDir = await mkdtemp(join(tmpdir(), 'mode-focus-desktop-'));
   const appDir = join(workDir, 'app');
@@ -64,7 +66,7 @@ export async function launchDesktopEditor(
     '',
   ].join('\n'), 'utf8');
 
-  const app = await launchDesktopApp(appDir, [deckDir], { profileDir });
+  const app = await launchDesktopApp(appDir, [deckDir, ...args], { profileDir });
   const appProcess: ChildProcess = app.process;
   const debugPort = app.debugPort;
   const appLog = app.log;
@@ -86,6 +88,7 @@ export async function launchDesktopEditor(
   return {
     cdp,
     deckDir,
+    app,
     close: async () => {
       cdp.close();
       await stopBrowser(appProcess);

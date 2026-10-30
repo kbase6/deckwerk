@@ -99,6 +99,12 @@ export const ClientThemeSchema = z.object({
   css: z.string(),
 });
 
+/** Acknowledge only after all earlier edits on this socket have reached disk. */
+export const ClientFlushSchema = z.object({ kind: z.literal('flush'), id: z.string().min(1).max(80) });
+export const ServerFlushedSchema = z.object({
+  kind: z.literal('flushed'), id: z.string().min(1).max(80), error: z.string().optional(),
+});
+
 /**
  * A line of activity from a local agent bridge — "saved edit/work.html: 1
  * replaced" — shown in its participant's Agent panel. Ignored from peers that
@@ -168,6 +174,7 @@ export const ClientMessageSchema = z.discriminatedUnion('kind', [
   ClientPresenceSchema,
   ClientCursorSchema,
   ClientThemeSchema,
+  ClientFlushSchema,
   ClientAgentEventSchema,
   ClientChatPostSchema,
   ClientRemoteOfferSchema,
@@ -316,6 +323,7 @@ export const ServerMessageSchema = z.discriminatedUnion('kind', [
   ServerCursorSchema,
   ServerPeerLeftSchema,
   ServerThemeSchema,
+  ServerFlushedSchema,
   ServerEndedSchema,
   ServerMediaSchema,
   ServerDeckMovedSchema,

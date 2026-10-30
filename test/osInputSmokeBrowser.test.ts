@@ -25,8 +25,8 @@ import {
  *
  *  1. Native menu/accelerator and macOS editing-command routing (Cmd+B can
  *     arrive as a `formatBold` beforeinput with no keydown at all).
- *  2. Real Cmd+Z through the OS (the default application menu owns that
- *     accelerator, so it reaches the page as the menu's undo role).
+ *  2. Real Cmd+Z through the OS (the application menu owns that accelerator,
+ *     so it reaches the page as the Edit menu's undo role).
  *  3. Real inter-application focus loss: the app-switch blur exemption in
  *     canvas.ts only runs when macOS actually moves focus to another app.
  *
@@ -140,7 +140,7 @@ describe.skipIf(!osInputOptIn)('OS-event input smoke (macOS, opt-in)', () => {
     // Close the pending bold run so later typing is plain again.
     await osKeystroke('b', ['command']);
 
-    // ── Scenario 2: real Cmd+Z through the OS (default menu owns it) ──────
+    // ── Scenario 2: real Cmd+Z through the OS (the Edit menu owns it) ─────
     const beforeUndo = (await readTextState()).text;
     await osTypeText(' undome');
     await waitForText(

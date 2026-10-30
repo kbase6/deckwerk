@@ -17,6 +17,7 @@ import type {
   DeckSession,
   DeckSessionSnapshot,
   DeckHistorySession,
+  EditorAppearance,
   ImportedAsset,
   PresentationImportResult,
   MediaInfo,
@@ -63,6 +64,7 @@ ipcRenderer.on(IPC.deckKey, (_e, key: string) => {
 const api = {
   /** A PNG data URL of this window as it looks now; null if it could not be read. */
   captureWindow: (): Promise<string | null> => ipcRenderer.invoke(IPC.windowCapture),
+  finishEditorUnload: (saved: boolean): Promise<void> => ipcRenderer.invoke(IPC.editorUnload, saved),
   /** Native dialogs, menus and the window background follow this, not the OS. */
   setUiTheme: (preference: 'system' | 'light' | 'dark'): void =>
     ipcRenderer.send(IPC.uiThemeSet, preference),
@@ -206,6 +208,8 @@ const api = {
   onDeckState: (fn: (s: DeckSession) => void): (() => void) =>
     on(IPC.deckState, fn),
   onThemeCss: (fn: (css: string) => void): (() => void) => on(IPC.themeCss, fn),
+  onEditorAppearance: (fn: (appearance: EditorAppearance) => void): (() => void) =>
+    on(IPC.editorAppearance, fn),
   onAgentRequest: (fn: (request: AgentRequest) => void): (() => void) =>
     on(IPC.agentRequest, fn),
   onAgentPanelState: (fn: (state: AgentPanelState) => void): (() => void) =>

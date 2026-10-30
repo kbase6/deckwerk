@@ -17,6 +17,7 @@ export const IPC = {
   deckSyncSnapshot: 'deck:syncSnapshot',
   deckSaveAs: 'deck:saveAs',
   windowCapture: 'window:capture',
+  editorUnload: 'editor:unload',
   /** The editor's light/dark preference, for the parts the OS draws. */
   uiThemeSet: 'uiTheme:set',
   deckHistoryLoad: 'deckHistory:load',
@@ -73,7 +74,12 @@ export const IPC = {
   agentSessionStart: 'agentSession:start',
   agentSessionEnd: 'agentSession:end',
   agentSessionState: 'agentSession:state',
+  /** View › Editor appearance in the application menu chose light, dark or the system's. */
+  editorAppearance: 'ui:editorAppearance',
 } as const;
+
+/** The editor chrome's light/dark preference, as the application menu sets it. */
+export type EditorAppearance = 'system' | 'light' | 'dark';
 
 export interface AgentPanelMessage {
   id: string;

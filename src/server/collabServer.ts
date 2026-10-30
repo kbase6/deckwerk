@@ -3800,6 +3800,12 @@ export async function startCollabServer(options: CollabServerOptions): Promise<R
           room.session.saveThemeCss(message.css);
           broadcast(room, { kind: 'theme', css: message.css, byClientId: clientId }, clientId);
           return;
+        case 'flush':
+          void room.session.flush().then(
+            () => send(peer, { kind: 'flushed', id: message.id }),
+            (error) => send(peer, { kind: 'flushed', id: message.id, error: String(error) }),
+          );
+          return;
         case 'chat-post': {
           if (!peer.canComment) return;
           const ref = resolveChatRef(room.session.deck, message.ref) ?? undefined;

@@ -320,3 +320,30 @@ describe('connection lifecycle', () => {
     }
   });
 });
+
+describe('confirming saves before leaving', () => {
+  it('waits for its own disk confirmation and reports server errors', async () => {
+    const { bridge, handle } = harness();
+    vi.stubGlobal('WebSocket', { OPEN: 1 });
+    const sent: Array<{ id: string; kind: string }> = [];
+    bridge['socket'] = { readyState: 1, send: (text: string) => sent.push(JSON.parse(text)) } as unknown as WebSocket;
+    try {
+      let finished = false;
+      const saving = bridge.flush().then(() => { finished = true; });
+      expect(sent[0].kind).toBe('flush');
+      handle({ kind: 'flushed', id: 'someone-else' });
+      await Promise.resolve();
+      expect(finished).toBe(false);
+      handle({ kind: 'flushed', id: sent[0].id });
+      await saving;
+      const failing = bridge.flush();
+      handle({ kind: 'flushed', id: sent[1].id, error: 'disk full' });
+      await expect(failing).rejects.toThrow('disk full');
+    } finally { vi.unstubAllGlobals(); }
+  });
+
+  it('refuses to claim disconnected edits were saved', async () => {
+    const { bridge } = harness();
+    await expect(bridge.flush()).rejects.toThrow('Reconnect');
+  });
+});

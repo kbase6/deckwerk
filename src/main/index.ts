@@ -3,7 +3,7 @@ import { writeFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { userInfo } from 'node:os';
 import { basename, dirname, extname, join, resolve, sep } from 'node:path';
-import { BrowserWindow, ClipboardItem, app, clipboard, ipcMain, nativeImage, nativeTheme, screen, shell } from 'electron';
+import { BrowserWindow, ClipboardItem, Menu, app, clipboard, ipcMain, nativeImage, nativeTheme, screen, shell } from 'electron';
 import type { Display, IpcMainInvokeEvent, WebContents } from 'electron';
 import { deckForExport, parseDeck, type Deck } from '@shared/deck.js';
 import type { DeckHistoryDocument } from '@shared/deckHistory.js';
@@ -47,6 +47,7 @@ import type {
   VideoPosterRequest,
   VideoPosterResult,
 } from '@shared/ipc.js';
+import { applicationMenuTemplate } from './appMenu.js';
 import { installAssetProtocol, registerAssetScheme } from './assetProtocol.js';
 import {
   createDeck,
@@ -149,6 +150,7 @@ let collabMode: 'window' | 'agent-background' | 'collaboration-background' | nul
 let collabOwner: DeckWindowState | null = null;
 let agentSessionReturn: Promise<void> | null = null;
 let quitting = false;
+const closingEditors = new Set<number>();
 const localAgents = new LocalAgentRegistry();
 let desktopAgentParticipantId: string | null = null;
 
@@ -397,6 +399,9 @@ function createEditorState(query = '', bounds?: WindowContinuityState): DeckWind
   const win = createEditorWindow(query, bounds);
   const state = registerEditorWindow(win);
   attachRendererHealth(win);
+  const editorId = win.webContents.id;
+  win.on('close', () => closingEditors.add(editorId));
+  win.on('closed', () => closingEditors.delete(editorId));
   win.on('closed', () => closeDocument(state));
   return state;
 }
@@ -634,6 +639,17 @@ app.whenReady().then(async () => {
     if (existsSync(developmentIcon)) app.dock?.setIcon(developmentIcon);
   }
 
+  Menu.setApplicationMenu(Menu.buildFromTemplate(applicationMenuTemplate({
+    platform: process.platform,
+    packaged: app.isPackaged,
+    // Every editor window applies it; the choice is stored in their shared
+    // localStorage, so the app's other windows follow through its storage event.
+    setEditorAppearance: (appearance) => {
+      for (const state of editorStates()) {
+        if (!state.editor.isDestroyed()) state.editor.webContents.send(IPC.editorAppearance, appearance);
+      }
+    },
+  })));
   installAssetProtocol();
   registerHandlers();
 
@@ -680,12 +696,38 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   quitting = true;
-  for (const state of editorStates()) void state.agentRuntime.close();
+});
+
+let shutdownComplete = false;
+let shuttingDown = false;
+app.on('will-quit', (event) => {
+  if (shutdownComplete) return;
+  event.preventDefault();
+  if (shuttingDown) return;
+  shuttingDown = true;
   localAgents.close();
-  void collabServer?.close();
+  // Renderers have saved before their windows closed; now finish server writes.
+  void Promise.all([agentSessionReturn, collabServer?.close()]).catch((error) => {
+    console.error('Could not finish collaboration shutdown:', error);
+  }).finally(() => {
+    shutdownComplete = true;
+    setImmediate(() => app.quit());
+  });
 });
 
 function registerHandlers(): void {
+  ipcMain.handle(IPC.editorUnload, (event, saved: unknown) => {
+    const state = requireOwner(event);
+    if (event.sender !== state.editor.webContents) throw new Error('Only an editor can finish closing its document');
+    const closing = closingEditors.delete(event.sender.id);
+    if (saved !== true) {
+      quitting = false;
+      return;
+    }
+    if (quitting) app.quit();
+    else if (closing) state.editor.close();
+    else state.editor.webContents.reloadIgnoringCache();
+  });
   ipcMain.handle(IPC.deckNew, async (event, operationId?: string): Promise<DeckSession | null> => {
     const res = await showSaveDialog({
       title: 'New deck',

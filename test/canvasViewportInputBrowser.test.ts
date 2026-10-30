@@ -7,9 +7,10 @@ import { launchDesktopEditor, type DesktopEditor } from './support/desktopEditor
  * REAL desktop app with real CDP input: a wheel notch with Ctrl/Cmd, Shift
  * and the wheel, a middle-button drag, Space and a drag, Cmd/Ctrl + - 0.
  *
- * The desktop app runs Electron's default menu, whose View zoom roles answer
- * Cmd/Ctrl + - 0 for the whole window; the canvas must take those keys
- * first, so devicePixelRatio (which carries the page zoom) never moves.
+ * The desktop app's menu (src/main/appMenu.ts) keeps Electron's View zoom
+ * roles, which answer Cmd/Ctrl + - 0 for the whole window; the canvas must
+ * take those keys first, so devicePixelRatio (which carries the page zoom)
+ * never moves.
  */
 const TEXT = 'viewport-text';
 const MOD = process.platform === 'darwin' ? 4 : 2;
