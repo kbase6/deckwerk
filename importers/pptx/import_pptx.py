@@ -251,6 +251,30 @@ def _safe_name(name: str) -> str:
     return keep.strip("-") or "asset"
 
 
+def _media_fit(path: Path, frame_w: float, frame_h: float) -> str:
+    """The fit for a picture drawn into a `frame_w` x `frame_h` frame.
+
+    'contain' when the frame has the picture's own proportions (within 1%),
+    where it draws all but identically to 'fill' and a resize in the editor
+    keeps them; 'fill' for a picture stretched on purpose, or one whose size
+    cannot be read, so it still looks as it did. Only new imports ask:
+    decks already on disk keep the fit they have.
+    """
+    try:
+        from PIL import Image
+
+        with Image.open(path) as img:
+            width, height = img.size
+            # A browser shows the picture turned as its EXIF says.
+            if img.getexif().get(0x0112) in (5, 6, 7, 8):
+                width, height = height, width
+    except Exception:
+        return "fill"
+    if width <= 0 or height <= 0 or frame_w <= 0 or frame_h <= 0:
+        return "fill"
+    return "contain" if abs(frame_w * height - frame_h * width) <= 0.01 * frame_h * width else "fill"
+
+
 # --- the package ------------------------------------------------------------
 
 
@@ -2428,7 +2452,13 @@ class Importer:
                     "h": round(full_h, 2),
                 }
                 self.report.cropped_images += 1
-        element.update({"src": src, "fit": "fill", "alt": description or "", "sourceBox": source_box})
+        frame = source_box or {"w": box.w, "h": box.h}
+        element.update({
+            "src": src,
+            "fit": _media_fit(self.out_dir / src, frame["w"], frame["h"]),
+            "alt": description or "",
+            "sourceBox": source_box,
+        })
 
         prst = child(sppr, "a:prstGeom")
         if prst is not None and prst.get("prst") in ELLIPSE_PRESETS:
