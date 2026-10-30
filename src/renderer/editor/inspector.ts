@@ -57,7 +57,7 @@ import {
   DEFAULT_CURVED_SHADOW,
   type ShapeShadow,
 } from '@shared/shapeShadow.js';
-import { mediaNaturalSize } from './mediaNatural.js';
+import { MEDIA_LOADING_NOTICE, mediaNaturalSize } from './mediaNatural.js';
 import { releaseDecodedVideo } from '../player/decodedVideoPool.js';
 import { LINE_SPACING_MAX, LINE_SPACING_MIN, lineSpacingValue } from '@shared/lineHeight.js';
 import { angleDial } from './angleDial.js';
@@ -213,6 +213,8 @@ export class Inspector {
   onToggleMask?: (elementId: string) => void;
   /** Which element is currently in mask mode, so the button can reflect it. */
   maskingElement?: () => string | null;
+  /** Tell the shell's status bar something the user needs to know. */
+  onStatus?: (text: string) => void;
   /** Show the frame at a given time on the canvas while a trim handle moves. */
   onSeekPreview?: (elementId: string, time: number) => void;
   /** Clip length from the canvas video element, when ffprobe cannot say. */
@@ -643,22 +645,42 @@ export class Inspector {
       const reset = smallButton(
         '×',
         'Reset mask',
-        () => this.store.updateSelected((target) => {
-          if (target.type !== 'image' && target.type !== 'video') return;
+        () => this.updateMediaMasks((target) => {
+          const cropped = target.sourceBox;
           target.sourceBox = null;
           // A circle has no corners to fill, so dropping the crop entirely
           // would leave slide showing through it. Re-centre the picture in the
           // circle instead -- that is what "the whole frame" means here.
-          if (target.maskShape === 'circle') {
-            setCircularMask(target, true, mediaNaturalSize(target.id));
+          if (target.maskShape !== 'circle' || setCircularMask(target, true, mediaNaturalSize(target.id))) {
+            return true;
           }
-        }, { label: 'Reset mask' }),
+          target.sourceBox = cropped;
+          return false;
+        }, 'Reset mask'),
       );
       reset.classList.add('mask-reset-segment');
       wrap.classList.add('has-reset');
       wrap.appendChild(reset);
     }
     return wrap;
+  }
+
+  /**
+   * Change the mask of every selected picture and video. `fn` returns false
+   * for one whose size is still loading, which it leaves alone; the panel is
+   * then rebuilt so its controls show the mask that is really there.
+   */
+  private updateMediaMasks(
+    fn: (element: Extract<SlideElement, { type: 'image' | 'video' }>) => boolean,
+    label?: string,
+  ): void {
+    let refused = false;
+    this.store.updateSelected((element) => {
+      if ((element.type === 'image' || element.type === 'video') && !fn(element)) refused = true;
+    }, { label });
+    if (!refused) return;
+    this.onStatus?.(MEDIA_LOADING_NOTICE);
+    this.render();
   }
 
   /** Rounded corners clip media, so keep them with the other mask controls. */
@@ -682,11 +704,7 @@ export class Inspector {
     // the picture around behind that fixed window.
     settings.appendChild(
       checkboxField('Circular mask', editableCircularMask(el), (on) =>
-        this.store.updateSelected((target) => {
-          if (target.type === 'image' || target.type === 'video') {
-            setMediaMask(target, on);
-          }
-        }, { label: on ? 'Circular mask' : 'Rectangular mask' })),
+        this.updateMediaMasks((target) => setMediaMask(target, on), on ? 'Circular mask' : 'Rectangular mask')),
     );
     masking.content.appendChild(settings);
     // 'contain' letterboxes inside the box (aspect ratio fixed); 'fill'
@@ -1694,11 +1712,7 @@ export class Inspector {
       mixedCheckboxField(
         'Circular mask',
         commonValue(media.map(editableCircularMask)),
-        (on) => this.store.updateSelected((element) => {
-          if (element.type === 'image' || element.type === 'video') {
-            setMediaMask(element, on);
-          }
-        }),
+        (on) => this.updateMediaMasks((element) => setMediaMask(element, on)),
       ),
     );
     masking.content.appendChild(maskSettings);
@@ -2968,8 +2982,8 @@ function setMediaRadius(
 function setMediaMask(
   element: Extract<SlideElement, { type: 'image' | 'video' }>,
   circular: boolean,
-): void {
-  setCircularMask(element, circular, mediaNaturalSize(element.id));
+): boolean {
+  return setCircularMask(element, circular, mediaNaturalSize(element.id));
 }
 
 function editableMediaBorder(

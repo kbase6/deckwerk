@@ -68,7 +68,7 @@ const EXACT: Rect = { x: 1380, y: 620, w: 480, h: 270 };
 const ROUND = circularMaskLayout(
   media('round', 'image', { x: 1380, y: 60, w: 480, h: 270 }) as never,
   NATURAL,
-);
+)!;
 
 beforeAll(async () => {
   if (!electronBinary) return;

@@ -263,6 +263,7 @@ new TimelinePanel(el('timeline'), store);
 new HistoryPanel(el('history'), store);
 const rail = new SlideRail(el('rail'), store);
 rail.onStatus = setStatusMessage;
+inspector.onStatus = setStatusMessage;
 // The CSS buffer backs the Theme panel and live theme sync. Like the desktop
 // app it has no sidebar tab of its own — theme.css is edited on disk or
 // through theme adoption, not in this UI.

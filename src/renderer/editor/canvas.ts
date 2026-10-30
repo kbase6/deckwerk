@@ -24,7 +24,7 @@ import {
 } from '../player/render.js';
 import { decodeImage } from '../player/imageDecode.js';
 import { cropWindow, fittedImageBox, paintedMediaBox, pannedSourceBox } from '@shared/mediaMask.js';
-import { mediaNaturalSize } from './mediaNatural.js';
+import { MEDIA_LOADING_NOTICE, mediaNaturalSize } from './mediaNatural.js';
 import { DecodedVideoPool, releaseDecodedVideo } from '../player/decodedVideoPool.js';
 import { ungateVideoLoad } from '../player/mediaLoadGate.js';
 import { openSlideLinkInNewTab, slideLinkFromEvent } from '../player/links.js';
@@ -2758,16 +2758,18 @@ export class EditorCanvas {
       const found = slide.elements.find((e) => e.id === target.dataset.elementId);
       const el = found && this.editingFrame(found);
       if (el) {
-        this.store.beginTransaction(
-          this.maskingId === el.id ? `Crop ${el.type}` : 'Move or resize objects',
-        );
-        if (el.type === 'image' || el.type === 'video') {
-          // Captured once per crop drag: the picture as painted, which for
-          // uncropped media is where object-fit put it, not the whole box.
-          this.maskOrigin = this.maskingId === el.id
-            ? paintedMediaBox(el, mediaNaturalSize(el.id, this.slideLayer))
-            : null;
+        // Captured once per crop drag: the picture as painted, which for
+        // uncropped media is where object-fit put it, not the whole box.
+        const cropping = this.maskingId === el.id;
+        const painted = cropping && (el.type === 'image' || el.type === 'video')
+          ? paintedMediaBox(el, mediaNaturalSize(el.id, this.slideLayer))
+          : null;
+        if (cropping && !painted) {
+          this.notice(MEDIA_LOADING_NOTICE);
+          return;
         }
+        this.store.beginTransaction(cropping ? `Crop ${el.type}` : 'Move or resize objects');
+        if (el.type === 'image' || el.type === 'video') this.maskOrigin = painted;
         const origins = new Map<string, ResizeOrigin>();
         for (const selected of this.store.selectedElements().map((e) => this.editingFrame(e))) {
           origins.set(selected.id, {
@@ -2812,7 +2814,12 @@ export class EditorCanvas {
       ) {
         // Uncropped media pans from the implicit crop of its painted picture,
         // so the whole gesture is one undoable step that restores `sourceBox: null`.
-        this.maskOrigin = paintedMediaBox(masked, mediaNaturalSize(masked.id, this.slideLayer));
+        const painted = paintedMediaBox(masked, mediaNaturalSize(masked.id, this.slideLayer));
+        if (!painted) {
+          this.notice(MEDIA_LOADING_NOTICE);
+          return;
+        }
+        this.maskOrigin = painted;
         this.store.beginTransaction(`Move ${masked.type} in mask`);
         this.drag = {
           kind: 'mask-pan',
