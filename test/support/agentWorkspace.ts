@@ -26,6 +26,7 @@ import { Cdp, findTarget, stopBrowser, wait } from './browserSession.js';
 import { sharedBuild } from './collabClient.js';
 import { startCollabServerProcess, type CollabServerProcess } from './collabServerProcess.js';
 import { isEditorTarget, launchDesktopApp, materializeDesktopApp } from './desktopApp.js';
+import { minimalPdf } from './mediaFixtures.js';
 
 /**
  * An agent's workspace, the three ways an agent works on a deck — the harness
@@ -300,6 +301,7 @@ function fixtureClip(): Promise<Buffer> {
 export async function writeDeckFolder(dir: string, deck: Deck, theme = FIXTURE_THEME): Promise<void> {
   await mkdir(join(dir, 'assets'), { recursive: true });
   await writeFile(join(dir, 'assets', 'pic.png'), PNG);
+  await writeFile(join(dir, 'assets', 'figure.pdf'), minimalPdf());
   await writeFile(join(dir, 'assets', 'clip.mp4'), await fixtureClip());
   await writeFile(join(dir, 'theme.css'), theme, 'utf8');
   await saveDeck(dir, deck);
