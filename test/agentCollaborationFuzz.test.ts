@@ -34,7 +34,8 @@ import {
  * people do in a session: notes, comments and replies to them, skipping a slide, rewriting a
  * phrase, adding and deleting slides — on a hosted deck over the WebSocket,
  * sometimes while the agent's page is compiling; beside a local deck through
- * the same CLI transactions any second writer would use. In a hosted mirror
+ * the same CLI transactions any second writer would use, and in the desktop
+ * editor, typing speaker notes while the agent's page compiles. In a hosted mirror
  * the agent also rewrites deck.json from a copy it read before a person's
  * edit, which must land only the agent's own change.
  *
@@ -613,6 +614,62 @@ class Walk {
   }
 
   /**
+   * A person in the desktop editor types speaker notes without pause while
+   * the agent's new page compiles and lands. Neither may cost the other: the
+   * save lands, every keystroke stays, and Undo takes back the notes alone.
+   */
+  async notesWhileSaving(): Promise<void> {
+    const editor = this.ws.editor!;
+    const id = this.pick(this.order);
+    const model = this.slides.get(id)!;
+    const fresh = this.section();
+    const start = await this.ws.run('new', '.', '--count', '1');
+    this.expect(start.code === 0, `new failed: ${start.stderr}`);
+    const file = `add-${++this.pages}.html`;
+    this.log(`add a slide while a person types notes on ${id} in the editor`);
+    await editor.call('Emulation.setFocusEmulationEnabled', { enabled: true });
+    await editor.click(`#rail .rail-item[data-slide-id="${id}"]`, `rail row ${id}`);
+    await editor.click('#canvas .notes-toggle', 'speaker notes toggle');
+    await until(() => editor.evaluate<boolean>(
+      `document.activeElement?.classList.contains('notes-drawer-text') === true`,
+    ), 'the notes field to take focus', 10_000);
+    let typing = true;
+    let typed = '';
+    const person = (async () => {
+      do {
+        const key = 'notes'[typed.length % 5];
+        await editor.typeKeys(key);
+        typed += key;
+      } while (typing);
+    })();
+    await this.ws.write(file, start.stdout.replace(
+      /<section class="slide" data-placeholder="true">\s*<h1 class="role-title">Title<\/h1>\s*<\/section>/, fresh.html));
+    const reply = await this.apply(file).finally(() => { typing = false; });
+    await person;
+    const changes = this.landed(reply);
+    this.expect(changes.inserted.length === 1, `the add did not land once: ${JSON.stringify(changes)}`);
+    this.order.push(changes.inserted[0]);
+    this.slides.set(changes.inserted[0], { markers: new Set(fresh.markers), notes: '', skipped: false, comments: 0 });
+    const notes = await editor.evaluate<string>(`document.querySelector('#canvas .notes-drawer-text').value`);
+    this.expect(notes.replace(typed, '') === model.notes, `typed "${typed}" into "${model.notes}", the field holds "${notes}"`);
+    // Escape closes the drawer and ends the notes edit; Undo takes back only it.
+    await editor.key('Escape', 27);
+    const mod = process.platform === 'darwin' ? 4 : 2;
+    const notesAre = (value: string, what: string) => until(async () => {
+      const deck = await this.ws.deck();
+      return deck.slides.find((slide) => slide.id === id)?.notes === value && deck;
+    }, what, 20_000);
+    await notesAre(notes, 'the typed notes to reach the deck');
+    await editor.chord('z', 'KeyZ', 90, mod);
+    const undone = await notesAre(model.notes, 'undo to take back the notes');
+    this.expect(undone.slides.some((slide) => slide.id === changes.inserted[0]),
+      `undoing the notes on ${id} also took back the agent's slide ${changes.inserted[0]}`);
+    await editor.chord('z', 'KeyZ', 90, mod | 8);
+    await notesAre(notes, 'redo to bring the notes back');
+    model.notes = notes;
+  }
+
+  /**
    * The agent (or a script of its) rewrites the mirror's deck.json from a
    * copy it read before a person changed the deck — the mirror already shows
    * the person's change when the stale copy lands. Only the agent's own edit
@@ -755,7 +812,7 @@ function diffDecks(left: Deck, right: Deck): string {
 
 const MOVES: Record<WorkspaceKind, Array<[keyof Walk & string, number]>> = {
   offline: [['addPage', 4], ['editPage', 6], ['resaveUntouched', 2], ['reapply', 1], ['human', 3]],
-  desktop: [['addPage', 4], ['editPage', 6], ['resaveUntouched', 2], ['reapply', 1], ['human', 3]],
+  desktop: [['addPage', 4], ['editPage', 6], ['resaveUntouched', 2], ['reapply', 1], ['human', 3], ['notesWhileSaving', 2]],
   hosted: [['addPage', 4], ['editPage', 6], ['resaveUntouched', 2], ['reapply', 1], ['human', 3], ['raceAPerson', 2], ['rewriteDeckJson', 2]],
 };
 

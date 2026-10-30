@@ -364,7 +364,7 @@ What the page can and cannot do:
   overflow checks. When the *content* could be ordinary slides, make ordinary
   slides — they stay editable and the design stays consistent.
 - On the editor canvas the page shows as its poster so it can be selected and
-  dragged; a human double-clicks it (or uses Props → "Interact with page") to
+  dragged; a human double-clicks it (or uses Format → "Interact with page") to
   run it in place, and Escape or a click elsewhere returns to editing. While
   presenting it is always live.
 - The page does not load the deck's `theme.css`: carry the deck's fonts and
@@ -885,7 +885,7 @@ slide-agent inspect $DECK --slide results      # confirm the result
   `role-body` / `role-caption` classes; inline `style` on an element overrides
   the stylesheet and is best reserved for deliberate one-offs. A role's default
   size lives in `themeStyle` in `deck.json` and is written into the generated
-  block of `theme.css` (in the app under Theme › Edit theme; from the CLI
+  block of `theme.css` (in the app under Design › Edit theme…; from the CLI
   through `theme create` and `theme apply`). Editing a default changes what new
   slides are born with; existing slides keep their size until the theme is
   applied to them. Layout masters never carry a size.

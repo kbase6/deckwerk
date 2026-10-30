@@ -148,7 +148,7 @@ export async function runInlineFormatMatrix(
   await session.undoEditing(id);
 
   await session.beginSelectAll(id);
-  await editor.click(`${PANEL} .field-color .color-picker-trigger[aria-label^="Colour"]`, `${id} colour`);
+  await editor.click(`${PANEL} .field-color .color-picker-trigger[aria-label^="Color"]`, `${id} colour`);
   await editor.click('.color-picker-popover .color-picker-palette-button[title="#1d7d45"]', `${id} green`);
   await session.expectHtml(id, (html) => hasOriginalStructure(id, html, tag, amount)
     && /color:\s*(?:#1d7d45|rgb\(29, 125, 69\))/i.test(html));

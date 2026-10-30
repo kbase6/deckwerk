@@ -13,6 +13,7 @@ import { EditorCanvas } from './canvas.js';
 import { createShapeInsertPicker, insertText } from './elementCreation.js';
 import { Inspector } from './inspector.js';
 import { barButton, wireCanvasInspector } from './shellWiring.js';
+import { undoShortcutLabel } from './slideRail.js';
 import { EditorStore } from './store.js';
 
 export interface DesignWorkspaceDeps {
@@ -49,7 +50,7 @@ export class DesignWorkspace {
     const title = document.createElement('h2');
     title.textContent = 'Theme × layouts';
     const note = document.createElement('p');
-    note.textContent = 'Theme choices preview here without changing slide content.';
+    note.textContent = `Clicking a theme applies it to every slide; ${undoShortcutLabel()} undoes it.`;
     copy.append(eyebrow, title, note);
     const edit = barButton('Edit layouts…', () => this.openLayoutEditor(
       (this.deps.store.slide?.layout ?? 'freeform') as FixedLayout,
@@ -73,7 +74,8 @@ export class DesignWorkspace {
   }
 
   hide(): void {
-    if (this.editingOverlay) return;
+    // Nothing shown is nothing to hide: the stylesheet may be a theme draft's.
+    if (this.editingOverlay || this.preview.hidden) return;
     this.preview.hidden = true;
     this.deps.canvasHost.classList.remove('design-preview-active');
     this.previewStyle.textContent = '';
@@ -279,7 +281,6 @@ export class DesignWorkspace {
     const masterInspector = new Inspector(inspectorHost, masterStore);
     masterInspector.editsLayoutMasters = true;
     wireCanvasInspector(masterCanvas, masterInspector);
-    masterInspector.onEditLayouts = (layout) => masterStore.selectSlide(LAYOUTS.indexOf(layout));
 
     const renderRail = (): void => {
       const state = masterStore.get();

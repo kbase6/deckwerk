@@ -17,6 +17,8 @@ export const IPC = {
   deckSyncSnapshot: 'deck:syncSnapshot',
   deckSaveAs: 'deck:saveAs',
   windowCapture: 'window:capture',
+  /** The editor's light/dark preference, for the parts the OS draws. */
+  uiThemeSet: 'uiTheme:set',
   deckHistoryLoad: 'deckHistory:load',
   deckHistorySave: 'deckHistory:save',
   deckLoadTheme: 'deck:loadTheme',
@@ -56,6 +58,8 @@ export const IPC = {
   htmlExport: 'html:export',
   htmlEdit: 'html:edit',
   htmlAdopt: 'html:adopt',
+  /** Something the deck's file watchers want the person told; payload is the text. */
+  watchNotice: 'watch:notice',
   /** `notes.md` changed on disk; payload is the file's contents. */
   speakerNotesEdit: 'speakerNotes:edit',
   speakerNotesOpen: 'speakerNotes:open',
@@ -305,6 +309,8 @@ export interface TrimResult {
   width: number | null;
   height: number | null;
   duration: number | null;
+  /** Whether ffmpeg cropped the frame; without a crop it keeps the source's size. */
+  cropped: boolean;
 }
 
 export interface TrimProgress {

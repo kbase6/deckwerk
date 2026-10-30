@@ -6,19 +6,19 @@ Media is placed directly on the slide and stays as a real file in the presentati
 
 Drag an image or video from your file manager and drop it onto the slide. It lands where you drop it, at its natural aspect ratio.
 
-Videos start muted, looped, and set to autoplay. Change those options under **Props** after selecting the video.
+Videos start muted, looped, and set to autoplay. Change those options under **Format** after selecting the video.
 
 > Screenshot placeholder: Dropping a video onto a slide.
 
 ### Preview video
 
-Double-click a video on the slide to play or pause it. You can also use **Play preview** under **Props**.
+Double-click a video on the slide to play or pause it. You can also use **Play preview** under **Format**.
 
 > Screenshot placeholder: A video playing on the editing canvas.
 
 ### Trim
 
-Select a video, then drag the **Start** and **End** controls under **Props → Trim**. Trimming is non-destructive: the original file is unchanged, and playback simply stays inside the selected range.
+Select a video, then drag the **Start** and **End** controls under **Format → Trim**. Trimming is non-destructive: the original file is unchanged, and playback simply stays inside the selected range.
 
 Use **Reset trim** to restore the full clip.
 
@@ -26,15 +26,15 @@ Use **Reset trim** to restore the full clip.
 
 ### Crop
 
-Select an image or video and click **Edit mask**. Drag the handles on the slide to change the visible area, or drag the picture itself to slide it around behind the window. Click **Done editing mask** when the framing is right.
+Select an image or video and click **Crop…** under **Props → Crop & corners** (or right-click it and choose **Crop**). Drag the handles on the slide to change the visible area, or drag the picture itself to slide it around behind the window. Click **Done cropping** when the framing is right.
 
-Cropping is non-destructive. Use **Reset crop** to reveal the full frame again. Turn on **Circular mask** for a round crop: the window becomes a true circle whatever the picture's shape, and the picture keeps its own proportions behind it -- drag it in **Edit mask** to choose what the circle shows.
+Cropping is non-destructive. Use **Reset crop** to reveal the full frame again. Turn on **Crop to circle** for a round crop: the window becomes a true circle whatever the picture's shape, and the picture keeps its own proportions behind it -- drag it after clicking **Crop…** to choose what the circle shows.
 
-> Screenshot placeholder: Cropping an image with mask handles.
+> Screenshot placeholder: Cropping an image with crop handles.
 
 ### Effects
 
-Under **Props → Effects**, choose **Blur**, **Posterize**, or **Greyscale**. Adjust the value, reorder stacked effects with the arrows, or remove one with **×**.
+Under **Format → Effects**, choose **Blur**, **Posterize**, or **Greyscale**. Adjust the value, reorder stacked effects with the arrows, or remove one with **×**.
 
 Effects work on both images and videos.
 
@@ -42,4 +42,4 @@ Effects work on both images and videos.
 
 ### Download the original
 
-Right-click an image or video and choose **Download original…** to save the file you dropped, exactly as it was: an iPhone photo comes back as its HEIC and a screen recording as its own movie, not the PNG or H.264 copy DeckWerk shows on the slide. Crops, masks and effects are not applied. In the web editor the item is **Download original** and the file goes to the browser's downloads.
+Right-click an image or video and choose **Download original…** to save the file you dropped, exactly as it was: an iPhone photo comes back as its HEIC and a screen recording as its own movie, not the PNG or H.264 copy DeckWerk shows on the slide. Crops and effects are not applied. In the web editor the item is **Download original** and the file goes to the browser's downloads.

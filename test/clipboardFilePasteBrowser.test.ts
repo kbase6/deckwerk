@@ -120,7 +120,7 @@ describe('pasting a video file copied in the file manager', () => {
     );
     expect(pasted.src).toMatch(/^deck:\/\/[^/]+\/assets\/[^/]+\.mp4$/);
     expect(pasted.selected).toBe(true);
-    expect(pasted.status).toContain('Pasted 1 element');
+    expect(pasted.status).toContain('Pasted 1 object');
 
     const assets = await readdir(join(deckDir, 'assets'));
     expect(assets.filter((name) => name.endsWith('.mp4'))).toHaveLength(1);
@@ -172,7 +172,7 @@ describe('pasting a video file copied in the file manager', () => {
       30_000,
     );
     expect(pasted.selected).toBe(true);
-    expect(pasted.status).toContain('Pasted 1 element');
+    expect(pasted.status).toContain('Pasted 1 object');
 
     const liveDeck = await eventually(async () => {
       const response = await fetch(`http://127.0.0.1:${server!.port}/api/deck?deck=clipboard-file`);

@@ -8,6 +8,8 @@ export interface ToolbarPickerOption {
 export interface ToolbarPickerSection {
   label: string;
   options: ToolbarPickerOption[];
+  /** A muted line under the options, e.g. where a related setting lives. */
+  note?: string;
 }
 
 export type ToolbarPickerEntry = ToolbarPickerOption | ToolbarPickerSection;
@@ -115,6 +117,12 @@ export function createToolbarPicker(
       heading.textContent = entry.label;
       section.appendChild(heading);
       for (const option of entry.options) appendOption(option, section);
+      if (entry.note) {
+        const note = document.createElement('div');
+        note.className = 'shape-menu-section-note';
+        note.textContent = entry.note;
+        section.appendChild(note);
+      }
       menu.appendChild(section);
     }
     wrap.appendChild(menu);

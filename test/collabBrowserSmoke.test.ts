@@ -106,15 +106,18 @@ describe.skipIf(!electronBinary)('standalone collaboration browser', () => {
       connected: boolean;
       controls: string[];
       panels: string[];
+      untitledPanels: string[];
     }>(`(() => ({
       title: window.store?.get().deck.title ?? '',
       connected: document.getElementById('status')?.textContent?.includes('connected as Smoke Browser') === true,
       controls: [...document.querySelectorAll('#toolbar button')].map((button) => button.textContent?.trim() ?? ''),
-      panels: [...document.querySelectorAll('#side-tabs button')].map((button) => button.textContent?.trim() ?? '')
+      panels: [...document.querySelectorAll('#side-tabs button')].map((button) => button.textContent?.trim() ?? ''),
+      untitledPanels: [...document.querySelectorAll('#side-tabs button')].filter((button) => !button.title).map((button) => button.dataset.panel ?? '')
     }))()`), 'browser editor did not finish connecting', (value) => value.connected);
     expect(opened.title).toBe('Browser collaboration smoke');
     expect(opened.controls).toEqual(expect.arrayContaining(['Text', 'Table', 'Present', 'File']));
-    expect(opened.panels).toEqual(['Props', 'Design', 'Build', 'History', 'Chat']);
+    expect(opened.panels).toEqual(['Format', 'Design', 'Animations', 'History', 'Chat']);
+    expect(opened.untitledPanels, 'every side tab explains itself in a tooltip').toEqual([]);
 
     const peerProfileDir = join(workDir, 'peer-electron-profile');
     await mkdir(peerProfileDir, { recursive: true });

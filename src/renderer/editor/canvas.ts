@@ -23,8 +23,8 @@ import {
   syncSlideNumber,
 } from '../player/render.js';
 import { decodeImage } from '../player/imageDecode.js';
-import { cropWindow, fittedImageBox, paintedMediaBox, pannedSourceBox } from '@shared/mediaMask.js';
-import { mediaNaturalSize } from './mediaNatural.js';
+import { cropWindow, editableCircularMask, fittedImageBox, paintedMediaBox, pannedSourceBox, resizeMediaBox } from '@shared/mediaMask.js';
+import { MEDIA_LOADING_NOTICE, mediaNaturalSize } from './mediaNatural.js';
 import { DecodedVideoPool, releaseDecodedVideo } from '../player/decodedVideoPool.js';
 import { ungateVideoLoad } from '../player/mediaLoadGate.js';
 import { openSlideLinkInNewTab, slideLinkFromEvent } from '../player/links.js';
@@ -382,6 +382,18 @@ function findTextTarget(
         ? (el as SlideElement & { type: 'text' | 'html' })
         : null;
     }
+  }
+  return null;
+}
+
+/** The image or video with this id, wherever in the deck it now lives (see findTextTarget). */
+function findMediaTarget(
+  deck: Deck,
+  elementId: string,
+): Extract<SlideElement, { type: 'image' | 'video' }> | null {
+  for (const slide of deck.slides) {
+    const el = slide.elements.find((candidate) => candidate.id === elementId);
+    if (el) return el.type === 'image' || el.type === 'video' ? el : null;
   }
   return null;
 }
@@ -768,7 +780,7 @@ type ResizeOrigin = Rect & {
   rot: number;
   sourceBox?: Rect | null;
   /** Media's `fit` when the drag began: it decides whether the drag keeps
-   * proportions, and is put back if Shift is let go mid-drag. */
+   * proportions. */
   fit?: 'cover' | 'contain' | 'fill';
   control?: { x: number; y: number } | null;
 };
@@ -783,6 +795,10 @@ type DragMode =
       origin: Rect;
       origins: Map<string, ResizeOrigin>;
       elementId: string;
+      /** The element as authored, which a crop back to the start restores. */
+      authored: Rect & { sourceBox: Rect | null };
+      /** The picture as painted when a crop drag began; null when the drag scales. */
+      crop: Rect | null;
     }
   | {
       kind: 'table-column-resize';
@@ -807,8 +823,10 @@ type DragMode =
       origin: Rect;
       /** The window the pan shows the picture through (`editingFrame`). */
       frame: Rect;
-      /** The element as authored, which a pan back to the start restores. */
+      /** The element as authored, which a pan that ends at the start restores. */
       authored: Rect & { sourceBox: Rect | null };
+      /** Whether the picture last sat away from where the pan began. */
+      moved: boolean;
     }
   | { kind: 'marquee'; startCanvas: { x: number; y: number } }
   | {
@@ -832,6 +850,8 @@ export class EditorCanvas {
   private slideLayer: HTMLElement;
   private overlay: HTMLElement;
   private zoomInput: HTMLInputElement;
+  /** Says crop mode is on and how to leave it; the green outline alone did not. */
+  private cropBanner: HTMLElement;
   private tableHeightSyncPending = false;
   /** Content-size passes run since the last frame; see scheduleTableHeightSync. */
   private tableHeightSyncPassesThisFrame = 0;
@@ -1041,8 +1061,8 @@ export class EditorCanvas {
    */
   private maskingId: string | null = null;
   private buildBadgesVisible = false;
-  /** The crop as it was when the current mask drag began. */
-  private maskOrigin: { x: number; y: number; w: number; h: number } | null = null;
+  /** The faint copy of the masked picture, reused while its source is unchanged. */
+  private maskCopy: { live: Element; key: string; node: HTMLElement } | null = null;
 
   /** Notified when mask mode turns on or off, so the inspector can relabel. */
   onMaskModeChange?: (elementId: string | null) => void;
@@ -1082,7 +1102,12 @@ export class EditorCanvas {
     this.stage.append(this.slideLayer, this.overlay);
     const zoomControls = this.createZoomControls();
     this.zoomInput = zoomControls.querySelector<HTMLInputElement>('.zoom-value')!;
-    this.host.replaceChildren(this.stage, zoomControls);
+    this.cropBanner = document.createElement('div');
+    this.cropBanner.className = 'crop-mode-banner';
+    this.cropBanner.textContent =
+      'Cropping. Drag edges to crop, drag the picture to reposition, click outside or press Esc to finish.';
+    this.cropBanner.hidden = true;
+    this.host.replaceChildren(this.stage, zoomControls, this.cropBanner);
 
     new ResizeObserver(() => this.rescale()).observe(this.host);
     this.bindPointer();
@@ -1137,12 +1162,18 @@ export class EditorCanvas {
     this.keptSelection.schedule();
     const { deck, slideIndex, selection } = this.store.get();
     const slide = deck.slides[slideIndex];
-    // Crop mode belongs to an object on this slide: leaving the slide, or the
-    // object going away (a delete, an undo, a collaborator), ends it.
-    if (this.maskingId && !slide?.elements.some((el) => el.id === this.maskingId)) {
+    // Crop mode belongs to the selected object on this slide: leaving the
+    // slide, the object going away (a delete, an undo, a collaborator), or
+    // the selection moving off it alone (Escape, Select All, a shift-click)
+    // ends it.
+    if (this.maskingId && (
+      selection.size !== 1 || !selection.has(this.maskingId)
+      || !slide?.elements.some((el) => el.id === this.maskingId)
+    )) {
       this.maskingId = null;
       this.onMaskModeChange?.(null);
     }
+    this.cropBanner.hidden = !this.maskingId;
     if (!slide) {
       this.slideLayer.replaceChildren();
       this.overlay.replaceChildren();
@@ -2257,17 +2288,27 @@ export class EditorCanvas {
       }
     }
 
-    // In mask mode, show the full frame faintly outside the crop window so it
-    // is clear what is being cut away rather than merely what is kept.
+    // In mask mode, show the whole picture faintly outside the crop window so
+    // it is clear what is being cut away rather than merely what is kept. The
+    // picture as painted (an uncropped `cover` overflows its window too),
+    // turned about the element's centre as the media is.
     if (this.maskingId) {
       const el = elements.find((e) => e.id === this.maskingId);
-      if (el && (el.type === 'image' || el.type === 'video') && el.sourceBox) {
+      const box = el && (el.type === 'image' || el.type === 'video')
+        ? paintedMediaBox(el, mediaNaturalSize(el.id, this.slideLayer)) : null;
+      if (el && box) {
         const ghost = document.createElement('div');
         ghost.className = 'mask-ghost';
-        ghost.style.left = `${el.x + el.sourceBox.x}px`;
-        ghost.style.top = `${el.y + el.sourceBox.y}px`;
-        ghost.style.width = `${el.sourceBox.w}px`;
-        ghost.style.height = `${el.sourceBox.h}px`;
+        ghost.style.left = `${el.x + box.x}px`;
+        ghost.style.top = `${el.y + box.y}px`;
+        ghost.style.width = `${box.w}px`;
+        ghost.style.height = `${box.h}px`;
+        if (el.rot) {
+          ghost.style.transformOrigin = `${el.w / 2 - box.x}px ${el.h / 2 - box.y}px`;
+          ghost.style.transform = `rotate(${el.rot}deg)`;
+        }
+        const copy = this.maskGhostCopy(el.id);
+        if (copy) ghost.appendChild(copy);
         frag.appendChild(ghost);
       }
     }
@@ -2647,7 +2688,10 @@ export class EditorCanvas {
     // allowed to sit just outside rounded/circular windows, so they count as
     // part of the active region even when their centre is outside the clip.
     if (this.maskingId) {
-      const mask = slide.elements.find((candidate) => candidate.id === this.maskingId);
+      // The same fitted frame the pan below tests, so a press in a letterboxed
+      // picture's empty bars ends the crop rather than moving the object.
+      const found = slide.elements.find((candidate) => candidate.id === this.maskingId);
+      const mask = found && this.editingFrame(found);
       const onActiveHandle = target.closest<HTMLElement>(
         `.handle[data-element-id="${CSS.escape(this.maskingId)}"]`,
       );
@@ -2758,16 +2802,17 @@ export class EditorCanvas {
       const found = slide.elements.find((e) => e.id === target.dataset.elementId);
       const el = found && this.editingFrame(found);
       if (el) {
-        this.store.beginTransaction(
-          this.maskingId === el.id ? `Crop ${el.type}` : 'Move or resize objects',
-        );
-        if (el.type === 'image' || el.type === 'video') {
-          // Captured once per crop drag: the picture as painted, which for
-          // uncropped media is where object-fit put it, not the whole box.
-          this.maskOrigin = this.maskingId === el.id
-            ? paintedMediaBox(el, mediaNaturalSize(el.id, this.slideLayer))
-            : null;
+        // Captured once per crop drag: the picture as painted, which for
+        // uncropped media is where object-fit put it, not the whole box.
+        const cropping = this.maskingId === el.id;
+        const crop = cropping && (el.type === 'image' || el.type === 'video')
+          ? paintedMediaBox(el, mediaNaturalSize(el.id, this.slideLayer))
+          : null;
+        if (cropping && !crop) {
+          this.notice(MEDIA_LOADING_NOTICE);
+          return;
         }
+        this.store.beginTransaction(cropping ? `Crop ${el.type}` : 'Move or resize objects');
         const origins = new Map<string, ResizeOrigin>();
         for (const selected of this.store.selectedElements().map((e) => this.editingFrame(e))) {
           origins.set(selected.id, {
@@ -2794,6 +2839,11 @@ export class EditorCanvas {
           origin: { x: el.x, y: el.y, w: el.w, h: el.h },
           origins,
           elementId: el.id,
+          authored: {
+            x: found.x, y: found.y, w: found.w, h: found.h,
+            sourceBox: found.type === 'image' || found.type === 'video' ? found.sourceBox : null,
+          },
+          crop,
         };
         return;
       }
@@ -2812,18 +2862,23 @@ export class EditorCanvas {
       ) {
         // Uncropped media pans from the implicit crop of its painted picture,
         // so the whole gesture is one undoable step that restores `sourceBox: null`.
-        this.maskOrigin = paintedMediaBox(masked, mediaNaturalSize(masked.id, this.slideLayer));
-        this.store.beginTransaction(`Move ${masked.type} in mask`);
+        const painted = paintedMediaBox(masked, mediaNaturalSize(masked.id, this.slideLayer));
+        if (!painted) {
+          this.notice(MEDIA_LOADING_NOTICE);
+          return;
+        }
+        this.store.beginTransaction(`Reposition ${masked.type} in crop`);
         this.drag = {
           kind: 'mask-pan',
           elementId: masked.id,
           startCanvas: point,
-          origin: { ...this.maskOrigin },
+          origin: painted,
           frame: { x: masked.x, y: masked.y, w: masked.w, h: masked.h },
           authored: {
             x: found.x, y: found.y, w: found.w, h: found.h,
             sourceBox: found.type === 'image' || found.type === 'video' ? found.sourceBox : null,
           },
+          moved: false,
         };
         return;
       }
@@ -2930,10 +2985,11 @@ export class EditorCanvas {
 
         const ids = new Set(drag.origin.keys());
         // Snap to the boxes the author can see: a rotated neighbour's on-screen
-        // extent is its rotated bounding box.
+        // extent is its rotated bounding box, a letterboxed picture's is the
+        // picture.
         const others = slide.elements
           .filter((e) => !ids.has(e.id))
-          .map((e) => rotatedBounds(e));
+          .map((e) => rotatedBounds(this.editingFrame(e)));
 
         // Snap the group by its bounding box, then apply one delta to all
         // members, so relative positions inside a multi-selection are preserved.
@@ -2941,8 +2997,8 @@ export class EditorCanvas {
         // author is lining up; a move is a pure translation, so the delta the
         // snap produces applies unchanged to the unrotated positions.
         const bounds = unionRect([...drag.origin.entries()].map(([id, origin]) => {
-          const rot = slide.elements.find((e) => e.id === id)?.rot ?? 0;
-          return rot ? rotatedBounds({ ...origin, rot } as SlideElement) : origin;
+          const el = slide.elements.find((e) => e.id === id);
+          return el ? rotatedBounds(this.editingFrame({ ...el, ...origin } as SlideElement)) : origin;
         }));
         const moved = { ...bounds, x: bounds.x + dx, y: bounds.y + dy };
         const snapped = commandModifier(ev)
@@ -2972,8 +3028,7 @@ export class EditorCanvas {
 
       case 'mask-pan': {
         const drag = this.drag;
-        const base = this.maskOrigin;
-        if (!base) break;
+        const base = drag.origin;
         const target = slide.elements.find((e) => e.id === drag.elementId);
         if (!target || (target.type !== 'image' && target.type !== 'video')) break;
         let dx = point.x - drag.startCanvas.x;
@@ -2994,14 +3049,14 @@ export class EditorCanvas {
         }
         const next = pannedSourceBox(base, drag.frame, dx, dy);
         const moved = next.x !== Math.round(base.x) || next.y !== Math.round(base.y);
+        // Still showing the start: nothing to write. Back at the start after
+        // moving keeps the crop until the pan ends (endDrag decides), so the
+        // media's page structure does not flip mid-gesture.
+        if (!moved && !drag.moved) break;
+        drag.moved = moved;
         this.store.commit((deck) => {
-          const el = deck.slides[this.store.get().slideIndex].elements.find(
-            (e) => e.id === drag.elementId,
-          );
-          if (!el || (el.type !== 'image' && el.type !== 'video')) return;
-          // Back at the start is the element as authored, so a pan that moved
-          // nothing leaves neither an undo step nor a crop behind.
-          Object.assign(el, moved ? { ...drag.frame, sourceBox: next } : drag.authored);
+          const el = findMediaTarget(deck, drag.elementId);
+          if (el) Object.assign(el, { ...drag.frame, sourceBox: next });
         });
         break;
       }
@@ -3058,7 +3113,8 @@ export class EditorCanvas {
         // Option resizes about the element's center:
         // both sides move, and the center is re-pinned after constraints.
         // A crop moves only the edge dragged, so Option does not apply.
-        const cropping = this.maskingId === drag.elementId;
+        const crop = drag.crop;
+        const cropping = crop !== null;
         const centered = ev.altKey && !cropping;
         let rect: Rect = { ...o };
         if (centered) {
@@ -3091,17 +3147,17 @@ export class EditorCanvas {
           if (edges.bottom) rect.h = o.h + dy;
         }
 
-        // A crop changes the window's shape, never the picture's, so it is
-        // free and Shift locks it. A resize of media follows its "Keep aspect
-        // ratio" box (any fit but 'fill'), and Shift inverts it; everything
-        // else resizes freely, Shift locking. The fit is read from the drag's
-        // origin, since a Shift-freed resize writes 'fill' mid-drag. A
-        // circular mask is square by construction, so it never frees: a free
-        // drag would stretch it back into an ellipse.
+        // Shift locks proportions on every resize and every crop. A crop
+        // changes the window's shape, never the picture's, so it is otherwise
+        // free; a resize of media otherwise follows its "Keep aspect ratio"
+        // box (any fit but 'fill'). No modifier writes the fit: unticking that
+        // box is how a picture is stretched. A circular mask is square by
+        // construction, so it never frees: a free drag would stretch it back
+        // into an ellipse.
         const media = resizing?.type === 'image' || resizing?.type === 'video';
         const keepsAspect = drag.origins.get(drag.elementId)?.fit !== 'fill';
         const constrained = media
-          ? resizing.maskShape === 'circle' || (cropping ? ev.shiftKey : keepsAspect !== ev.shiftKey)
+          ? editableCircularMask(resizing) || ev.shiftKey || (!cropping && keepsAspect)
           : ev.shiftKey;
         // Where the pointer is: the box a free resize would make.
         const pointerRect = rect;
@@ -3110,10 +3166,11 @@ export class EditorCanvas {
           : clampResize(rect, o, edges);
 
         // Guides align to what is on screen, which for a rotated neighbour is
-        // its rotated bounding box, not its unrotated one.
+        // its rotated bounding box, not its unrotated one, and for a
+        // letterboxed picture is the picture, not its empty frame.
         const others = slide.elements
           .filter((e) => !drag.origins.has(e.id))
-          .map((e) => rotatedBounds(e));
+          .map((e) => rotatedBounds(this.editingFrame(e)));
         // A rotated element's own edges are not axis-aligned, so there is
         // nothing meaningful to snap them to; snapping it would only nudge the
         // box away from the pointer. Alt suspends snapping outright.
@@ -3147,7 +3204,7 @@ export class EditorCanvas {
           // Cropping, not scaling: the dragged edge moves, the picture stays
           // put, and the window stops at the picture's edge. `cropWindow`
           // keeps a rotated picture in place itself.
-          this.applyMaskResize(drag.elementId, r, o, constrained);
+          this.applyMaskResize(drag.elementId, r, o, crop, constrained, drag.authored);
           break;
         }
         if (radians) {
@@ -3176,22 +3233,7 @@ export class EditorCanvas {
           // Resizing a cropped element scales the whole picture with its
           // window, so the crop composition is preserved — without this, a
           // resize silently re-crops instead of scaling.
-          if ((el.type === 'image' || el.type === 'video') && origin.sourceBox) {
-            const fx = el.w / origin.w;
-            const fy = el.h / origin.h;
-            el.sourceBox = {
-              x: Math.round(origin.sourceBox.x * fx),
-              y: Math.round(origin.sourceBox.y * fy),
-              w: Math.max(1, Math.round(origin.sourceBox.w * fx)),
-              h: Math.max(1, Math.round(origin.sourceBox.h * fy)),
-            };
-          }
-          if ((el.type === 'image' || el.type === 'video') && origin.fit) {
-            // A freed picture squashes with its box: it fills the box (or its
-            // scaled crop) exactly instead of letterboxing inside it. Letting
-            // go of Shift mid-drag gives it back the fit it had.
-            el.fit = media && !constrained ? 'fill' : origin.fit;
-          }
+          if (el.type === 'image' || el.type === 'video') resizeMediaBox(el, el.w, el.h, origin);
           if (el.type === 'shape' && origin.control) {
             const control = resizePointByScale(origin.control, origin, resized, scaleX, scaleY);
             el.control = { x: Math.round(control.x), y: Math.round(control.y) };
@@ -3247,7 +3289,7 @@ export class EditorCanvas {
           // be made exactly level.
           const others = slide.elements
             .filter((e) => !drag.origins.has(e.id))
-            .map((e) => rotatedBounds(e));
+            .map((e) => rotatedBounds(this.editingFrame(e)));
           const snapped = snapPoint(point, deck.canvas, others, threshold, {
             x: [anchor.x],
             y: [anchor.y],
@@ -3390,11 +3432,19 @@ export class EditorCanvas {
   }
 
   private endDrag(): void {
+    const drag = this.drag;
+    if (drag.kind === 'mask-pan' && this.dragStarted && !drag.moved) {
+      // A pan that ends where it began is the element as authored, so it
+      // leaves neither an undo step nor a crop behind.
+      this.store.commit((deck) => {
+        const el = findMediaTarget(deck, drag.elementId);
+        if (el) Object.assign(el, drag.authored);
+      });
+    }
     this.store.endTransaction();
     this.drag = { kind: 'none' };
     this.dragStarted = false;
     this.host.classList.remove('is-rotating');
-    this.maskOrigin = null;
     this.guides = [];
     this.spacing = [];
     this.sizeMatches = [];
@@ -3492,7 +3542,7 @@ export class EditorCanvas {
     }
     openContextMenu(menu, { x: ev.clientX, y: ev.clientY });
     // A document-level pointerdown used to remove the menu *before* its row
-    // could receive click, making actions such as Edit mask appear inert.
+    // could receive click, making actions such as Crop appear inert.
     menu.addEventListener('pointerdown', (event) => event.stopPropagation());
     const close = () => menu.remove();
     setTimeout(() => document.addEventListener('pointerdown', close, { once: true }), 0);
@@ -5743,7 +5793,7 @@ export class EditorCanvas {
     }
     if (offsets) this.restoreTextRange(content, offsets);
     this.focusTextSurface(content);
-    this.commitLiveTextDom(value ? 'Change list marker colour' : 'Make list markers follow text colour');
+    this.commitLiveTextDom(value ? 'Change list marker color' : 'Make list markers follow text color');
     return true;
   }
 
@@ -6392,7 +6442,7 @@ export class EditorCanvas {
   private applyTextSelectionStyle(property: TextRunStyleProperty, value: string): boolean {
     const label = property === 'fontFamily' ? 'Change selected text font'
       : property === 'fontSize' ? 'Change selected text size'
-        : property === 'color' ? 'Change selected text colour'
+        : property === 'color' ? 'Change selected text color'
           : property === 'fontWeight' ? 'Change selected text weight'
             : property === 'fontStyle' ? 'Change selected text italic'
               : property === 'verticalAlign' ? 'Change selected text baseline'
@@ -6667,7 +6717,7 @@ export class EditorCanvas {
       cell.style[property] = value ?? '';
       if (!cell.getAttribute('style')?.trim()) cell.removeAttribute('style');
     }
-    this.commitTableDom(property === 'color' ? 'Change table text colour' : 'Change table cell colour');
+    this.commitTableDom(property === 'color' ? 'Change table text color' : 'Change table cell color');
   }
 
   applyTableCellTextStyle(
@@ -6960,6 +7010,39 @@ export class EditorCanvas {
   }
 
   /**
+   * A copy of the picture the masked element shows, for its crop ghost: the
+   * image itself, or a video's current frame (a second `<video>` would load
+   * and decode on its own). Reused across the redraws of a drag, so the
+   * ghost never flickers or re-decodes. Null for media with nothing to copy
+   * yet (a PDF, a video with no frame).
+   */
+  private maskGhostCopy(elementId: string): HTMLElement | null {
+    const live = this.slideLayer
+      .querySelector(`[data-element-id="${CSS.escape(elementId)}"]`)
+      ?.querySelector<HTMLImageElement | HTMLVideoElement>('img, video');
+    if (!live) return null;
+    const video = live instanceof HTMLVideoElement;
+    const key = video ? String(live.currentTime) : live.currentSrc || live.src;
+    if (this.maskCopy?.live === live && this.maskCopy.key === key) return this.maskCopy.node;
+    let node: HTMLElement;
+    if (video) {
+      if (live.readyState < HTMLMediaElement.HAVE_CURRENT_DATA || !live.videoWidth) return null;
+      const frame = document.createElement('canvas');
+      frame.width = live.videoWidth;
+      frame.height = live.videoHeight;
+      frame.getContext('2d')?.drawImage(live, 0, 0);
+      node = frame;
+    } else {
+      const image = document.createElement('img');
+      image.src = key;
+      image.alt = '';
+      node = image;
+    }
+    this.maskCopy = { live, key, node };
+    return node;
+  }
+
+  /**
    * Turn mask editing on or off for an element.
    *
    * Entering mask mode is not itself an edit. For uncropped media the first
@@ -6991,30 +7074,39 @@ export class EditorCanvas {
    * around under the cursor. That is the difference between cropping and
    * scaling. `rect` is in the element's unrotated frame; see `cropWindow`.
    */
-  private applyMaskResize(elementId: string, rect: Rect, origin: Rect, lockAspect: boolean): void {
+  private applyMaskResize(
+    elementId: string,
+    rect: Rect,
+    origin: Rect,
+    base: Rect,
+    lockAspect: boolean,
+    authored: Rect & { sourceBox: Rect | null },
+  ): void {
     // The offset is measured from where the drag began, so it must be applied
-    // to the crop as it was at that moment. Applying it to the *current* crop
-    // would re-add the whole delta on every pointermove, and the media would
-    // shoot out of its window within a few frames.
-    const base = this.maskOrigin;
-    if (!base) return;
-
+    // to the crop as it was at that moment (`base`). Applying it to the
+    // *current* crop would re-add the whole delta on every pointermove, and
+    // the media would shoot out of its window within a few frames.
     this.store.commit((deck) => {
-      const el = deck.slides[this.store.get().slideIndex].elements.find(
-        (e) => e.id === elementId,
-      );
+      const el = findMediaTarget(deck, elementId);
       if (!el || (el.type !== 'image' && el.type !== 'video')) return;
-      Object.assign(el, cropWindow(rect, origin, base, el.rot, lockAspect));
+      const next = cropWindow(rect, origin, base, el.rot, lockAspect);
+      const moved = next.w !== Math.round(origin.w) || next.h !== Math.round(origin.h)
+        || next.sourceBox.x !== Math.round(base.x) || next.sourceBox.y !== Math.round(base.y);
+      // Back at the start is the element as authored, so a crop that moved
+      // nothing (an edge dragged out past the picture) leaves neither an undo
+      // step nor a crop behind, as a pan that moved nothing does.
+      Object.assign(el, moved ? next : authored);
     });
   }
 
   /**
-   * An element as the editor outlines and drags it. An uncropped `contain`
-   * picture is fitted to the picture it paints, so its outline sits on the
-   * picture and a resize or crop starts from it; the deck keeps its frame
-   * until such a gesture writes one, so looking at a slide never edits it.
+   * An element as the editor outlines, drags and snaps to it, and as Props
+   * shows it. An uncropped `contain` picture is fitted to the picture it
+   * paints, so its outline sits on the picture and a resize or crop starts
+   * from it; the deck keeps its frame until such a gesture or a typed value
+   * writes one, so looking at a slide never edits it.
    */
-  private editingFrame<T extends SlideElement>(el: T): T {
+  editingFrame<T extends SlideElement>(el: T): T {
     if (el.type !== 'image' || el.layoutMasterId) return el;
     const box = fittedImageBox(el, mediaNaturalSize(el.id, this.slideLayer));
     return box ? { ...el, ...box } : el;
@@ -7666,7 +7758,7 @@ function mediaMaskContainsPoint(
 
   if (x < el.x || x > el.x + el.w || y < el.y || y > el.y + el.h) return false;
 
-  if (el.maskShape === 'circle') {
+  if (editableCircularMask(el)) {
     const rx = el.w / 2;
     const ry = el.h / 2;
     const dx = x - (el.x + rx);

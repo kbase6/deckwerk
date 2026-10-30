@@ -349,7 +349,7 @@ const SVG = [
  * Byte offsets in the xref table have to match the body exactly, so they are
  * measured rather than written down.
  */
-function minimalPdf(): Buffer {
+export function minimalPdf(): Buffer {
   const content = '1 0 0 RG 4 w 10 10 120 85 re S\n';
   const objects = [
     '1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n',

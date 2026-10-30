@@ -63,7 +63,7 @@ async function enterMaskModeOnImage(): Promise<void> {
     type: 'mouseReleased', x: box.x, y: box.y, button: 'right', buttons: 0, clickCount: 1,
   });
   await wait(150);
-  await session.cdp.clickByText('#ctx-menu button', 'Edit mask (crop)', 'context menu Edit mask');
+  await session.cdp.clickByText('#ctx-menu button', 'Crop', 'context menu Crop');
   await wait(150);
   const masking = await session.cdp.evaluate<string | null>('window.canvas.maskingElement()');
   expect(masking, 'the context menu put the image into mask mode').toBe(IMAGE);
@@ -322,8 +322,8 @@ describe.skipIf(!electronBinary)('mode flags and focus lifecycle', () => {
     const stored = await session.storedHtml(TEXT_B);
     expect(stored, 'the typed text reached the store').toContain('esc1');
 
-    // Leave the UI on the Props tab for later cases.
-    await session.cdp.clickByText('#side-tabs button', 'Props', 'Props tab');
+    // Leave the UI on the Format tab for later cases.
+    await session.cdp.clickByText('#side-tabs button', 'Format', 'Format tab');
     await wait(100);
   });
 });

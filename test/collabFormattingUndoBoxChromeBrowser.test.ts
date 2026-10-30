@@ -69,24 +69,25 @@ describe.skipIf(!electronBinary)('box-level formatting scope and undo in the col
       'line spacing did not apply');
     await session.undoChrome(OL_ID);
 
-    for (const [label, property] of [
-      ['Auto-fit text to box', 'autoFit'],
-      ['Disable automatic line breaks', 'noWrap'],
-    ] as const) {
-      const toggle = await session.checkboxId(label, `test-${property}`);
-      await editor.click(toggle, label);
-      await eventually(async () => Boolean((await session!.liveElement(OL_ID) as any)[property]),
-        `${label} did not apply`);
-      await session.undoChrome(OL_ID);
-    }
+    const textFit = await session.idField('Text fit', 'test-autoFit', 'label.field');
+    await editor.choose(textFit, 'shrink', 'Text fit');
+    await eventually(async () => Boolean((await session!.liveElement(OL_ID) as any).autoFit),
+      'Text fit did not apply');
+    await session.undoChrome(OL_ID);
+
+    const noWrap = await session.checkboxId('Keep on one line', 'test-noWrap');
+    await editor.click(noWrap, 'Keep on one line');
+    await eventually(async () => Boolean((await session!.liveElement(OL_ID) as any).noWrap),
+      'Keep on one line did not apply');
+    await session.undoChrome(OL_ID);
 
     const noWrapForCompression = await session.checkboxId(
-      'Disable automatic line breaks', 'test-nowrap-compression');
+      'Keep on one line', 'test-nowrap-compression');
     await editor.click(noWrapForCompression, 'enable no-wrap for compression');
     await eventually(async () => Boolean((await session!.liveElement(OL_ID) as any).noWrap),
       'no-wrap prerequisite did not apply');
-    const compression = await session.idField('Compress by', 'test-compression', 'label.field');
-    await editor.choose(compression, 'condense', 'Compress by');
+    const compression = await session.idField('If too long', 'test-compression', 'label.field');
+    await editor.choose(compression, 'condense', 'If too long');
     await eventually(async () => (await session!.liveElement(OL_ID) as any).noWrapMode === 'condense',
       'compression mode did not apply');
     await editor.click(ON_CANVAS(OL_ID), 'ordered list before compression undo');
@@ -102,7 +103,7 @@ describe.skipIf(!electronBinary)('box-level formatting scope and undo in the col
       'role did not apply');
     await session.undoChrome(OL_ID);
 
-    const colourTrigger = `${PANEL} .field-color .color-picker-trigger[aria-label^="Colour"]`;
+    const colourTrigger = `${PANEL} .field-color .color-picker-trigger[aria-label^="Color"]`;
     await editor.click(colourTrigger, 'text colour');
     await editor.click('.color-picker-popover .color-picker-palette-button[title="#1d7d45"]', 'green swatch');
     await eventually(async () => (await session!.liveElement(OL_ID)).style.color === '#1d7d45',

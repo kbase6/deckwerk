@@ -5,6 +5,7 @@ import { emptyDeck } from '../src/shared/deck.js';
 import { prepareHtmlDraftRenderPage } from '../src/cli/compileHtml.js';
 import { authoringPageHtml, measureSlides, measureSlidesSource } from '../src/shared/htmlMeasure.js';
 import { adoptAuthoredIds, htmlSlideScope, slidesFromMeasured, slidesToHtml, type MeasuredSlide } from '../src/shared/htmlSlides.js';
+import { objectPositionOffset } from '../src/shared/mediaMask.js';
 import { applySlideLayout } from '../src/renderer/editor/slideLayouts.js';
 import { authoredHtmlSync, authoredHtmlTransaction, compileAuthoredHtml } from '../src/renderer/editor/htmlCompile.js';
 
@@ -298,6 +299,52 @@ describe('the walk', () => {
     expect(() => new Function(`return ${source}`)).not.toThrow();
     expect(source).toContain('data-slide-id');
     expect(source.endsWith('(document)')).toBe(true);
+  });
+});
+
+/**
+ * `object-position` is read twice: by the walk, which freezes an exported
+ * picture's framing into a crop, and by `objectPositionOffset`, which every
+ * crop and pan gesture starts from. The walk cannot import the shared one
+ * (it is serialised with `toString`), so both are fed the same values here and
+ * held to what CSS means by them.
+ */
+describe('object-position keywords, read by the walk and by the crop tool', () => {
+  // [value, horizontal %, vertical %]
+  const cases: [string, number, number][] = [
+    ['top', 50, 0], ['bottom', 50, 100], ['left', 0, 50], ['right', 100, 50],
+    ['center', 50, 50], ['top center', 50, 0], ['center top', 50, 0],
+    ['center left', 0, 50], ['bottom right', 100, 100], ['top left', 0, 0],
+    ['20% 30%', 20, 30], ['10%', 10, 50],
+  ];
+  const box = { w: 200, h: 100 };
+
+  /** The crop the walk bakes for an exported `cover` picture of `natural` size. */
+  function walkedCrop(position: string, natural: { w: number; h: number }): number[] {
+    const doc = pageFrame(`<section class="slide" data-slide-id="s"><img data-element-id="i"
+      src="p.png" style="width:${box.w}px;height:${box.h}px;object-fit:cover;object-position:${position}"></section>`);
+    const img = doc.querySelector('img')!;
+    Object.defineProperty(img, 'naturalWidth', { value: natural.w });
+    Object.defineProperty(img, 'naturalHeight', { value: natural.h });
+    img.getBoundingClientRect = () => ({
+      left: 0, top: 0, right: box.w, bottom: box.h, x: 0, y: 0, width: box.w, height: box.h,
+      toJSON: () => ({}),
+    });
+    const crop = measureSlides(doc)[0].nodes[0].dataset.crop;
+    if (!crop) throw new Error(`no crop measured for ${position}`);
+    return crop.split(',').map(Number);
+  }
+
+  it.each(cases)('reads %s as %d%% across and %d%% down', (position, px, py) => {
+    // Cover leaves slack on one axis only, so a wide and a tall picture
+    // between them test both: 800x100 overflows by 600 across, 200x400 by 300
+    // down.
+    const [x] = walkedCrop(position, { w: 800, h: 100 });
+    const [, y] = walkedCrop(position, { w: 200, h: 400 });
+    expect({ x: x + 0, y: y + 0 }).toEqual({ x: -6 * px + 0, y: -3 * py + 0 });
+
+    const shared = objectPositionOffset(position, box, { w: 800, h: 400 });
+    expect({ x: shared.x + 0, y: shared.y + 0 }).toEqual({ x: -6 * px + 0, y: -3 * py + 0 });
   });
 });
 

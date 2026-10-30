@@ -39,6 +39,7 @@ import { SlideRail } from '../editor/slideRail.js';
 import { EditorStore } from '../editor/store.js';
 import { createThemePanel } from '../editor/themePanel.js';
 import { TimelinePanel } from '../editor/timelinePanel.js';
+import { SIDE_PANELS, buildSidePanelTabs } from '../editor/sidePanels.js';
 import { CollabBridge } from './collabBridge.js';
 import { createConnectionNotice } from './connectionNotice.js';
 import { createDeckOnServer, folderOf, importKeynoteToServer, importPowerPointToServer, showDeckPicker, showShareDialog } from './deckPicker.js';
@@ -263,6 +264,7 @@ new TimelinePanel(el('timeline'), store);
 new HistoryPanel(el('history'), store);
 const rail = new SlideRail(el('rail'), store);
 rail.onStatus = setStatusMessage;
+inspector.onStatus = setStatusMessage;
 // The CSS buffer backs the Theme panel and live theme sync. Like the desktop
 // app it has no sidebar tab of its own — theme.css is edited on disk or
 // through theme adoption, not in this UI.
@@ -404,7 +406,6 @@ document.addEventListener('keydown', (event) => {
     event.stopPropagation();
   }
 }, true);
-inspector.onEditLayouts = (layout) => designWorkspace.openLayoutEditor(layout);
 inspector.onPreviewSlide = (slide, label) => designWorkspace.previewSlideOnCanvas(slide, label);
 el('themePanel').appendChild(themePanel.element);
 el('themePanel').classList.add('theme-panel');
@@ -1065,12 +1066,9 @@ function buildToolbar(): void {
 }
 
 const PANELS = [
-  { id: 'inspector', label: 'Props' },
-  { id: 'themePanel', label: 'Design' },
-  { id: 'timeline', label: 'Build' },
-  { id: 'history', label: 'History' },
-  { id: 'chat', label: 'Chat' },
-] as const;
+  ...SIDE_PANELS,
+  { id: 'chat', label: 'Chat', title: 'Talk with the people and agents in this deck' },
+];
 
 /** Tabs that stay open while several slides are selected: they are not about one slide. */
 const DECK_LEVEL_PANELS: ReadonlySet<string> = new Set(['themePanel', 'inspector', 'chat']);
@@ -1078,20 +1076,14 @@ const DECK_LEVEL_PANELS: ReadonlySet<string> = new Set(['themePanel', 'inspector
 let activePanelId = 'inspector';
 
 function buildTabs(): void {
-  const tabs = el('side-tabs');
-  tabs.replaceChildren();
-  for (const panel of PANELS) {
-    const b = document.createElement('button');
-    b.textContent = panel.label;
-    b.dataset.panel = panel.id;
-    b.addEventListener('click', () => showPanel(panel.id));
-    tabs.appendChild(b);
-  }
+  buildSidePanelTabs(el('side-tabs'), PANELS, showPanel);
   showPanel('inspector');
 }
 
 function showPanel(id: string): void {
   if (store.get().slideSelection.size > 1 && !DECK_LEVEL_PANELS.has(id)) return;
+  // Leaving Design ends a theme edit first, and asks when it has changes.
+  if (id !== 'themePanel' && themePanel.confirmDiscardDraft(() => showPanel(id))) return;
   activePanelId = id;
   for (const panel of PANELS) el(panel.id).hidden = panel.id !== id;
   for (const b of el('side-tabs').querySelectorAll('button')) {
@@ -1104,7 +1096,7 @@ function showPanel(id: string): void {
   canvas.setBuildBadgesVisible(id === 'timeline');
 }
 
-/** Multi-slide selection is a deck-level editing context: Theme and Props apply. */
+/** Multi-slide selection is a deck-level editing context: Design and Format apply. */
 function syncSlideSelectionContext(): void {
   const count = store.get().slideSelection.size;
   const multiple = count > 1;

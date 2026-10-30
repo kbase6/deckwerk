@@ -119,7 +119,7 @@ describe.skipIf(!electronBinary)('giving a shape a drop shadow from the inspecto
       (filter) => filter === 'drop-shadow(0px 8px 24px rgba(0, 0, 0, 0.3))');
 
     // Change the blur: the same shadow, retuned.
-    await tag('number', 'BLUR', 'test-shadow-blur');
+    await tag('number', 'Blur', 'test-shadow-blur');
     await editor.click('#test-shadow-blur', 'Blur field');
     await editor.evaluate('document.getElementById("test-shadow-blur").select()');
     await editor.typeKeys('40');
@@ -130,7 +130,7 @@ describe.skipIf(!electronBinary)('giving a shape a drop shadow from the inspecto
       (filter) => filter.includes('40px'));
 
     // Turn it: the same 8 px offset, now falling to the right instead of down.
-    await tag('number', 'ANGLE', 'test-shadow-angle');
+    await tag('number', 'Angle', 'test-shadow-angle');
     expect(await editor.evaluate<string>('document.getElementById("test-shadow-angle").value')).toBe('270');
     await editor.click('#test-shadow-angle', 'Angle field');
     await editor.evaluate('document.getElementById("test-shadow-angle").select()');

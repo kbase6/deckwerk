@@ -10,6 +10,8 @@ import { describeElement as describe, renderElementLabel } from './elementLabel.
 import { sameSlideDrawing, type EditorStore } from './store.js';
 
 const PREVIEW_WIDTH_FALLBACK = 560;
+/** One wording for the single-slide and multi-slide enable-and-pair buttons. */
+const ENABLE_AND_PAIR = `Enable ${MORPH_NAME} and auto-pair`;
 
 /**
  * A rendered preview surface, kept across re-renders.
@@ -108,7 +110,7 @@ export class MorphPanel {
     const easing = document.createElement('label');
     easing.className = 'field morph-easing';
     const easingLabel = document.createElement('span');
-    easingLabel.textContent = 'Motion curve';
+    easingLabel.textContent = `Motion curve (all ${MORPH_NAME}s)`;
     const easingSelect = document.createElement('select');
     for (const [value, text] of [
       ['ease-in-out', 'Smooth (ease in-out)'],
@@ -152,13 +154,13 @@ export class MorphPanel {
       }, { label: enabledInput.checked ? `Enable ${MORPH_NAME}` : `Disable ${MORPH_NAME}` });
     });
     const enabledLabel = document.createElement('span');
-    enabledLabel.textContent = 'Enabled';
+    enabledLabel.textContent = `${MORPH_NAME} into next slide`;
     enabled.append(enabledInput, enabledLabel);
     this.host.appendChild(enabled);
 
     const enableAndPair = document.createElement('button');
     enableAndPair.className = 'panel-action morph-enable-pair';
-    enableAndPair.textContent = 'Enable and Auto-Pair';
+    enableAndPair.textContent = ENABLE_AND_PAIR;
     enableAndPair.title = `Enable ${MORPH_NAME} to the next slide and pair strongly matching objects`;
     enableAndPair.addEventListener('click', () => this.enableAndAutoPair());
     this.host.appendChild(enableAndPair);
@@ -212,7 +214,7 @@ export class MorphPanel {
 
     const action = document.createElement('button');
     action.className = 'panel-action morph-bulk-pair';
-    action.textContent = `Enable ${MORPH_NAME} & Auto-Pair`;
+    action.textContent = ENABLE_AND_PAIR;
     action.addEventListener('click', () => this.autoPairAcross(slides));
 
     const hint = document.createElement('p');

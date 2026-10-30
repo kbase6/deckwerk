@@ -276,6 +276,26 @@ for (const kind of BACKENDS) describe.skipIf(!electronBinary)(`an agent working 
     expect(after.morphFromPrevious).toBe(false);
   });
 
+  // CSS reads a lone `top` as `center top`. The compile's own keyword reader
+  // read it as the left edge and the middle; Chromium happened to rewrite the
+  // attribute to `center top` before it looked, so this guards that the crop
+  // frozen from an agent's framing still shows the top of the picture.
+  it('freezes a picture framed with one object-position keyword where CSS puts it', async () => {
+    const workspace = await open(kind);
+    const page = (await exportPage(workspace, 'details')).replace(
+      /(<img[^>]*data-element-id="details-framed"[^>]*?)object-fit:cover;/,
+      '$1object-fit:cover; object-position:top;');
+    expect(page).toContain('object-position:top;');
+    await workspace.write('work.html', page);
+    expect(landed(await apply(workspace, 'work.html'), workspace).changes.replaced).toEqual(['details']);
+    const framed = slideById(await workspace.deck(), 'details').elements
+      .find((candidate) => candidate.id === 'details-framed');
+    // The 1×1 fixture covering the 400×300 box is drawn 400×400; `top` keeps
+    // its top 300 rows, so nothing of it sits above the window.
+    expect(framed, JSON.stringify(framed)).toMatchObject({ sourceBox: { x: 0, y: 0, w: 400, h: 400 } });
+    expect(framed?.style['object-position']).toBeUndefined();
+  });
+
   // Props → Style → Ends: a line's ends are its `stroke-linecap`, carried on
   // the shape's inline style. A compile that dropped it reset a round rule to
   // flat, and a flat curve back to round, on every save of the slide.
@@ -314,6 +334,29 @@ for (const kind of BACKENDS) describe.skipIf(!electronBinary)(`an agent working 
     const drawn = landed(await apply(workspace, 'svg.html'), workspace).changes.inserted[0];
     const svgLine = slideById(await workspace.deck(), drawn).elements.find((candidate) => candidate.type === 'shape');
     expect(svgLine).toMatchObject({ shape: 'line', style: { 'stroke-linecap': 'round' } });
+  });
+
+  // A browser shows a PDF only in an <embed>; as an <img> the exported page
+  // showed a broken picture, which an agent would then try to "fix".
+  it('exports a PDF figure as an embed a browser shows, and keeps it through an untouched save and an edit beside it', async () => {
+    const workspace = await open(kind, deckWithPdfFigures());
+    const before = await workspace.deck();
+    const page = await exportPage(workspace, 'media');
+    expect(page).not.toMatch(/<img\b[^>]*\.pdf/i);
+    expect(page.match(/<embed\b[^>]*assets\/figure\.pdf/g)).toHaveLength(2);
+
+    await workspace.write('untouched.html', page);
+    const untouched = landed(await apply(workspace, 'untouched.html'), workspace);
+    expect(untouched.changes).toEqual({ replaced: [], inserted: [], deleted: [], moved: 0 });
+    expect(await workspace.deck()).toEqual(before);
+
+    await workspace.write('work.html', page.replace('A picture and a box', 'A picture, a box and two figures'));
+    expect(landed(await apply(workspace, 'work.html'), workspace).changes.replaced).toEqual(['media']);
+    const element = (slide: Slide, id: string) => slide.elements.find((candidate) => candidate.id === id)!;
+    const after = slideById(await workspace.deck(), 'media');
+    for (const id of ['media-pdf', 'media-pdf-cropped']) {
+      expect(element(after, id), id).toEqual(element(slideById(before, 'media'), id));
+    }
   });
 
   it('replaces only the slide the agent edited in a page that holds them all', async () => {
@@ -500,6 +543,40 @@ function watchForTornReads(path: string): { stop(): Promise<{ reads: number; tor
     },
   };
 }
+
+describe.skipIf(!electronBinary)('the desktop editor watching edit/', { timeout: 240_000 }, () => {
+  /** Wait for the editor's status bar to say something containing `text`. */
+  async function statusSays(workspace: AgentWorkspace, text: string): Promise<void> {
+    let last = '';
+    await until(async () => (last = await workspace.status!()).includes(text), `the status bar to mention "${text}"`, 30_000)
+      .catch((error: Error) => { throw new Error(`${error.message}; it says "${last}"`); });
+  }
+
+  it('keeps syncing saves when another file it watches cannot be watched, and says so', async () => {
+    // A theme kept in a subfolder that does not exist yet cannot be watched.
+    // That failure used to abandon every watcher set up after it, edit/'s
+    // among them: an agent's saves landed nowhere and nothing said why.
+    const deck = agentFixtureDeck();
+    deck.theme = 'styles/theme.css';
+    const workspace = await open('desktop', deck);
+    await statusSays(workspace, 'Not watching styles/theme.css');
+    const before = (await workspace.deck()).slides.length;
+    await workspace.write('add.html', await newPage(workspace, '<h1 class="role-title">Saved with no apply</h1>'));
+    await until(async () => (await workspace.deck()).slides.length === before + 1, 'the watched save to add its slide', 30_000);
+  });
+
+  it('says why it ignored a page with no closing </html>, and a deck.json it could not load', async () => {
+    const workspace = await open('desktop');
+    const before = (await workspace.deck()).slides.length;
+    const page = await newPage(workspace, '<h1 class="role-title">Never finished</h1>');
+    await workspace.write('half.html', page.replace(/<\/html>\s*$/i, ''));
+    await statusSays(workspace, 'Ignored half.html');
+    expect((await workspace.deck()).slides).toHaveLength(before);
+    await writeFile(join(workspace.dir, 'deck.json'), '{ "slides": [', 'utf8');
+    await statusSays(workspace, 'Could not reload deck.json');
+    expect((await workspace.deck()).slides).toHaveLength(before);
+  });
+});
 
 describe.skipIf(!electronBinary)('a hosted session', { timeout: 240_000 }, () => {
   let hosted: HostedWorkspace;
@@ -740,6 +817,54 @@ describe.skipIf(!electronBinary)('a hosted session', { timeout: 240_000 }, () =>
   });
 });
 
+describe.skipIf(!electronBinary)('a person in the desktop editor', { timeout: 240_000 }, () => {
+  it('keeps typing speaker notes while an agent saves another slide: the save lands, and undoing the notes leaves it', async () => {
+    const workspace = await open('desktop');
+    const editor = workspace.editor!;
+    // The window is hidden; let the notes field take focus all the same.
+    await editor.call('Emulation.setFocusEmulationEnabled', { enabled: true });
+    await editor.click('#canvas .notes-toggle', 'speaker notes toggle');
+    await until(() => editor.evaluate<boolean>(
+      `document.activeElement?.classList.contains('notes-drawer-text') === true`,
+    ), 'the notes field to take focus', 10_000);
+
+    // The person types on the first slide without pause while the agent's
+    // page for the last one compiles and lands.
+    let typing = true;
+    let typed = '';
+    const person = (async () => {
+      const words = 'Pause here and look at the room. ';
+      while (typing) {
+        const key = words[typed.length % words.length];
+        await editor.typeKeys(key);
+        typed += key;
+      }
+    })();
+    await workspace.write('work.html', (await exportPage(workspace, 'closing'))
+      .replace('Agent fixture closing', 'Agent fixture closing, revised'));
+    const result = await apply(workspace, 'work.html').finally(() => { typing = false; });
+    await person;
+    expect(landed(result, workspace).changes).toEqual({ replaced: ['closing'], inserted: [], deleted: [], moved: 0 });
+    expect(await editor.evaluate<string>(`document.querySelector('#canvas .notes-drawer-text').value`)).toBe(typed);
+
+    // Escape closes the drawer, which ends the notes edit.
+    await editor.key('Escape', 27);
+    let deck = await until(async () => {
+      const current = await workspace.deck();
+      return slideById(current, 'opening').notes === typed && current;
+    }, 'the typed notes to reach the deck', 20_000);
+    expect(plainText(slideById(deck, 'closing'))).toContain('Agent fixture closing, revised');
+
+    // Undo takes back the notes, and only the notes.
+    await editor.chord('z', 'KeyZ', 90, process.platform === 'darwin' ? 4 : 2);
+    deck = await until(async () => {
+      const current = await workspace.deck();
+      return slideById(current, 'opening').notes === '' && current;
+    }, 'undo to take back the notes', 20_000);
+    expect(plainText(slideById(deck, 'closing'))).toContain('Agent fixture closing, revised');
+  });
+});
+
 describe.skipIf(!electronBinary)('the decks this repository ships', { timeout: 240_000 }, () => {
   // Real decks — imported Keynote boxes, layouts, maths, builds — rather than
   // a fixture that only holds what someone thought of. An untouched export of
@@ -788,6 +913,20 @@ function deckWithLineEnds(): Deck {
     {
       ...structuredClone(line), id: 'ends-flat', x: 1200, y: 880, control: { x: 1500, y: 780 },
       style: { 'stroke-linecap': 'butt' },
+    } as SlideElement,
+  );
+  return deck;
+}
+
+/** The fixture, its media slide also holding a PDF figure and a cropped one. */
+function deckWithPdfFigures(): Deck {
+  const deck = agentFixtureDeck();
+  const picture = slideById(deck, 'media').elements.find((element) => element.id === 'media-picture')!;
+  slideById(deck, 'media').elements.push(
+    { ...structuredClone(picture), id: 'media-pdf', x: 1300, y: 120, w: 480, h: 360, z: 10, src: 'assets/figure.pdf' } as SlideElement,
+    {
+      ...structuredClone(picture), id: 'media-pdf-cropped', x: 1300, y: 560, w: 400, h: 300, z: 11, src: 'assets/figure.pdf',
+      sourceBox: { x: -40, y: -30, w: 480, h: 360 },
     } as SlideElement,
   );
   return deck;

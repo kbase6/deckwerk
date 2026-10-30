@@ -272,7 +272,7 @@ def _media_fit(path: Path, frame_w: float, frame_h: float) -> str:
         return "fill"
     if width <= 0 or height <= 0 or frame_w <= 0 or frame_h <= 0:
         return "fill"
-    return "contain" if abs((frame_w / frame_h) / (width / height) - 1) <= 0.01 else "fill"
+    return "contain" if abs(frame_w * height - frame_h * width) <= 0.01 * frame_h * width else "fill"
 
 
 # --- the package ------------------------------------------------------------

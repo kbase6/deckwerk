@@ -145,7 +145,7 @@ describe('media assets and borders', () => {
     store.select(['image']);
 
     const sections = [...host.querySelectorAll<HTMLElement>('.insp-option-section')];
-    const masking = sections.find((section) => section.querySelector('h4')?.textContent === 'Mask')!;
+    const masking = sections.find((section) => section.querySelector('h4')?.textContent === 'Crop & corners')!;
     const border = sections.find((section) => section.querySelector('h4')?.textContent === 'Border')!;
     const circle = masking.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
     const width = border.querySelector<HTMLInputElement>('input[type="number"]')!;
@@ -293,14 +293,14 @@ describe('circular media masks', () => {
 
     // A 4:3 picture in the same box overflows vertically by 200px, and 30%
     // of that overflow sits above the window.
-    const tall = paintedMediaBox(el, { w: 400, h: 300 });
+    const tall = paintedMediaBox(el, { w: 400, h: 300 })!;
     expect(tall.w).toBeCloseTo(800, 6);
     expect(tall.h).toBeCloseTo(600, 6);
     expect(tall.x).toBeCloseTo(0, 6);
     expect(tall.y).toBeCloseTo(-60, 6);
 
     // Contained, the slack is positive: the picture sits inside the window.
-    const contained = paintedMediaBox({ ...el, fit: 'contain' }, { w: 400, h: 300 });
+    const contained = paintedMediaBox({ ...el, fit: 'contain' }, { w: 400, h: 300 })!;
     expect(contained.w).toBeCloseTo(533.333, 3);
     expect(contained.h).toBeCloseTo(400, 6);
     expect(contained.x).toBeCloseTo(53.333, 3);
@@ -357,14 +357,12 @@ describe('circular media masks', () => {
     expect(el.style).toEqual({});
   });
 
-  it('falls back to the painted box when the intrinsic size is not known yet', () => {
-    // Nothing is known about the picture, so the safe assumption is that what
-    // filled the box is what the author sees: crop the centred circle out of
-    // it at that scale rather than guessing an aspect ratio.
+  it('refuses while the intrinsic size is not known yet', () => {
+    // A picture still loading could paint anywhere in its box. Guessing that
+    // it fills the box locked a stretched picture into the circle for good,
+    // so nothing changes until the picture's own size is known.
     const el: ImageElement = { ...photo };
-    setCircularMask(el, true, null);
-
-    expect(el.w).toBe(400);
-    expect(el.sourceBox).toEqual({ x: -200, y: 0, w: 800, h: 400 });
+    expect(setCircularMask(el, true, null)).toBe(false);
+    expect(el).toEqual(photo);
   });
 });

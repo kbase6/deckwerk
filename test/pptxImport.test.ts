@@ -180,16 +180,29 @@ describe.skipIf(!existsSync(REFERENCE))('powerpoint importer', () => {
         'fits = [el["fit"] for el in deck["slides"][2]["elements"] if el["type"] == "image"]',
         'wide = out / "wide.png"',
         'Image.new("RGB", (400, 200)).save(wide)',
+        'exif = Image.Exif(); exif[0x0112] = 6',
+        'rotated = out / "rotated.jpg"',
+        'Image.new("RGB", (400, 200)).save(rotated, exif=exif)',
         'probe = {',
         '    "within 1%": _media_fit(wide, 576, 290),',
         '    "stretched": _media_fit(wide, 576, 300),',
+        '    "lower boundary": _media_fit(wide, 198, 100),',
+        '    "upper boundary": _media_fit(wide, 202, 100),',
+        '    "below boundary": _media_fit(wide, 197.99, 100),',
+        '    "above boundary": _media_fit(wide, 202.01, 100),',
+        '    "rotated": _media_fit(rotated, 100, 200),',
+        '    "empty frame": _media_fit(wide, 0, 100),',
         '    "unreadable": _media_fit(out / "missing.png", 576, 288),',
         '}',
         'print(json.dumps({"fits": fits, "probe": probe}))',
       ].join('\n'), REFERENCE, out], { encoding: 'utf8', cwd: process.cwd(), maxBuffer: 64 * 1024 * 1024 });
       const result = JSON.parse(stdout) as { fits: string[]; probe: Record<string, string> };
       expect(result.fits).toEqual(['contain', 'contain']);
-      expect(result.probe).toEqual({ 'within 1%': 'contain', stretched: 'fill', unreadable: 'fill' });
+      expect(result.probe).toEqual({
+        'within 1%': 'contain', stretched: 'fill', unreadable: 'fill',
+        'lower boundary': 'contain', 'upper boundary': 'contain',
+        'below boundary': 'fill', 'above boundary': 'fill', rotated: 'contain', 'empty frame': 'fill',
+      });
     } finally {
       await rm(out, { recursive: true, force: true });
     }

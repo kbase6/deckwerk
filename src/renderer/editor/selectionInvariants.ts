@@ -66,6 +66,13 @@ export function findSelectionViolations(snap: SelectionSnapshot): string[] {
     problems.push(`cropping ${maskingId}, which is not on the current slide`);
   }
 
+  // --- crop mode implies being the selection ---------------------------------
+  // With the picture deselected (Escape) or joined by others (Select All),
+  // its Props crop controls are gone and a drag on it still pans the picture.
+  if (maskingId !== null && (selection.length !== 1 || selection[0] !== maskingId)) {
+    problems.push(`cropping ${maskingId} while the selection is ${show(selection)}`);
+  }
+
   // --- editing implies being the selection ----------------------------------
   if (editingId !== null) {
     if (!ids.has(editingId)) {

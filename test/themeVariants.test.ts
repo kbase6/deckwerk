@@ -134,24 +134,22 @@ describe('theme gallery light/dark switch', () => {
   }
   const cardIds = () => [...document.querySelectorAll<HTMLElement>('.theme-card')]
     .map((card) => card.dataset.themeId);
-  const modeButton = (label: string) => [...document.querySelectorAll<HTMLButtonElement>('.theme-mode-option')]
-    .find((button) => button.textContent === label)!;
 
   it('opens on the side of the switch the current theme sits on', () => {
-    build('basic');
-    expect(modeButton('Light').classList.contains('selected')).toBe(true);
+    expect(build('basic').gallery.mode()).toBe('light');
     expect(cardIds()).toContain('basic');
     expect(cardIds()).toContain('noir-light');
 
-    build('noir');
-    expect(modeButton('Dark').classList.contains('selected')).toBe(true);
+    expect(build('noir').gallery.mode()).toBe('dark');
     expect(cardIds()).toContain('noir');
     expect(cardIds()).toContain('basic-dark');
   });
 
   it('switches every card to its counterpart and selects variants', () => {
     const { gallery, onSelect } = build('basic');
-    modeButton('Dark').click();
+    // The Design tab's Slide colors switch drives this; the gallery has none.
+    expect(document.querySelector('.theme-mode-toggle')).toBeNull();
+    gallery.setMode('dark');
     expect(gallery.mode()).toBe('dark');
     expect(cardIds()).toContain('basic-dark');
     expect(cardIds()).toContain('noir');
@@ -171,7 +169,7 @@ describe('theme gallery light/dark switch', () => {
     expect(gallery.selectedId()).toBe('basic-dark');
     // The base card stays highlighted whichever side is displayed.
     expect(document.querySelector('[data-theme-id="basic-dark"]')!.classList.contains('selected')).toBe(true);
-    modeButton('Light').click();
+    gallery.setMode('light');
     expect(gallery.selectedId()).toBe('basic');
     expect(document.querySelector('[data-theme-id="basic"]')!.classList.contains('selected')).toBe(true);
   });
@@ -191,7 +189,7 @@ describe('theme gallery light/dark switch', () => {
       .querySelector(`[data-theme-id="${id}"] .theme-installed-badge`)!
       .hasAttribute('hidden');
     expect(badgeHidden('basic')).toBe(false);
-    modeButton('Dark').click();
+    gallery.setMode('dark');
     // Research · Dark is not what the deck wears; no badge on it.
     expect(badgeHidden('basic-dark')).toBe(true);
   });
