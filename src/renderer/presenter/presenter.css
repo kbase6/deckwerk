@@ -8,21 +8,21 @@ html, body { width: 100%; height: 100%; overflow: hidden; }
 .next-panel .preview { aspect-ratio: 16 / 9; }
 .timers { display: flex; flex-direction: column; justify-content: center; gap: clamp(18px, 3vh, 32px); min-height: 0; }
 .presenter-clock { display: grid; gap: 6px; }
-.presenter-clock span { color: var(--muted); font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.presenter-clock span { color: var(--dw-muted); font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
 .presenter-clock strong { font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace; font-variant-numeric: tabular-nums; line-height: .95; }
 .presentation-clock strong { font-size: clamp(58px, 6vw, 84px); font-weight: 750; letter-spacing: -.06em; }
 .slide-clock strong { font-size: clamp(42px, 4.5vw, 62px); font-weight: 700; letter-spacing: -.05em; }
-.wall-clock strong { color: var(--text); font-size: clamp(28px, 3vw, 42px); font-weight: 650; letter-spacing: -.04em; }
+.wall-clock strong { color: var(--dw-text); font-size: clamp(28px, 3vw, 42px); font-weight: 650; letter-spacing: -.04em; }
 .notes-panel { display: grid; grid-template-rows: 30px minmax(0, 1fr); min-height: 0; }
 .speaker-notes { overflow-y: auto; white-space: pre-wrap; font-size: clamp(16px, 1.6vw, 24px); line-height: 1.4; }
-.speaker-position { color: var(--muted); font-size: 15px; white-space: nowrap; }
-.speaker-view h2 { margin: 0; color: var(--muted); font-size: 14px; text-transform: uppercase; letter-spacing: .08em; }
+.speaker-position { color: var(--dw-muted); font-size: 15px; white-space: nowrap; }
+.speaker-view h2 { margin: 0; color: var(--dw-muted); font-size: 14px; text-transform: uppercase; letter-spacing: .08em; }
 .preview { position: relative; min-height: 0; overflow: hidden; background: #000; box-shadow: 0 8px 30px rgb(0 0 0 / 40%); }
-.speaker-view footer { display: flex; align-items: center; justify-content: center; gap: 10px; padding-top: 14px; border-top: 1px solid var(--line); }
+.speaker-view footer { display: flex; align-items: center; justify-content: center; gap: 10px; padding-top: 14px; border-top: 1px solid var(--dw-line); }
 .speaker-swap { margin-left: auto; }
 /* The laser toggle presses like every other toggle in the app. */
 .speaker-laser[aria-pressed="true"] {
-  border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 24%, var(--panel-2));
-  color: var(--text);
+  border-color: var(--dw-accent);
+  background: color-mix(in srgb, var(--dw-accent) 24%, var(--dw-panel-2));
+  color: var(--dw-text);
 }

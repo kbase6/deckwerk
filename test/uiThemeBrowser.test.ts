@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { saveDeck } from '../src/main/deckStore.js';
 import { startCollabServer, type RunningCollabServer } from '../src/server/collabServer.js';
-import { emptyDeck } from '../src/shared/deck.js';
+import { emptyDeck, parseDeck } from '../src/shared/deck.js';
 import {
   Cdp,
   electronBinary,
@@ -17,6 +17,7 @@ import {
 } from './support/browserSession.js';
 import { collabClientDir } from './support/collabClient.js';
 import { isEditorTarget, launchDesktopApp, materializeDesktopApp } from './support/desktopApp.js';
+import { launchWebEditor, type WebEditorSession } from './support/webEditorSession.js';
 
 /**
  * Light mode in the real editor.
@@ -34,8 +35,11 @@ let browser: RunningBrowser | null = null;
 let editor: Cdp | null = null;
 let main: Cdp | null = null;
 let appProcess: ChildProcess | null = null;
+let session: WebEditorSession | null = null;
 
 afterEach(async () => {
+  await session?.close();
+  session = null;
   editor?.close();
   editor = null;
   main?.close();
@@ -143,5 +147,36 @@ describe.skipIf(!electronBinary)('light mode', () => {
     await choose('Match system');
     expect((await eventually(native, 'native parts kept the old choice',
       (n) => n.source === 'system')).source).toBe('system');
+  });
+
+  // A deck's theme.css sits in the editor's own document. When it named its
+  // colours --bg, --text or --accent it recoloured the dark chrome, and in
+  // light mode the chrome's palette replaced the deck's on its own slides.
+  it('keeps a deck theme.css and the chrome palette out of each other', { timeout: 120_000 }, async () => {
+    session = await launchWebEditor([{
+      id: DECK_ID,
+      deck: parseDeck({
+        ...emptyDeck('Tokens'),
+        slides: [{ id: 'slide-1', elements: [{ id: 'title', type: 'text', x: 140, y: 150, w: 1640, h: 200,
+          class: ['role-title'], html: 'Deck accent' }] }],
+      }),
+      themeCss: ':root { --bg: #00ff00; --text: #ff00ff; --accent: #ff0000; }\n'
+        + '.slide { background: #fff; }\n.role-title { color: var(--accent); }\n',
+    }], { readyWhen: `Boolean(document.querySelector('#canvas .slide .role-title'))` });
+    const page = session.cdp;
+    const read = (expression: string): Promise<string> => page.evaluate<string>(expression);
+    for (const [theme, chrome] of Object.entries({
+      dark: { background: 'rgb(22, 22, 30)', color: 'rgb(200, 208, 245)' },
+      light: { background: 'rgb(236, 238, 242)', color: 'rgb(31, 35, 48)' },
+    })) {
+      await page.click('.brand-button', 'the DeckWerk menu');
+      await page.evaluate(`[...document.querySelectorAll('[role="menuitemradio"]')]
+        .find((i) => i.textContent === ${JSON.stringify(theme[0].toUpperCase() + theme.slice(1))}).click()`);
+      expect(await read('document.documentElement.dataset.uiTheme')).toBe(theme);
+      expect(await read('getComputedStyle(document.body).backgroundColor'), `${theme} chrome`).toBe(chrome.background);
+      expect(await read('getComputedStyle(document.body).color'), `${theme} chrome`).toBe(chrome.color);
+      expect(await read(`getComputedStyle(document.querySelector('#canvas .slide .role-title')).color`), `${theme} slide`)
+        .toBe('rgb(255, 0, 0)');
+    }
   });
 });
