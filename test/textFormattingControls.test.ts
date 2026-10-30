@@ -231,7 +231,7 @@ describe('text formatting from the inspector controls', () => {
       .map((node) => node.textContent?.trim());
 
     expect(labels('.text-typography-options .field > span')).toEqual([
-      'Text style', 'Font family', 'Font size', 'Font weight', 'Style', 'Color',
+      'Text style', 'Font family', 'Font size', 'Font weight', 'Format', 'Color',
     ]);
     expect(labels('.text-layout-options .field > span')).toEqual([
       'Size box to text', 'Auto-fit text to box', 'Disable automatic line breaks', 'List',

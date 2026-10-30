@@ -92,7 +92,7 @@ describe.skipIf(!electronBinary)('gradient fills and curved shadows', () => {
     await eventually(async () => editor!.evaluate<boolean>(`[...document.querySelectorAll('.field select')]
       .some((s) => s.value === 'Linear gradient')`), 'no fill style field');
     const shadowStyle = await editor.evaluate<string | null>(`(() => {
-      const s = [...document.querySelectorAll('.field')].find((f) => f.querySelector('span')?.textContent === 'Style');
+      const s = [...document.querySelectorAll('.field')].find((f) => f.querySelector('span')?.textContent === 'Shadow type');
       return s?.querySelector('select')?.value ?? null;
     })()`);
     expect(shadowStyle).toBe('Curved');
