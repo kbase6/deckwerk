@@ -1632,13 +1632,13 @@ async function resetCrop(
     before = await read();
     if (!before?.el.sourceBox) return;
   }
+  if ((await session.state()).selection.join() !== IMAGE) await session.click(IMAGE);
+  // Selecting it can complete a double-click and enter crop mode.
   const masking = () => cdp.evaluate<string | null>('window.canvas.maskingElement()');
   if (await masking() === IMAGE) {
     await clickFound(`() => [...document.querySelectorAll('.editor-inspector .mask-action-row .panel-action')]
       .find((node) => node.textContent === 'Done cropping' && node.getClientRects().length > 0)`, 'Done cropping');
     await wait(120);
-  } else if ((await session.state()).selection.join() !== IMAGE) {
-    await session.click(IMAGE);
   }
   const reset = `() => [...document.querySelectorAll('.editor-inspector .mask-action-row button')]
     .find((node) => node.textContent === 'Reset crop' && node.getClientRects().length > 0)`;
