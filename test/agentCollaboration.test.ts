@@ -336,6 +336,29 @@ for (const kind of BACKENDS) describe.skipIf(!electronBinary)(`an agent working 
     expect(svgLine).toMatchObject({ shape: 'line', style: { 'stroke-linecap': 'round' } });
   });
 
+  // A browser shows a PDF only in an <embed>; as an <img> the exported page
+  // showed a broken picture, which an agent would then try to "fix".
+  it('exports a PDF figure as an embed a browser shows, and keeps it through an untouched save and an edit beside it', async () => {
+    const workspace = await open(kind, deckWithPdfFigures());
+    const before = await workspace.deck();
+    const page = await exportPage(workspace, 'media');
+    expect(page).not.toMatch(/<img\b[^>]*\.pdf/i);
+    expect(page.match(/<embed\b[^>]*assets\/figure\.pdf/g)).toHaveLength(2);
+
+    await workspace.write('untouched.html', page);
+    const untouched = landed(await apply(workspace, 'untouched.html'), workspace);
+    expect(untouched.changes).toEqual({ replaced: [], inserted: [], deleted: [], moved: 0 });
+    expect(await workspace.deck()).toEqual(before);
+
+    await workspace.write('work.html', page.replace('A picture and a box', 'A picture, a box and two figures'));
+    expect(landed(await apply(workspace, 'work.html'), workspace).changes.replaced).toEqual(['media']);
+    const element = (slide: Slide, id: string) => slide.elements.find((candidate) => candidate.id === id)!;
+    const after = slideById(await workspace.deck(), 'media');
+    for (const id of ['media-pdf', 'media-pdf-cropped']) {
+      expect(element(after, id), id).toEqual(element(slideById(before, 'media'), id));
+    }
+  });
+
   it('replaces only the slide the agent edited in a page that holds them all', async () => {
     const workspace = await open(kind);
     const before = await workspace.deck();
@@ -856,6 +879,20 @@ function deckWithLineEnds(): Deck {
     {
       ...structuredClone(line), id: 'ends-flat', x: 1200, y: 880, control: { x: 1500, y: 780 },
       style: { 'stroke-linecap': 'butt' },
+    } as SlideElement,
+  );
+  return deck;
+}
+
+/** The fixture, its media slide also holding a PDF figure and a cropped one. */
+function deckWithPdfFigures(): Deck {
+  const deck = agentFixtureDeck();
+  const picture = slideById(deck, 'media').elements.find((element) => element.id === 'media-picture')!;
+  slideById(deck, 'media').elements.push(
+    { ...structuredClone(picture), id: 'media-pdf', x: 1300, y: 120, w: 480, h: 360, z: 10, src: 'assets/figure.pdf' } as SlideElement,
+    {
+      ...structuredClone(picture), id: 'media-pdf-cropped', x: 1300, y: 560, w: 400, h: 300, z: 11, src: 'assets/figure.pdf',
+      sourceBox: { x: -40, y: -30, w: 480, h: 360 },
     } as SlideElement,
   );
   return deck;
