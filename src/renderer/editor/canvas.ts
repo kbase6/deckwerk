@@ -768,7 +768,7 @@ type ResizeOrigin = Rect & {
   rot: number;
   sourceBox?: Rect | null;
   /** Media's `fit` when the drag began: it decides whether the drag keeps
-   * proportions, and is put back if Shift is let go mid-drag. */
+   * proportions. */
   fit?: 'cover' | 'contain' | 'fill';
   control?: { x: number; y: number } | null;
 };
@@ -3091,17 +3091,17 @@ export class EditorCanvas {
           if (edges.bottom) rect.h = o.h + dy;
         }
 
-        // A crop changes the window's shape, never the picture's, so it is
-        // free and Shift locks it. A resize of media follows its "Keep aspect
-        // ratio" box (any fit but 'fill'), and Shift inverts it; everything
-        // else resizes freely, Shift locking. The fit is read from the drag's
-        // origin, since a Shift-freed resize writes 'fill' mid-drag. A
-        // circular mask is square by construction, so it never frees: a free
-        // drag would stretch it back into an ellipse.
+        // Shift locks proportions on every resize and every crop. A crop
+        // changes the window's shape, never the picture's, so it is otherwise
+        // free; a resize of media otherwise follows its "Keep aspect ratio"
+        // box (any fit but 'fill'). No modifier writes the fit: unticking that
+        // box is how a picture is stretched. A circular mask is square by
+        // construction, so it never frees: a free drag would stretch it back
+        // into an ellipse.
         const media = resizing?.type === 'image' || resizing?.type === 'video';
         const keepsAspect = drag.origins.get(drag.elementId)?.fit !== 'fill';
         const constrained = media
-          ? resizing.maskShape === 'circle' || (cropping ? ev.shiftKey : keepsAspect !== ev.shiftKey)
+          ? resizing.maskShape === 'circle' || ev.shiftKey || (!cropping && keepsAspect)
           : ev.shiftKey;
         // Where the pointer is: the box a free resize would make.
         const pointerRect = rect;
@@ -3185,12 +3185,6 @@ export class EditorCanvas {
               w: Math.max(1, Math.round(origin.sourceBox.w * fx)),
               h: Math.max(1, Math.round(origin.sourceBox.h * fy)),
             };
-          }
-          if ((el.type === 'image' || el.type === 'video') && origin.fit) {
-            // A freed picture squashes with its box: it fills the box (or its
-            // scaled crop) exactly instead of letterboxing inside it. Letting
-            // go of Shift mid-drag gives it back the fit it had.
-            el.fit = media && !constrained ? 'fill' : origin.fit;
           }
           if (el.type === 'shape' && origin.control) {
             const control = resizePointByScale(origin.control, origin, resized, scaleX, scaleY);

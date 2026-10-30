@@ -4197,14 +4197,16 @@ describe('resizing pictures and videos', () => {
     return store.slide!.elements.find((e) => e.id === id)!;
   }
 
-  it('keeps a video in proportion by default, even a cropped one, and frees it with Shift', () => {
-    expect(dragCorner('video-1', 160, 20)).toMatchObject({ w: 800, h: 450 });
-    expect(dragCorner('video-1', 160, 20, true)).toMatchObject({ w: 800, h: 380 });
+  // Shift locks proportions here as on every other resize, and as in crop
+  // mode. It used to free a picture and save it stretched (fit: 'fill').
+  it('keeps a video in proportion, even a cropped one, with or without Shift', () => {
+    expect(dragCorner('video-1', 160, 20)).toMatchObject({ w: 800, h: 450, fit: 'contain' });
+    expect(dragCorner('video-1', 160, 20, true)).toMatchObject({ w: 800, h: 450, fit: 'contain' });
   });
 
-  it('keeps a picture in proportion by default and frees it with Shift', () => {
-    expect(dragCorner('image-1', 200, 10)).toMatchObject({ w: 600, h: 450 });
-    expect(dragCorner('image-1', 200, 10, true)).toMatchObject({ w: 600, h: 310 });
+  it('keeps a picture in proportion with or without Shift', () => {
+    expect(dragCorner('image-1', 200, 10)).toMatchObject({ w: 600, h: 450, fit: 'cover' });
+    expect(dragCorner('image-1', 200, 10, true)).toMatchObject({ w: 600, h: 450, fit: 'cover' });
   });
 
   it('keeps the pointer on the box\'s edge wherever a corner is dragged', () => {
@@ -4231,10 +4233,8 @@ describe('resizing pictures and videos', () => {
         expect(py, where).toBeLessThanOrEqual(bottom + reach);
         expect(Math.min(Math.abs(right - px), Math.abs(bottom - py)), where).toBeLessThanOrEqual(reach);
         expect(box.w / box.h, where).toBeCloseTo(4 / 3, 1);
-        // Freed with Shift, the corner is under the pointer, or at the minimum.
-        const free = dragCorner('image-1', dx, dy, true);
-        expect(Math.abs(free.x + free.w - Math.max(px, 1208)), where).toBeLessThanOrEqual(reach);
-        expect(Math.abs(free.y + free.h - Math.max(py, 308)), where).toBeLessThanOrEqual(reach);
+        // Shift changes nothing: the picture already keeps its proportions.
+        expect(dragCorner('image-1', dx, dy, true), where).toMatchObject({ x: box.x, y: box.y, w: box.w, h: box.h });
       }
     }
   });
