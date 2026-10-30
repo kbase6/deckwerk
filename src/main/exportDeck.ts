@@ -478,7 +478,7 @@ export function renderedLongEdge(deck: Deck, rel: string, natural: Size | null =
         if (el.src !== rel && !(el.type === 'video' && el.poster === rel)) continue;
         // A crop shows a window onto the whole picture: the picture itself is
         // laid out at the source box's size, which can exceed the element.
-        edge = Math.max(edge, drawn(paintedMediaBox(el, natural)));
+        edge = Math.max(edge, drawn(paintedMediaBox(el, natural) ?? el));
       } else if (el.type === 'html' && (el.html.includes(rel) || (el.css ?? '').includes(rel))) {
         // Nothing measures inside an HTML region; assume it could be anything
         // up to the region's own box.
