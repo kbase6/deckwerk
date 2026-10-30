@@ -58,6 +58,8 @@ export const IPC = {
   htmlExport: 'html:export',
   htmlEdit: 'html:edit',
   htmlAdopt: 'html:adopt',
+  /** Something the deck's file watchers want the person told; payload is the text. */
+  watchNotice: 'watch:notice',
   /** `notes.md` changed on disk; payload is the file's contents. */
   speakerNotesEdit: 'speakerNotes:edit',
   speakerNotesOpen: 'speakerNotes:open',

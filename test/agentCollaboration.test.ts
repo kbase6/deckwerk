@@ -544,6 +544,40 @@ function watchForTornReads(path: string): { stop(): Promise<{ reads: number; tor
   };
 }
 
+describe.skipIf(!electronBinary)('the desktop editor watching edit/', { timeout: 240_000 }, () => {
+  /** Wait for the editor's status bar to say something containing `text`. */
+  async function statusSays(workspace: AgentWorkspace, text: string): Promise<void> {
+    let last = '';
+    await until(async () => (last = await workspace.status!()).includes(text), `the status bar to mention "${text}"`, 30_000)
+      .catch((error: Error) => { throw new Error(`${error.message}; it says "${last}"`); });
+  }
+
+  it('keeps syncing saves when another file it watches cannot be watched, and says so', async () => {
+    // A theme kept in a subfolder that does not exist yet cannot be watched.
+    // That failure used to abandon every watcher set up after it, edit/'s
+    // among them: an agent's saves landed nowhere and nothing said why.
+    const deck = agentFixtureDeck();
+    deck.theme = 'styles/theme.css';
+    const workspace = await open('desktop', deck);
+    await statusSays(workspace, 'Not watching styles/theme.css');
+    const before = (await workspace.deck()).slides.length;
+    await workspace.write('add.html', await newPage(workspace, '<h1 class="role-title">Saved with no apply</h1>'));
+    await until(async () => (await workspace.deck()).slides.length === before + 1, 'the watched save to add its slide', 30_000);
+  });
+
+  it('says why it ignored a page with no closing </html>, and a deck.json it could not load', async () => {
+    const workspace = await open('desktop');
+    const before = (await workspace.deck()).slides.length;
+    const page = await newPage(workspace, '<h1 class="role-title">Never finished</h1>');
+    await workspace.write('half.html', page.replace(/<\/html>\s*$/i, ''));
+    await statusSays(workspace, 'Ignored half.html');
+    expect((await workspace.deck()).slides).toHaveLength(before);
+    await writeFile(join(workspace.dir, 'deck.json'), '{ "slides": [', 'utf8');
+    await statusSays(workspace, 'Could not reload deck.json');
+    expect((await workspace.deck()).slides).toHaveLength(before);
+  });
+});
+
 describe.skipIf(!electronBinary)('a hosted session', { timeout: 240_000 }, () => {
   let hosted: HostedWorkspace;
   afterEach(async () => {
