@@ -602,17 +602,17 @@ export function createThemePanel(deps: ThemePanelDeps): ThemePanel {
     const ROLE_LABELS: Record<'title' | 'body' | 'caption', string> = {
       title: 'Title', body: 'Body', caption: 'Caption',
     };
-    themeEditor.appendChild(groupLabel('Typefaces'));
+    themeEditor.appendChild(groupLabel('Fonts'));
     for (const role of ['title', 'body', 'caption'] as const) {
       themeEditor.appendChild(fontFamilyField(
-        `${ROLE_LABELS[role]} typeface`,
+        `${ROLE_LABELS[role]} font`,
         style.fonts[role].family,
         (family) => {
           if (family) mutate((target) => { target.fonts[role].family = family; });
         },
       ));
     }
-    themeEditor.appendChild(groupLabel('Type scale'));
+    themeEditor.appendChild(groupLabel('Text sizes'));
     for (const role of ['title', 'body', 'caption'] as const) {
       const sizeField = numberField(
         `${ROLE_LABELS[role]} size`,
@@ -638,11 +638,11 @@ export function createThemePanel(deps: ThemePanelDeps): ThemePanel {
       themeEditor.appendChild(spacingField);
     }
 
-    themeEditor.appendChild(groupLabel('Semantic colours'));
+    themeEditor.appendChild(groupLabel('Main colors'));
     for (const [key, label] of [
       ['background', 'Background'],
       ['text', 'Text'],
-      ['muted', 'Muted text'],
+      ['muted', 'Secondary text'],
       ['accent', 'Accent'],
     ] as const) {
       themeEditor.appendChild(colorField(label, style.colors[key], (value) => {
@@ -650,9 +650,9 @@ export function createThemePanel(deps: ThemePanelDeps): ThemePanel {
       }));
     }
 
-    themeEditor.appendChild(groupLabel('Palette swatches'));
+    themeEditor.appendChild(groupLabel('Extra colors for shapes'));
     style.palette.forEach((color, index) => {
-      themeEditor!.appendChild(colorField(`Swatch ${index + 1}`, color, (value) => {
+      themeEditor!.appendChild(colorField(`Color ${index + 1}`, color, (value) => {
         if (value) mutate((target) => { target.palette[index] = value; });
       }));
     });

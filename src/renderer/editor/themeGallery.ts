@@ -105,8 +105,9 @@ export function createThemePreviewCard(
 }
 
 /**
- * A visual, keyboard-accessible theme list. Selecting a card does not install
- * it. A global Light/Dark switch shows every theme's counterpart in that mode
+ * A visual, keyboard-accessible theme list. Selecting a card hands the theme
+ * to `onSelect`; the Design panel then applies it to every slide as one undo
+ * step. A global Light/Dark switch shows every theme's counterpart in that mode
  * — the two native dark presets become light themes and vice versa — and a
  * card selected under it carries the variant id (`noir-light`), which
  * `themeById` resolves everywhere a preset id is looked up.
