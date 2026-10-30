@@ -111,7 +111,7 @@ describe('the Download original menu row', () => {
   });
   const video: SlideElement = {
     ...base, id: 'video', type: 'video', x: 200, y: 0, w: 100, h: 100, src: `assets/clip.${HASH}.fs.mp4`,
-    fit: 'contain', autoplay: false, loop: false, muted: true, controls: false, start: 0, end: null,
+    fit: 'fill', autoplay: false, loop: false, muted: true, controls: false, start: 0, end: null,
     poster: null, sourceBox: null,
   };
   const shape: SlideElement = {
@@ -155,9 +155,13 @@ describe('the Download original menu row', () => {
     run(video, 'Download original…');
     expect(downloaded).toEqual(['photo', 'video']);
 
-    // It sits with the other media actions, after the mask rows.
+    // It sits with the other media actions, after the crop rows.
     const rows = labels(video);
-    expect(rows.indexOf('Download original…')).toBeGreaterThan(rows.indexOf('Edit mask (crop)'));
+    expect(rows).toContain('Crop');
+    expect(rows.indexOf('Download original…')).toBeGreaterThan(rows.indexOf('Crop'));
+    expect(rows.join('\n')).not.toMatch(/mask/i);
+    run(video, 'Crop to circle');
+    expect(store.history()[0]?.label).toBe('Crop to circle');
   });
 
   it('is absent for other elements, a multi-selection and a file still uploading', () => {
