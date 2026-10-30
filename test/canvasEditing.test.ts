@@ -4434,10 +4434,10 @@ describe('Props wording', () => {
 
     look(['text-1']);
     expect(field(panel, 'Color')).toBeTruthy();
-    expect(optionsOf(panel, 'Compress by')).toEqual(['Shrink text', 'Narrow letters']);
+    expect(optionsOf(panel, 'If too long')).toEqual(['Shrink text', 'Narrow letters']);
     look(['text-1', 'text-2']);
     expect(optionsOf(panel, 'Vertical')).toEqual(['Top', 'Middle', 'Bottom']);
-    expect(optionsOf(panel, 'Compress by')).toEqual(['Shrink text', 'Narrow letters']);
+    expect(optionsOf(panel, 'If too long')).toEqual(['Shrink text', 'Narrow letters']);
 
     look(['video-1']);
     expect([...panel.querySelectorAll('.toggle-segment-short')].map((node) => node.textContent))
