@@ -15,7 +15,7 @@ import {
   type CrossState,
 } from './support/crossContextSession.js';
 import { sidebarSelectionProbes } from './support/selectionSession.js';
-import { paintedMediaBox } from '../src/shared/mediaMask.js';
+import { editableCircularMask, paintedMediaBox } from '../src/shared/mediaMask.js';
 import type { SlideElement } from '../src/shared/deck.js';
 
 /**
@@ -33,9 +33,8 @@ import type { SlideElement } from '../src/shared/deck.js';
  * resizing a selected word from the sidebar's Font size field,
  * panning and zooming the view with a plain mouse and the keyboard, the
  * Props tab's line Ends control on one or both lines, its Show slide numbers
- * box, the zoom bar's Gridlines toggle, dragging a crop window by the
- * whole length of one of its edges, Shift-dragging the image's corner,
- * resetting its crop, and typing its width or height in Props.
+ * box, the zoom bar's Gridlines toggle, edge crops, crop pans, Shift-resizes,
+ * crop resets, typed picture sizes, crop controls, and abandoned gestures.
  *
  * After EVERY step five oracles run: the whole-editor invariant set from
  * selectionSession, keystroke routing via per-step nonce strings, an element
@@ -161,7 +160,8 @@ type OpName =
   | 'rail hop' | 'undo' | 'redo' | 'undo round-trip' | 'delete selection'
   | 'cmd+a' | 'click with stray hover' | 'rail multi-delete' | 'stack key' | 'spelling fix'
   | 'size from sidebar' | 'viewport gesture' | 'line ends' | 'slide numbers' | 'gridlines'
-  | 'crop edge drag' | 'shift resize image' | 'reset crop' | 'theme pick' | 'geometry from sidebar';
+  | 'crop edge drag' | 'shift resize image' | 'reset crop' | 'theme pick' | 'geometry from sidebar'
+  | 'crop pan' | 'crop toggle from panel' | 'escape during crop' | 'circle toggle' | 'abandon gesture';
 
 interface Violation { seed: number; step: number; op: OpName; oracle: string; detail: string }
 
@@ -261,6 +261,7 @@ describe.skipIf(!electronBinary)('cross-context fuzz over three elements and two
           flag('pageErrors', realErrors.join(' | '));
           break;
         }
+
       }
     }
 
@@ -380,6 +381,19 @@ describe.skipIf(!electronBinary)('directed repros minimised from the fuzz walk',
   });
 });
 
+describe.skipIf(!electronBinary)('resetting a circular crop', () => {
+  it('re-centres the picture without changing the circle window', { timeout: 120_000 }, async () => {
+    await session.reset();
+    await session.clickEmpty();
+    const problems: string[] = [];
+    const flag = (oracle: string, detail: string) => problems.push(`[${oracle}] ${detail}`);
+    await circleToggle(flag);
+    await resetCrop(() => 0.9, flag);
+    expect(problems).toEqual([]);
+    expect(await session.problems()).toEqual([]);
+  });
+});
+
 describe.skipIf(!electronBinary)('directed repro: stale slide identity across a rail hop', () => {
   // BUG (new): navigating between two slides whose element lists are
   // structurally identical (here: both emptied by Cmd+A + Backspace) takes
@@ -481,10 +495,17 @@ function chooseOp(next: () => number, pre: CrossState): OpName {
   add('slide numbers', 1);
   add('gridlines', 1);
   add('theme pick', 1);
-  if (pre.elements.includes(IMAGE)) add('crop edge drag', 2);
-  if (pre.elements.includes(IMAGE)) add('shift resize image', 1);
-  if (pre.elements.includes(IMAGE)) add('reset crop', 1);
-  if (pre.elements.includes(IMAGE)) add('geometry from sidebar', 1);
+  if (pre.elements.includes(IMAGE)) {
+    add('crop edge drag', 2);
+    add('shift resize image', 1);
+    add('reset crop', 1);
+    add('geometry from sidebar', 1);
+    add('crop pan', 2);
+    add('crop toggle from panel', 2);
+    add('escape during crop', 1);
+    add('circle toggle', 2);
+  }
+  add('abandon gesture', 2);
   return pick(next, ops);
 }
 
@@ -729,6 +750,20 @@ async function performOp(
     case 'geometry from sidebar':
       await geometryFromSidebar(next, flag);
       return 'same';
+    case 'crop pan':
+      await cropPan(next, flag);
+      return 'same';
+    case 'crop toggle from panel':
+      await cropToggleFromPanel(flag);
+      return 'same';
+    case 'escape during crop':
+      await escapeDuringCrop(next, flag);
+      return 'same';
+    case 'circle toggle':
+      await circleToggle(flag);
+      return 'same';
+    case 'abandon gesture':
+      return abandonGesture(next, pre, flag);
     case 'rail multi-delete': {
       // Select both slides in the rail with real clicks, then a deletion key.
       // More than one slide must never go without a confirmation: Escape
@@ -1184,23 +1219,15 @@ async function cropEdgeDrag(
   flag: (oracle: 'routing' | 'census', detail: string) => void,
 ): Promise<void> {
   const { cdp } = session;
-  const masking = () => cdp.evaluate<string | null>('window.canvas.maskingElement()');
-  const cropping = async () => await masking() === IMAGE
-    && (await session.state()).selection.join() === IMAGE;
-  if (!await cropping()) await session.doubleClick(IMAGE);
-  if (!await cropping()) {
-    flag('routing', `double-clicking ${IMAGE} did not enter crop mode`
-      + ` (cropping ${await masking()}, selection [${(await session.state()).selection.join(', ')}])`);
-    return;
-  }
-  type Rect = { x: number; y: number; w: number; h: number };
-  const read = () => cdp.evaluate<{ box: Rect; sourceBox: Rect | null; frame: Rect | null } | null>(`(() => {
+  if (!await enterCrop(flag)) return;
+  const read = () => cdp.evaluate<{ box: Rect; sourceBox: Rect | null; frame: Rect | null; round: boolean } | null>(`(() => {
     const el = window.store.slide.elements.find((e) => e.id === ${JSON.stringify(IMAGE)});
     const outline = document.querySelector('.overlay-layer .sel-box.masking');
     if (!el) return null;
     return {
       box: { x: el.x, y: el.y, w: el.w, h: el.h },
       sourceBox: el.sourceBox ?? null,
+      round: el.maskShape === 'circle',
       frame: outline ? {
         x: parseFloat(outline.style.left), y: parseFloat(outline.style.top),
         w: parseFloat(outline.style.width), h: parseFloat(outline.style.height),
@@ -1272,7 +1299,6 @@ async function cropEdgeDrag(
   }
   const was = picture({ ...before, frame: before.frame });
   const is = picture({ ...after, frame: after.frame });
-  const near = (a: number, b: number) => Math.abs(a - b) <= 1;
   if (!near(was.x, is.x) || !near(was.y, is.y) || !near(was.w, is.w) || !near(was.h, is.h)) {
     flag('census', `${label} moved the picture from ${JSON.stringify(was)} to ${JSON.stringify(is)}`);
   }
@@ -1283,13 +1309,17 @@ async function cropEdgeDrag(
   const edges = (r: Rect) => ({ n: r.y, s: r.y + r.h, w: r.x, e: r.x + r.w });
   const from = edges(before.frame);
   const to = edges(win);
+  // A circular window stays square, so the two edges beside the dragged one
+  // follow it; only the opposite edge stays put.
+  const opposite = { n: 's', s: 'n', e: 'w', w: 'e' }[edge];
+  if (after.round && !near(win.w, win.h)) flag('census', `${label} left the circular window ${win.w}x${win.h}`);
   for (const side of ['n', 'e', 's', 'w'] as const) {
     if (side === edge) {
       const moved = (to[side] - from[side]) * (side === 'n' || side === 'w' ? -1 : 1);
       if (outward ? moved < -1 : moved > 1) {
         flag('census', `${label} moved that edge ${outward ? 'in' : 'out'} by ${Math.abs(moved)}`);
       }
-    } else if (!near(to[side], from[side])) {
+    } else if ((!after.round || side === opposite) && !near(to[side], from[side])) {
       flag('census', `${label} also moved the ${side} edge from ${from[side]} to ${to[side]}`);
     }
   }
@@ -1412,12 +1442,19 @@ async function resetCrop(
     flag('census', `Reset crop lost ${IMAGE}`);
     return;
   }
-  if (after.el.sourceBox) flag('census', `Reset crop left the crop ${JSON.stringify(after.el.sourceBox)}`);
   const was = onSlide(before);
   const is = onSlide(after);
-  const near = (a: number, b: number) => Math.abs(a - b) <= 1;
-  if (!near(was.x, is.x) || !near(was.y, is.y) || !near(was.w, is.w) || !near(was.h, is.h)) {
-    flag('census', `Reset crop moved the picture from ${JSON.stringify(was)} to ${JSON.stringify(is)}`);
+  if (editableCircularMask(before.el)) {
+    if (!after.el.sourceBox || !nearRect(after.el, before.el) || !covers(is, after.el)
+      || !near(is.x + is.w / 2, after.el.x + after.el.w / 2)
+      || !near(is.y + is.h / 2, after.el.y + after.el.h / 2)) {
+      flag('census', `Reset crop did not re-centre the circle in its window: ${JSON.stringify(after.el)}`);
+    }
+  } else {
+    if (after.el.sourceBox) flag('census', `Reset crop left the crop ${JSON.stringify(after.el.sourceBox)}`);
+    if (!nearRect(was, is)) {
+      flag('census', `Reset crop moved the picture from ${JSON.stringify(was)} to ${JSON.stringify(is)}`);
+    }
   }
   if ((await session.state()).selection.join() !== IMAGE) {
     flag('routing', `Reset crop changed the selection to [${(await session.state()).selection.join(', ')}]`);
@@ -1511,6 +1548,455 @@ async function geometryFromSidebar(
   if (after.others !== before.others) {
     flag('census', `${label} changed another object; diff: ${firstDiff(before.others, after.others)}`);
   }
+}
+
+type Rect = { x: number; y: number; w: number; h: number };
+type Media = Extract<SlideElement, { type: 'image' | 'video' }>;
+interface ImageView { el: Media; natural: { w: number; h: number } | null; frame: Rect | null; radius: string }
+
+const masking = () => session.cdp.evaluate<string | null>('window.canvas.maskingElement()');
+
+/** Screen pixels per slide pixel at the current zoom. */
+async function slideScale(): Promise<number> {
+  const layer = await session.boxOf('.slide-layer');
+  return layer.width / await session.cdp.evaluate<number>('window.store.get().deck.canvas.w');
+}
+
+/**
+ * Crop mode on the image, entered by a real double-click when it is not
+ * already on. False, flagged, when the double-click does not enter it.
+ */
+async function enterCrop(flag: (oracle: 'routing', detail: string) => void): Promise<boolean> {
+  const cropping = async () => await masking() === IMAGE
+    && (await session.state()).selection.join() === IMAGE;
+  if (await cropping()) return true;
+  await session.doubleClick(IMAGE);
+  if (await cropping()) return true;
+  flag('routing', `double-clicking ${IMAGE} did not enter crop mode`
+    + ` (cropping ${await masking()}, selection [${(await session.state()).selection.join(', ')}])`);
+  return false;
+}
+
+/** The image as the only selection, by real clicks, leaving crop mode as it was. */
+async function selectImage(flag: (oracle: 'routing', detail: string) => void): Promise<boolean> {
+  if ((await session.state()).selection.join() !== IMAGE) {
+    await session.clickEmpty();
+    await session.click(IMAGE);
+  }
+  const selection = (await session.state()).selection;
+  if (selection.join() === IMAGE) return true;
+  flag('routing', `clicking ${IMAGE} selected [${selection.join(', ')}]`);
+  return false;
+}
+
+/** The image as the deck has it, its outline on the canvas, and its drawn corner radius. */
+function readImage(): Promise<ImageView | null> {
+  return session.cdp.evaluate<ImageView | null>(`(() => {
+    const el = window.store.slide.elements.find((e) => e.id === ${JSON.stringify(IMAGE)});
+    const node = document.querySelector('${elementSelector(IMAGE)}');
+    const img = node && node.querySelector('img');
+    const outline = document.querySelector('.overlay-layer .handle[data-element-id="${IMAGE}"]')
+      ?.closest('.sel-box');
+    if (!el) return null;
+    return {
+      el,
+      natural: img && img.naturalWidth > 0 ? { w: img.naturalWidth, h: img.naturalHeight } : null,
+      frame: outline ? {
+        x: parseFloat(outline.style.left), y: parseFloat(outline.style.top),
+        w: parseFloat(outline.style.width), h: parseFloat(outline.style.height),
+      } : null,
+      radius: node ? node.style.borderRadius : '',
+    };
+  })()`);
+}
+
+/**
+ * Give the keyboard back to the canvas as an author does, by a click on the
+ * picture that changes nothing: past the double-click interval of any click
+ * before it, so it cannot toggle crop mode, and inside the crop window when
+ * cropping, so it does not end it.
+ */
+async function clickPicture(): Promise<void> {
+  await wait(600);
+  await session.click(IMAGE);
+}
+
+/** Where the whole picture sits on the slide, cropped or not. */
+function pictureOf(view: ImageView): Rect {
+  const painted = paintedMediaBox(view.el, view.natural);
+  if (!painted) throw new Error('The picture size is not known yet');
+  return { x: view.el.x + painted.x, y: view.el.y + painted.y, w: painted.w, h: painted.h };
+}
+
+const near = (a: number, b: number) => Math.abs(a - b) <= 1;
+const nearRect = (a: Rect, b: Rect) => near(a.x, b.x) && near(a.y, b.y) && near(a.w, b.w) && near(a.h, b.h);
+const covers = (outer: Rect, inner: Rect) => inner.x >= outer.x - 1 && inner.y >= outer.y - 1
+  && inner.x + inner.w <= outer.x + outer.w + 1 && inner.y + inner.h <= outer.y + outer.h + 1;
+
+/**
+ * In crop mode, drag the picture from inside its window. The window stays
+ * where it is, the picture keeps its size and follows the pointer until one
+ * of its edges meets the window's, the crop is whole pixels, and crop mode
+ * stays on.
+ */
+async function cropPan(
+  next: () => number,
+  flag: (oracle: 'routing' | 'census', detail: string) => void,
+): Promise<void> {
+  const { cdp } = session;
+  if (!await enterCrop(flag)) return;
+  const before = await readImage();
+  if (!before?.frame) {
+    flag('routing', `crop mode on ${IMAGE} draws no crop window`);
+    return;
+  }
+  const fx = 0.3 + 0.4 * next();
+  const fy = 0.3 + 0.4 * next();
+  const start = await cdp.evaluate<{ x: number; y: number; covered: string }>(`(() => {
+    const r = document.querySelector('.overlay-layer .sel-box.masking').getBoundingClientRect();
+    const x = r.left + r.width * ${fx};
+    const y = r.top + r.height * ${fy};
+    const handle = document.elementFromPoint(x, y)?.closest('.handle');
+    return { x, y, covered: handle ? String(handle.className) : '' };
+  })()`);
+  if (start.covered) {
+    flag('routing', `the inside of the crop window is covered by ${start.covered}`);
+    return;
+  }
+  // Slide pixels, each axis well past the drag threshold.
+  const dx = (next() < 0.5 ? -1 : 1) * (20 + next() * 140);
+  const dy = (next() < 0.5 ? -1 : 1) * (20 + next() * 140);
+  const scale = await slideScale();
+  const gesture = await cdp.beginDrag(start.x, start.y);
+  for (let i = 1; i <= 4; i++) {
+    await gesture.moveTo(start.x + (dx * scale * i) / 4, start.y + (dy * scale * i) / 4);
+    await wait(16);
+  }
+  await gesture.drop();
+  await wait(120);
+
+  const after = await readImage();
+  const label = `panning the picture by ${Math.round(dx)},${Math.round(dy)}`;
+  if (TRACE) console.log(`  ${label}: ${JSON.stringify(before)} -> ${JSON.stringify(after)}`);
+  if (!after?.frame) {
+    flag('census', `${label} lost the image or its crop window`);
+    return;
+  }
+  const win = before.frame;
+  if (!nearRect(after.frame, win)) {
+    flag('census', `${label} moved the crop window from ${JSON.stringify(win)} to ${JSON.stringify(after.frame)}`);
+  }
+  const was = pictureOf(before);
+  const is = pictureOf(after);
+  if (!near(was.w, is.w) || !near(was.h, is.h)) {
+    flag('census', `${label} resized the picture from ${was.w}x${was.h} to ${is.w}x${is.h}`);
+  }
+  // Offsets inside the window: the picture moves with the pointer, clamped
+  // where its edge meets the window's (or where it already was past it).
+  const follow = (from: number, delta: number, room: number) =>
+    Math.min(Math.max(from + delta, Math.min(0, room, from)), Math.max(0, room, from));
+  const want = {
+    x: win.x + follow(was.x - win.x, dx, win.w - was.w),
+    y: win.y + follow(was.y - win.y, dy, win.h - was.h),
+  };
+  if (Math.abs(is.x - want.x) > 1.5 || Math.abs(is.y - want.y) > 1.5) {
+    flag('census', `${label} put the picture at ${is.x},${is.y}, not ${want.x},${want.y}`
+      + ` (window ${JSON.stringify(win)}, picture was ${JSON.stringify(was)})`);
+  }
+  if (covers(was, win) && !covers(is, after.frame)) {
+    flag('census', `${label} left the crop window ${JSON.stringify(after.frame)} outside the picture ${JSON.stringify(is)}`);
+  }
+  const whole = [after.el.x, after.el.y, after.el.w, after.el.h,
+    ...(after.el.sourceBox ? [after.el.sourceBox.x, after.el.sourceBox.y] : [])];
+  if (!whole.every(Number.isInteger)) {
+    flag('census', `${label} left fractional pixels: ${JSON.stringify(after.el)}`);
+  }
+  if (await masking() !== IMAGE) flag('routing', `${label} ended crop mode`);
+  const selection = (await session.state()).selection;
+  if (selection.join() !== IMAGE) flag('routing', `${label} changed the selection to [${selection.join(', ')}]`);
+}
+
+/**
+ * The Props tab's crop button, with the image selected: it turns crop mode on
+ * or off, the canvas draws the crop window exactly while it is on, the button
+ * reads differently after, and neither way is an edit.
+ */
+async function cropToggleFromPanel(
+  flag: (oracle: 'routing' | 'census', detail: string) => void,
+): Promise<void> {
+  const { cdp } = session;
+  if (!await selectImage(flag)) return;
+  const button = `() => [...document.querySelectorAll('.editor-inspector .mask-action-row .panel-action')]
+    .find((node) => node.getClientRects().length > 0)`;
+  const label = () => cdp.evaluate<string | null>(`(${button})()?.textContent ?? null`);
+  const was = await masking();
+  const wasLabel = await label();
+  const deck = await session.deckSnapshot();
+  if (!await clickFound(button, `the crop button (${wasLabel})`)) {
+    flag('routing', `the Props tab shows no crop button for ${IMAGE}`);
+    return;
+  }
+  await wait(120);
+  const want = was === IMAGE ? null : IMAGE;
+  const is = await masking();
+  if (is !== want) flag('routing', `"${wasLabel}" left crop mode on ${is ?? 'nothing'}`);
+  const edges = await cdp.evaluate<number>(
+    `document.querySelectorAll('.overlay-layer .sel-box.masking .mask-edge').length`);
+  if (edges !== (want ? 4 : 0)) flag('routing', `with crop mode on ${want ?? 'nothing'} the canvas draws ${edges} crop edges`);
+  const nowLabel = await label();
+  if (nowLabel === wasLabel) flag('routing', `the crop button still reads "${wasLabel}" after it was clicked`);
+  const selection = (await session.state()).selection;
+  if (selection.join() !== IMAGE) flag('routing', `"${wasLabel}" changed the selection to [${selection.join(', ')}]`);
+  const deckAfter = await session.deckSnapshot();
+  if (deckAfter !== deck) flag('census', `"${wasLabel}" edited the deck; diff: ${firstDiff(deck, deckAfter)}`);
+}
+
+/**
+ * Enter crop mode (by double-click or the Props button) and press Escape.
+ * Escape deselects and is not an edit.
+ */
+async function escapeDuringCrop(
+  next: () => number,
+  flag: (oracle: 'routing' | 'census', detail: string) => void,
+): Promise<void> {
+  if (next() < 0.5) {
+    if (!await enterCrop(flag)) return;
+    await clickPicture();
+  } else {
+    if (!await selectImage(flag)) return;
+    if (await masking() !== IMAGE) await cropToggleFromPanel(flag);
+    if (await masking() !== IMAGE) return;
+  }
+  const deck = await session.deckSnapshot();
+  await session.key('Escape', 27);
+  await wait(120);
+  const selection = (await session.state()).selection;
+  if (selection.length > 0) flag('routing', `Escape in crop mode left [${selection.join(', ')}] selected`);
+  const deckAfter = await session.deckSnapshot();
+  if (deckAfter !== deck) flag('census', `Escape in crop mode edited the deck; diff: ${firstDiff(deck, deckAfter)}`);
+  if (await masking() !== null) flag('routing', 'Escape left crop mode on');
+}
+
+/**
+ * The Props tab's Crop to circle box, with the image selected. On: the window
+ * squares about its centre, the picture fills it at its own size or larger,
+ * in its own proportions, centred where it was, and the canvas draws it round. Off: the geometry
+ * stays exactly as it was and the corners come back. Crop mode, the
+ * selection and every other object are untouched.
+ */
+async function circleToggle(
+  flag: (oracle: 'routing' | 'census', detail: string) => void,
+): Promise<void> {
+  const { cdp } = session;
+  if (!await selectImage(flag)) return;
+  const box = `() => [...document.querySelectorAll('.editor-inspector .media-mask-settings .field-check input')]
+    .find((node) => node.getClientRects().length > 0)`;
+  const before = await readImage();
+  const cropping = await masking();
+  const others = () => cdp.evaluate<string>(`JSON.stringify(window.store.slide.elements
+    .filter((e) => e.id !== ${JSON.stringify(IMAGE)}))`);
+  const othersBefore = await others();
+  if (!before) return;
+  if (!await clickFound(box, 'Crop to circle')) {
+    flag('routing', `the Props tab shows no Crop to circle box for ${IMAGE}`);
+    return;
+  }
+  await wait(150);
+  const after = await readImage();
+  const checked = await cdp.evaluate<boolean | null>(`(${box})()?.checked ?? null`);
+  if (!after) {
+    flag('census', `Crop to circle lost ${IMAGE}`);
+    return;
+  }
+  const on = after.el.maskShape === 'circle';
+  const label = `Crop to circle ${on ? 'on' : 'off'}`;
+  if (TRACE) console.log(`  ${label}: ${JSON.stringify(before)} -> ${JSON.stringify(after)}`);
+  if (on === (before.el.maskShape === 'circle')) flag('census', `the Crop to circle box left maskShape at ${after.el.maskShape}`);
+  if (checked !== on) flag('routing', `the Crop to circle box is ${checked ? '' : 'un'}checked with maskShape ${after.el.maskShape}`);
+  if (after.radius !== (on ? '50%' : '')) flag('census', `${label} draws border-radius "${after.radius}"`);
+  const geometry = (view: ImageView) => JSON.stringify([view.el.x, view.el.y, view.el.w, view.el.h, view.el.sourceBox ?? null]);
+  if (on) {
+    const win = { x: after.el.x, y: after.el.y, w: after.el.w, h: after.el.h };
+    if (win.w !== win.h) flag('census', `${label} left a ${win.w}x${win.h} window`);
+    if (!near(win.x + win.w / 2, before.el.x + before.el.w / 2)
+      || !near(win.y + win.h / 2, before.el.y + before.el.h / 2)) {
+      flag('census', `${label} moved the window's centre: ${geometry(before)} -> ${geometry(after)}`);
+    }
+    const was = pictureOf(before);
+    const is = pictureOf(after);
+    if (!near(was.x + was.w / 2, is.x + is.w / 2) || !near(was.y + was.h / 2, is.y + is.h / 2)) {
+      flag('census', `${label} moved the picture's centre from ${JSON.stringify(was)} to ${JSON.stringify(is)}`);
+    }
+    if (is.w < was.w - 1 || is.h < was.h - 1) {
+      flag('census', `${label} shrank the picture from ${JSON.stringify(was)} to ${JSON.stringify(is)}`);
+    }
+    // Rounding moves each side by at most half a pixel.
+    const natural = after.natural ?? before.natural;
+    if (natural && Math.abs(is.w - (is.h * natural.w) / natural.h) > 1 + natural.w / natural.h) {
+      flag('census', `${label} drew the ${natural.w}x${natural.h} picture at ${is.w}x${is.h}`);
+    }
+    if (!covers(is, win)) {
+      flag('census', `${label} left the window ${JSON.stringify(win)} outside the picture ${JSON.stringify(is)}`);
+    }
+  } else if (geometry(after) !== geometry(before)) {
+    flag('census', `${label} changed the geometry: ${geometry(before)} -> ${geometry(after)}`);
+  }
+  if (await masking() !== cropping) flag('routing', `${label} turned crop mode from ${cropping} to ${await masking()}`);
+  const selection = (await session.state()).selection;
+  if (selection.join() !== IMAGE) flag('routing', `${label} changed the selection to [${selection.join(', ')}]`);
+  const othersAfter = await others();
+  if (othersAfter !== othersBefore) {
+    flag('census', `${label} changed another object; diff: ${firstDiff(othersBefore, othersAfter)}`);
+  }
+  // The box keeps the keyboard, and with it Backspace and Delete.
+  await clickPicture();
+}
+
+/**
+ * Begin a drag, a resize, a crop or a marquee with real input and abandon it
+ * part-way: the pointer is cancelled, Escape is pressed, or the window loses
+ * focus, and the button comes up after. Whether an abandoned gesture keeps
+ * what it did so far is not decided here. Either way it must end, leaving
+ * nothing of it on the canvas, and be at most one undo step: one Cmd/Ctrl+Z
+ * puts the deck back exactly. A cancelled pointer ends it at once: the
+ * motion after the cancel edits nothing. The walk goes on from there, undone.
+ *
+ * Chromium cancels a mouse pointer only when a native drag takes it over,
+ * which CDP cannot start. So that cancel is dispatched as the browser sends
+ * it: pointercancel at the canvas holding the capture, and no pointerup,
+ * mouseup or click for the release after it.
+ */
+async function abandonGesture(
+  next: () => number,
+  pre: CrossState,
+  flag: (oracle: 'routing' | 'undoRoundTrip' | 'census', detail: string) => void,
+): Promise<'same' | 'resync'> {
+  const { cdp } = session;
+  const targets = targetsOn(pre);
+  const gestures: Array<'drag' | 'resize' | 'crop' | 'marquee'> = ['marquee'];
+  if (targets.length > 0) gestures.push('drag', 'resize');
+  if (pre.elements.includes(IMAGE)) gestures.push('crop');
+  const gesture = pick(next, gestures);
+  const how = pick<'pointer-cancel' | 'Escape' | 'blur'>(next, ['pointer-cancel', 'Escape', 'blur']);
+  const centre = (selector: string) => cdp.evaluate<{ x: number; y: number } | null>(`(() => {
+    const node = document.querySelector(${JSON.stringify(selector)});
+    if (!node) return null;
+    const r = node.getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  })()`);
+
+  let what: string = gesture;
+  let from: { x: number; y: number } | null;
+  if (gesture === 'crop') {
+    if (!await enterCrop(flag)) return 'same';
+    // An edge strip (a third of the way along, clear of the handles) or the
+    // inside of the window, which pans.
+    const edge = pick(next, ['n', 'e', 's', 'w', 'inside']);
+    what = edge === 'inside' ? 'crop pan' : `crop of the ${edge} edge`;
+    from = await cdp.evaluate<{ x: number; y: number } | null>(`(() => {
+      const node = document.querySelector('.overlay-layer ${edge === 'inside' ? '.sel-box.masking' : `.mask-edge-${edge}`}');
+      if (!node) return null;
+      const r = node.getBoundingClientRect();
+      return {
+        x: r.left + r.width * ${edge === 'e' || edge === 'w' ? 0.5 : 0.3},
+        y: r.top + r.height * ${edge === 'n' || edge === 's' ? 0.5 : 0.3},
+      };
+    })()`);
+  } else {
+    await session.clickEmpty();
+    if (gesture === 'marquee') {
+      const layer = await session.boxOf('.slide-layer');
+      from = { x: layer.left + layer.width * 0.55, y: layer.top + layer.height * 0.94 };
+    } else {
+      const target = pick(next, targets);
+      what = `${gesture} of ${target}`;
+      if (gesture === 'resize') {
+        await session.click(target);
+        const corner = pick(next, ['nw', 'ne', 'sw', 'se']);
+        what += ` by its ${corner} handle`;
+        from = await centre(`.overlay-layer .handle-${corner}[data-element-id="${target}"]`);
+      } else {
+        from = await centre(elementSelector(target));
+      }
+    }
+  }
+  if (!from) {
+    flag('routing', `there is nothing to press for a ${what}`);
+    return 'same';
+  }
+  const start = from;
+
+  const before = await session.deckSnapshot();
+  const scale = await slideScale();
+  // Slide pixels, each axis well past the drag threshold by the second move.
+  const offset = () => (next() < 0.5 ? -1 : 1) * (30 + next() * 60) * scale;
+  const dx = offset();
+  const dy = offset();
+  const label = `${how} part-way through a ${what}`;
+  if (TRACE) console.log(`  ${label}`);
+  const pointer = await cdp.beginDrag(start.x, start.y);
+  const move = async (i: number) => {
+    await pointer.moveTo(start.x + (dx * i) / 4, start.y + (dy * i) / 4);
+    await wait(16);
+  };
+  await move(1);
+  await move(2);
+  /** The deck once the pointer was cancelled: the motion after it is no gesture. */
+  let cancelled: string | null = null;
+  if (how === 'Escape') {
+    await session.key('Escape', 27);
+  } else if (how === 'blur') {
+    await cdp.evaluate(`window.dispatchEvent(new FocusEvent('blur'))`);
+  } else {
+    await cdp.evaluate(`(() => {
+      document.querySelector('.canvas-host').dispatchEvent(new PointerEvent('pointercancel', {
+        pointerId: 1, pointerType: 'mouse', isPrimary: true, bubbles: true,
+      }));
+      window.__xcSwallow = (event) => event.stopImmediatePropagation();
+      for (const type of ['pointerup', 'mouseup', 'click']) {
+        window.addEventListener(type, window.__xcSwallow, true);
+      }
+      return true;
+    })()`);
+    await wait(100);
+    cancelled = await session.deckSnapshot();
+  }
+  try {
+    await move(3);
+    await move(4);
+    await pointer.drop();
+  } finally {
+    if (how === 'pointer-cancel') {
+      await cdp.evaluate(`(() => {
+        for (const type of ['pointerup', 'mouseup', 'click']) {
+          window.removeEventListener(type, window.__xcSwallow, true);
+        }
+        return true;
+      })()`);
+    }
+  }
+  await wait(150);
+
+  if (cancelled !== null) {
+    const now = await session.deckSnapshot();
+    if (now !== cancelled) {
+      flag('routing', `${label}: the pointer kept editing after it was cancelled; diff: ${firstDiff(cancelled, now)}`);
+    }
+  }
+  const leftovers = await cdp.evaluate<string[]>(`[...document.querySelectorAll(
+    '.overlay-layer .marquee, .overlay-layer .guide, .overlay-layer .measure')].map((node) => node.className)`);
+  if (leftovers.length > 0) flag('routing', `${label} left ${leftovers.join(', ')} on the canvas`);
+  if (await session.deckSnapshot() === before) return 'same';
+  await session.chord('z', 'KeyZ', 90, MOD);
+  let undone = await session.deckSnapshot();
+  for (let poll = 0; poll < 10 && undone !== before; poll++) {
+    await wait(200);
+    undone = await session.deckSnapshot();
+  }
+  if (undone !== before) {
+    flag('undoRoundTrip', `one undo after ${label} did not put the deck back; diff: ${firstDiff(before, undone)}`);
+  }
+  return 'resync';
 }
 
 function firstDiff(a: string, b: string): string {
