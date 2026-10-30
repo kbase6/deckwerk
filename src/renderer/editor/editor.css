@@ -1178,13 +1178,24 @@ body.panel-resizing iframe { pointer-events: none; }
 
 /* --- crop (mask) editing --- */
 
-/* The full frame, shown faintly outside the crop window so it is clear what is
-   being cut away rather than only what is kept. */
+/* The whole picture, shown faintly outside the crop window so it is clear what
+   is being cut away rather than only what is kept. The dashed edge is an inset
+   outline, not a border, so the copy inside fills the box to the pixel and
+   sits on the picture. */
 .mask-ghost {
   position: absolute;
-  border: 1px dashed rgb(255 255 255 / 60%);
+  outline: 1px dashed rgb(255 255 255 / 60%);
+  outline-offset: -1px;
   background: rgb(59 130 246 / 12%);
   pointer-events: none;
+}
+
+.mask-ghost > img,
+.mask-ghost > canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  opacity: 0.35;
 }
 
 .sel-box.masking {
@@ -2073,7 +2084,7 @@ input[type="range"] { accent-color: var(--accent); border: 0; background: transp
 .handle-endpoint { border-radius: 50% !important; border-color: var(--green); }
 /* Corners of a straight-sided shape: round and orange, so they never read as resize handles. */
 .handle.handle-corner { border-radius: 50% !important; border-color: var(--build-orange, #f59e0b); border-width: calc(2px * var(--inv)); }
-.mask-ghost { border-color: var(--green); background: color-mix(in srgb, var(--green) 8%, transparent); }
+.mask-ghost { outline-color: var(--green); background: color-mix(in srgb, var(--green) 8%, transparent); }
 .sel-box.masking { outline-color: var(--green); }
 .sel-box.masking .handle { border-color: var(--green); }
 .guide { background: var(--danger); }

@@ -1059,6 +1059,8 @@ export class EditorCanvas {
    */
   private maskingId: string | null = null;
   private buildBadgesVisible = false;
+  /** The faint copy of the masked picture, reused while its source is unchanged. */
+  private maskCopy: { live: Element; key: string; node: HTMLElement } | null = null;
 
   /** Notified when mask mode turns on or off, so the inspector can relabel. */
   onMaskModeChange?: (elementId: string | null) => void;
@@ -2278,17 +2280,27 @@ export class EditorCanvas {
       }
     }
 
-    // In mask mode, show the full frame faintly outside the crop window so it
-    // is clear what is being cut away rather than merely what is kept.
+    // In mask mode, show the whole picture faintly outside the crop window so
+    // it is clear what is being cut away rather than merely what is kept. The
+    // picture as painted (an uncropped `cover` overflows its window too),
+    // turned about the element's centre as the media is.
     if (this.maskingId) {
       const el = elements.find((e) => e.id === this.maskingId);
-      if (el && (el.type === 'image' || el.type === 'video') && el.sourceBox) {
+      const box = el && (el.type === 'image' || el.type === 'video')
+        ? paintedMediaBox(el, mediaNaturalSize(el.id, this.slideLayer)) : null;
+      if (el && box) {
         const ghost = document.createElement('div');
         ghost.className = 'mask-ghost';
-        ghost.style.left = `${el.x + el.sourceBox.x}px`;
-        ghost.style.top = `${el.y + el.sourceBox.y}px`;
-        ghost.style.width = `${el.sourceBox.w}px`;
-        ghost.style.height = `${el.sourceBox.h}px`;
+        ghost.style.left = `${el.x + box.x}px`;
+        ghost.style.top = `${el.y + box.y}px`;
+        ghost.style.width = `${box.w}px`;
+        ghost.style.height = `${box.h}px`;
+        if (el.rot) {
+          ghost.style.transformOrigin = `${el.w / 2 - box.x}px ${el.h / 2 - box.y}px`;
+          ghost.style.transform = `rotate(${el.rot}deg)`;
+        }
+        const copy = this.maskGhostCopy(el.id);
+        if (copy) ghost.appendChild(copy);
         frag.appendChild(ghost);
       }
     }
@@ -6994,6 +7006,39 @@ export class EditorCanvas {
   /** The element whose mask is being edited, if any. */
   maskingElement(): string | null {
     return this.maskingId;
+  }
+
+  /**
+   * A copy of the picture the masked element shows, for its crop ghost: the
+   * image itself, or a video's current frame (a second `<video>` would load
+   * and decode on its own). Reused across the redraws of a drag, so the
+   * ghost never flickers or re-decodes. Null for media with nothing to copy
+   * yet (a PDF, a video with no frame).
+   */
+  private maskGhostCopy(elementId: string): HTMLElement | null {
+    const live = this.slideLayer
+      .querySelector(`[data-element-id="${CSS.escape(elementId)}"]`)
+      ?.querySelector<HTMLImageElement | HTMLVideoElement>('img, video');
+    if (!live) return null;
+    const video = live instanceof HTMLVideoElement;
+    const key = video ? String(live.currentTime) : live.currentSrc || live.src;
+    if (this.maskCopy?.live === live && this.maskCopy.key === key) return this.maskCopy.node;
+    let node: HTMLElement;
+    if (video) {
+      if (live.readyState < HTMLMediaElement.HAVE_CURRENT_DATA || !live.videoWidth) return null;
+      const frame = document.createElement('canvas');
+      frame.width = live.videoWidth;
+      frame.height = live.videoHeight;
+      frame.getContext('2d')?.drawImage(live, 0, 0);
+      node = frame;
+    } else {
+      const image = document.createElement('img');
+      image.src = key;
+      image.alt = '';
+      node = image;
+    }
+    this.maskCopy = { live, key, node };
+    return node;
   }
 
   /**
