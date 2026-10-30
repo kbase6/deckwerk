@@ -980,7 +980,6 @@ document.addEventListener('keydown', (event) => {
     event.stopPropagation();
   }
 }, true);
-inspector.onEditLayouts = (layout) => designWorkspace.openLayoutEditor(layout);
 inspector.onPreviewSlide = (slide, label) => designWorkspace.previewSlideOnCanvas(slide, label);
 /* --- side panel tabs --- */
 

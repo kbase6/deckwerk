@@ -1871,7 +1871,7 @@ describe('the layout preset as formatting', () => {
     const { store, inspectorHost } = layoutHarness();
     store.clearSelection();
     expect([...presetSelect(inspectorHost).options].map((option) => option.textContent))
-      .toEqual(['Freeform', 'Title + body', 'Title slide', 'Edit layouts…']);
+      .toEqual(['Freeform', 'Title + body', 'Title slide']);
     expect(presetSelect(inspectorHost).value).toBe('standard');
   });
 

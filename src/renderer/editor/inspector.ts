@@ -236,8 +236,6 @@ export class Inspector {
   private lastRenderShown = '';
   private morphHost = document.createElement('section');
   private morphPanel: MorphPanel;
-  /** Enter the dedicated editor for the three fixed layout masters. */
-  onEditLayouts?: (layout: SlideLayout) => void;
   /** Show a dry-run slide on the canvas in place of the real one; `null` clears it. */
   onPreviewSlide?: (slide: Slide | null, label: string) => void;
 
@@ -542,19 +540,9 @@ export class Inspector {
       option.textContent = label;
       layoutSelect.appendChild(option);
     }
-    const editLayouts = document.createElement('option');
-    editLayouts.value = '__edit_layouts__';
-    editLayouts.textContent = 'Edit layouts…';
-    layoutSelect.appendChild(editLayouts);
     layoutSelect.value = layouts.mixed ? '__mixed__' : layouts.value ?? 'freeform';
     layoutSelect.addEventListener('change', () => {
       if (layoutSelect.value === '__mixed__') return;
-      if (layoutSelect.value === '__edit_layouts__') {
-        const current = layouts.mixed ? 'freeform' : layouts.value ?? 'freeform';
-        layoutSelect.value = layouts.mixed ? '__mixed__' : current;
-        this.onEditLayouts?.(current);
-        return;
-      }
       this.store.commit((next) => {
         for (const slide of next.slides) {
           if (selectedIds.has(slide.id)) {

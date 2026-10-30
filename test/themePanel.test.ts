@@ -44,6 +44,8 @@ describe('theme panel', () => {
     // The three masters, drawn in the theme; clicking one edits it.
     const masters = panel.element.querySelectorAll<HTMLButtonElement>('.layouts-section .design-master');
     expect(masters).toHaveLength(3);
+    // The tiles are the way in: no separate "Edit layouts…" button beside them.
+    expect(panel.element.querySelectorAll('.layouts-section button')).toHaveLength(3);
     masters[1].click();
     expect(onEditLayouts).toHaveBeenCalledWith('standard');
 

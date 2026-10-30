@@ -522,15 +522,8 @@ export function createThemePanel(deps: ThemePanelDeps): ThemePanel {
     /* --- layouts --- */
     mastersHost = document.createElement('div');
     mastersHost.className = 'layout-popover-grid design-masters';
-    const mastersRow = document.createElement('div');
-    mastersRow.className = 'theme-default-row design-masters-row';
-    const editLayouts = barButton('Edit layouts…', () => deps.onEditLayouts?.(
-      (store.slide?.layout ?? 'standard') as FixedLayout,
-    ));
-    editLayouts.classList.add('theme-section-action');
-    mastersRow.append(editLayouts);
     const layoutsSection = panelSection('Layouts', 'layouts-section');
-    layoutsSection.append(mastersHost, mastersRow);
+    layoutsSection.append(mastersHost);
 
     wrap.append(intro, themeSection, layoutsSection);
     refreshPreviousBadge();
