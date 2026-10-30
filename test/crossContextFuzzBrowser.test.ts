@@ -1376,7 +1376,9 @@ async function themeDraft(
     await cdp.click('#themePanel .theme-edit-button', 'Edit theme…');
     const change = next() < 0.7;
     if (change) {
-      await cdp.typeInto('#themePanel .theme-role-size input', String(60 + Math.floor(next() * 80)), 'Title size');
+      const size = 60 + Math.floor(next() * 80);
+      const current = await cdp.evaluate<number>(`Number(document.querySelector('#themePanel .theme-role-size input').value)`);
+      await cdp.typeInto('#themePanel .theme-role-size input', String(size === current ? size + 1 : size), 'Title size');
     }
     await wait(80);
     const door = pick(next, ['the Props tab', 'Escape', 'a rail click']);
