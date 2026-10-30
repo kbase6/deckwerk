@@ -885,7 +885,7 @@ slide-agent inspect $DECK --slide results      # confirm the result
   `role-body` / `role-caption` classes; inline `style` on an element overrides
   the stylesheet and is best reserved for deliberate one-offs. A role's default
   size lives in `themeStyle` in `deck.json` and is written into the generated
-  block of `theme.css` (in the app under Theme › Edit theme; from the CLI
+  block of `theme.css` (in the app under Design › Edit…; from the CLI
   through `theme create` and `theme apply`). Editing a default changes what new
   slides are born with; existing slides keep their size until the theme is
   applied to them. Layout masters never carry a size.
