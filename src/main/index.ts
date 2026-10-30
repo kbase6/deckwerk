@@ -1389,6 +1389,7 @@ function registerHandlers(): void {
       rootDir: dirname(s.dir),
       hostedDeckId: basename(s.dir),
       agentMode,
+      port: agentMode ? 0 : undefined,
       clientDir,
       onSessionEnd,
       localAgents,
