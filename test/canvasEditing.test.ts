@@ -4457,3 +4457,36 @@ describe('Props wording', () => {
     expect(Object.entries(LAYOUT_LABELS_BY_ID)).toEqual(LAYOUT_LABELS);
   });
 });
+describe('shape Props wording', () => {
+  beforeEach(() => document.body.replaceChildren());
+
+  it('names the shape, its paint and its shadow type instead of calling each "Style"', () => {
+    const { store } = setup();
+    const shape = insertShape(store, 'rect');
+    const panel = document.createElement('div');
+    document.body.appendChild(panel);
+    new Inspector(panel, store).render();
+    const headings = () => [...panel.querySelectorAll('.insp-subtitle')].map((node) => node.textContent);
+    const labels = () => [...panel.querySelectorAll('.field > span')].map((node) => node.textContent);
+    const field = (label: string) => [...panel.querySelectorAll<HTMLElement>('.field')]
+      .find((node) => node.querySelector('span')?.textContent === label);
+    const current = () => store.slide!.elements.find((e) => e.id === shape.id) as Extract<SlideElement, { type: 'shape' }>;
+
+    expect(headings()).toContain('Fill & outline');
+    expect(field('Shape')?.querySelector('select')?.value).toBe('rect');
+
+    field('Drop shadow')!.querySelector('input')!.click();
+    const type = field('Shadow type')!.querySelector('select')!;
+    expect(type.value).toBe('Drop');
+    type.value = 'Curved';
+    type.dispatchEvent(new Event('change'));
+    expect(current().style['--curl-lift']).toBeDefined();
+
+    // A curved shadow's toggle is not a drop shadow.
+    expect(field('Shadow')?.querySelector('input')?.checked).toBe(true);
+    expect(labels()).not.toContain('Drop shadow');
+    expect(labels()).not.toContain('Style');
+    expect(labels()).not.toContain('Kind');
+    expect(headings()).not.toContain('Style');
+  });
+});

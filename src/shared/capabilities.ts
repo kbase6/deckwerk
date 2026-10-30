@@ -281,7 +281,7 @@ export function capabilities(): Capability[] {
         'A curly brace is shape: "brace", laid out like a line (endpoints at the box\'s left and right centre, rotated by rot). braceDepth is the signed distance from the chord to the point along the element\'s own +y (down when unrotated); half of it is the radius of every curl. In HTML: data-shape="brace" data-brace-depth="40".',
         'A drop shadow is CSS on the element: style: { filter: "drop-shadow(0px 8px 24px rgba(0, 0, 0, 0.3))" }. It follows the shape’s own paint (a line or an outline casts the shadow of its strokes), and Format → Shadow edits the same value.',
         'A gradient fill: fillGradient: { to: "#ec6b14", angle: 270, kind: "linear" } runs from fill to `to`; angle is degrees counter-clockwise from the right (270 = top to bottom); kind "radial" spreads from the centre. In HTML: data-fill-to, data-fill-angle, data-fill-gradient.',
-        'A curved (paper) shadow, the object lifting at its bottom corners: style custom properties --curl-color, --curl-blur and --curl-lift (px). Format → Shadow → Style: Curved edits them.',
+        'A curved (paper) shadow, the object lifting at its bottom corners: style custom properties --curl-color, --curl-blur and --curl-lift (px). Format → Shadow → Shadow type: Curved edits them.',
       ],
       elements: [
         text('cap-shape-title', 'Shapes and connectors', TITLE, { class: ['role-title'] }),

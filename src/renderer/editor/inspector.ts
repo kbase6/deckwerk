@@ -1245,7 +1245,7 @@ export class Inspector {
 
   /** Drop shadow or curved (paper) shadow, for shapes. Switching keeps the colour and blur. */
   private shadowStyleField(current: 'Drop' | 'Curved'): HTMLElement {
-    return selectField('Style', ['Drop', 'Curved'], current, (value) =>
+    return selectField('Shadow type', ['Drop', 'Curved'], current, (value) =>
       this.store.updateSelected((element) => {
         if (element.type !== 'shape') return;
         if (value === 'Curved') {
@@ -1275,7 +1275,7 @@ export class Inspector {
     current: Array<ReturnType<typeof curvedShadow>>,
   ): HTMLElement {
     const enabled = commonValue(current.map((shadow) => shadow !== null));
-    section.content.appendChild(mixedCheckboxField('Drop shadow', enabled, (on) =>
+    section.content.appendChild(mixedCheckboxField('Shadow', enabled, (on) =>
       this.store.updateSelected((element) => {
         if (element.type !== 'shape') return;
         setCurvedShadow(element.style, on ? curvedShadow(element.style) ?? { ...DEFAULT_CURVED_SHADOW } : null);
@@ -1986,7 +1986,7 @@ export class Inspector {
           const selectionStyle = document.createElement('div');
           selectionStyle.className = 'text-selection-style field';
           const styleLabel = document.createElement('span');
-          styleLabel.textContent = 'Style';
+          styleLabel.textContent = 'Format';
           selectionStyle.appendChild(styleLabel);
           const formatButtons = document.createElement('div');
           formatButtons.className = 'button-row text-format-buttons';
@@ -2431,7 +2431,7 @@ export class Inspector {
 
       case 'shape': {
         const wrap = typeSections();
-        const style = optionSection('Style', 'shape-style-options');
+        const style = optionSection('Fill & outline', 'shape-style-options');
         const kinds: Array<{ value: string; title: string; icon: string }> = [
           { value: 'rect', title: 'Rectangle', icon: SHAPE_KIND_GLYPHS.rect },
           { value: 'ellipse', title: 'Ellipse', icon: SHAPE_KIND_GLYPHS.ellipse },
@@ -2445,7 +2445,7 @@ export class Inspector {
           kinds.push({ value: 'path', title: 'Path (drag its corners on the slide)', icon: SHAPE_KIND_GLYPHS.path });
         }
         style.content.appendChild(
-          segmentedSelectField('Kind', kinds, el.shape, (v) =>
+          segmentedSelectField('Shape', kinds, el.shape, (v) =>
             this.store.updateSelected((e) => {
               if (e.type === 'shape') e.shape = v as 'rect';
             }),
