@@ -114,6 +114,27 @@ describe.skipIf(webExportUnavailableReason() !== null)('web export compression',
     expect(meta).toMatchObject({ quality: 'balanced', slides: 1 });
   }, 20_000);
 
+  it('keeps a cover picture as large as it is painted, not as large as its box', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'export-cover-'));
+    cleanup.push(root);
+    const dir = join(root, 'Deck');
+    await createDeck(dir, 'Deck');
+    await mkdir(join(dir, 'assets'), { recursive: true });
+    await synthImage(join(dir, 'assets', 'wide.png'), '3000x1000');
+    const deck = emptyDeck();
+    // `cover` scales a 3000×1000 picture to 1800×600 to fill a 600×600 box.
+    deck.slides[0].elements.push(
+      element({ id: 'img', type: 'image', src: 'assets/wide.png', w: 600, h: 600, fit: 'cover', alt: '', sourceBox: null }),
+    );
+    expect(renderedLongEdge(deck, 'assets/wide.png', { w: 3000, h: 1000 })).toBe(1800);
+    await writeFile(join(dir, 'deck.json'), JSON.stringify(deck), 'utf8');
+    const out = join(root, 'out');
+    await exportDeck(dir, deck, out, undefined, { quality: 'balanced' });
+    const probe = await run(getFfmpegPath(), ['-hide_banner', '-i', join(out, 'assets', 'wide.webp')]).catch((e: Error) => ({ stderr: e.message }));
+    const width = Number(/, (\d+)x\d+/.exec(probe.stderr)?.[1]);
+    expect(width).toBeGreaterThanOrEqual(1800);
+  }, 20_000);
+
   it('copies everything untouched at original quality', async () => {
     const { dir, out, deck } = await fixture();
     await exportDeck(dir, deck, out, undefined, { quality: 'original' });
