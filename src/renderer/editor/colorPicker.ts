@@ -322,8 +322,8 @@ export function colorField(
       const dropper = document.createElement('button');
       dropper.type = 'button';
       dropper.className = 'color-picker-eyedropper';
-      dropper.title = 'Pick a colour from the screen';
-      dropper.setAttribute('aria-label', 'Pick a colour from the screen');
+      dropper.title = 'Pick a color from the screen';
+      dropper.setAttribute('aria-label', 'Pick a color from the screen');
       dropper.innerHTML = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" fill="none" '
         + 'stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">'
         + '<path d="M10.5 2.5a1.8 1.8 0 0 1 2.6 2.6L11.5 6.7l-2.2-2.2z"/>'

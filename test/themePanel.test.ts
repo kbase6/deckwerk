@@ -44,6 +44,8 @@ describe('theme panel', () => {
     // The three masters, drawn in the theme; clicking one edits it.
     const masters = panel.element.querySelectorAll<HTMLButtonElement>('.layouts-section .design-master');
     expect(masters).toHaveLength(3);
+    // The tiles are the way in: no separate "Edit layouts…" button beside them.
+    expect(panel.element.querySelectorAll('.layouts-section button')).toHaveLength(3);
     masters[1].click();
     expect(onEditLayouts).toHaveBeenCalledWith('standard');
 
@@ -430,6 +432,32 @@ describe('theme panel', () => {
     panel.noteDeckOpened(plain);
     expect(panel.element.querySelectorAll('.theme-gallery')).toHaveLength(1);
     expect(cardIds()).not.toContain('lab-night');
+  });
+});
+
+describe('the theme editor’s wording', () => {
+  it('names its groups and colors in plain words', () => {
+    const deck = emptyDeck('Wording');
+    deck.themePreset = THEMES[0].id;
+    const store = new EditorStore(deck, '/tmp/theme-panel-wording');
+    const panel = createThemePanel({
+      store,
+      cssEditor: { getValue: () => '', setValue: vi.fn() } as unknown as CssEditor,
+      save: vi.fn(),
+      setStatusMessage: vi.fn(),
+      saveThemeCss: vi.fn(),
+    });
+    document.body.appendChild(panel.element);
+    panel.element.querySelector<HTMLButtonElement>('.theme-edit-button')!.click();
+
+    const editor = panel.element.querySelector<HTMLElement>('.theme-inline-editor')!;
+    expect([...editor.querySelectorAll('.theme-option-title')].map((node) => node.textContent).slice(1))
+      .toEqual(['Fonts', 'Text sizes', 'Main colors', 'Extra colors for shapes']);
+    expect([...editor.querySelectorAll('.font-family-field .field > span')].map((node) => node.textContent))
+      .toEqual(['Title font', 'Body font', 'Caption font']);
+    expect([...editor.querySelectorAll('.field-color > span')].slice(0, 4).map((node) => node.textContent))
+      .toEqual(['Background', 'Text', 'Secondary text', 'Accent']);
+    expect(editor.textContent).not.toMatch(/Typeface|Type scale|Semantic|Swatch|Muted/i);
   });
 });
 

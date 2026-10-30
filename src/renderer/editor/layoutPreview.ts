@@ -2,6 +2,9 @@ import type { LayoutMaster, Slide, SlideElement } from '@shared/deck.js';
 import { defaultLayoutMasters, type FixedLayout } from '@shared/layoutMasters.js';
 import type { ThemePreset } from '@shared/themes.js';
 import { renderSlide } from '../player/render.js';
+import { LAYOUT_LABELS_BY_ID } from './slideLayouts.js';
+
+export { LAYOUT_LABELS_BY_ID };
 
 /**
  * Sample slides for the design surfaces: the three fixed masters dressed in a
@@ -11,12 +14,6 @@ import { renderSlide } from '../player/render.js';
  */
 
 export const FIXED_LAYOUTS: FixedLayout[] = ['freeform', 'standard', 'title'];
-
-export const LAYOUT_LABELS_BY_ID: Record<FixedLayout, string> = {
-  freeform: 'Freeform',
-  standard: 'Title + Body',
-  title: 'Title',
-};
 
 export function previewSlide(layout: FixedLayout, master: LayoutMaster): Slide {
   const elements = revealPlaceholders(structuredClone(master.elements));

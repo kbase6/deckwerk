@@ -51,12 +51,15 @@ export function objectPositionOffset(
  * than the box for `contain` and larger for `cover`, and by `object-position`,
  * which is how an imported page says "this bird's head, not the middle of the
  * photograph". Cropped media already carries that rect as `sourceBox`.
+ *
+ * Null when that depends on a size nobody knows yet (a picture still loading,
+ * a video before its metadata): guessing the whole box would lock a stretched
+ * picture into any crop or circle made from it.
  */
-export function paintedMediaBox(el: MediaElement, natural: Size | null): MaskRect {
+export function paintedMediaBox(el: MediaElement, natural: Size | null): MaskRect | null {
   if (el.sourceBox) return { ...el.sourceBox };
-  if (!natural || natural.w <= 0 || natural.h <= 0 || el.fit === 'fill') {
-    return { x: 0, y: 0, w: el.w, h: el.h };
-  }
+  if (el.fit === 'fill') return { x: 0, y: 0, w: el.w, h: el.h };
+  if (!natural || natural.w <= 0 || natural.h <= 0) return null;
   const scale = el.fit === 'cover'
     ? Math.max(el.w / natural.w, el.h / natural.h)
     : Math.min(el.w / natural.w, el.h / natural.h);
@@ -97,7 +100,7 @@ export function fittedImageBox(
 ): { x: number; y: number; w: number; h: number; style: Record<string, string> } | null {
   if (el.fit !== 'contain' || el.sourceBox || editableCircularMask(el) || !natural || paintsFrame(el)) return null;
   const painted = paintedMediaBox(el, natural);
-  if (Math.abs(painted.w - el.w) < 1 && Math.abs(painted.h - el.h) < 1) return null;
+  if (!painted || (Math.abs(painted.w - el.w) < 1 && Math.abs(painted.h - el.h) < 1)) return null;
   // The rotation centre moves with the frame; turn its shift back into slide
   // space so the picture does not.
   const dx = painted.x + (painted.w - el.w) / 2;
@@ -207,15 +210,17 @@ export function pannedSourceBox(base: MaskRect, window: Size, dx: number, dy: nu
  * moves into `sourceBox` at its own aspect ratio: the crop becomes circular,
  * the picture is never squashed. It keeps the scale it already had unless the
  * circle would show past its edge, in which case it grows just enough to fill.
+ * Null when the picture's size is not known yet (see `paintedMediaBox`).
  */
 export function circularMaskLayout(
   el: MediaElement,
   natural: Size | null,
-): { x: number; y: number; w: number; h: number; sourceBox: MaskRect } {
+): { x: number; y: number; w: number; h: number; sourceBox: MaskRect } | null {
+  const painted = paintedMediaBox(el, natural);
+  if (!painted) return null;
   const side = Math.max(8, Math.round(Math.min(el.w, el.h)));
   const dx = (el.w - side) / 2;
   const dy = (el.h - side) / 2;
-  const painted = paintedMediaBox(el, natural);
   const aspect = natural && natural.w > 0 && natural.h > 0
     ? natural.w / natural.h
     : (painted.w > 0 && painted.h > 0 ? painted.w / painted.h : 1);
@@ -251,23 +256,27 @@ export function circularMaskLayout(
  * Turning it on squares the window and hands the picture to `sourceBox` so the
  * crop is a circle rather than an ellipse. Turning it off leaves that crop
  * alone: the picture itself was never altered, so there is nothing to undo.
+ * Returns false, changing nothing, when the circle needs a picture size that
+ * is not known yet.
  */
 export function setCircularMask(
   el: MediaElement,
   circular: boolean,
   natural: Size | null,
-): void {
+): boolean {
+  const layout = circular ? circularMaskLayout(el, natural) : null;
+  if (circular && !layout) return false;
   const style = { ...el.style };
   delete style['border-radius'];
   el.style = style;
   // `rect` is deliberately explicit: it prevents an old CSS 50% radius from
   // reappearing after the mask is turned off.
   el.maskShape = circular ? 'circle' : 'rect';
-  if (!circular) return;
-  const layout = circularMaskLayout(el, natural);
+  if (!layout) return true;
   el.x = layout.x;
   el.y = layout.y;
   el.w = layout.w;
   el.h = layout.h;
   el.sourceBox = layout.sourceBox;
+  return true;
 }

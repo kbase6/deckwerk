@@ -31,8 +31,9 @@ import { sidebarSelectionProbes } from './support/selectionSession.js';
  * resizing a selected word from the sidebar's Font size field,
  * panning and zooming the view with a plain mouse and the keyboard, the
  * Props tab's line Ends control on one or both lines, its Show slide numbers
- * box, the zoom bar's Gridlines toggle, and dragging a crop window by the
- * whole length of one of its edges.
+ * box, the zoom bar's Gridlines toggle, dragging a crop window by the
+ * whole length of one of its edges, and Shift-dragging the image's corner,
+ * cropping or not.
  *
  * After EVERY step five oracles run: the whole-editor invariant set from
  * selectionSession, keystroke routing via per-step nonce strings, an element
@@ -158,7 +159,7 @@ type OpName =
   | 'rail hop' | 'undo' | 'redo' | 'undo round-trip' | 'delete selection'
   | 'cmd+a' | 'click with stray hover' | 'rail multi-delete' | 'stack key' | 'spelling fix'
   | 'size from sidebar' | 'viewport gesture' | 'line ends' | 'slide numbers' | 'gridlines'
-  | 'crop edge drag' | 'theme pick';
+  | 'crop edge drag' | 'shift resize image' | 'theme pick';
 
 interface Violation { seed: number; step: number; op: OpName; oracle: string; detail: string }
 
@@ -441,6 +442,7 @@ function chooseOp(next: () => number, pre: CrossState): OpName {
   add('gridlines', 1);
   add('theme pick', 1);
   if (pre.elements.includes(IMAGE)) add('crop edge drag', 2);
+  if (pre.elements.includes(IMAGE)) add('shift resize image', 1);
   return pick(next, ops);
 }
 
@@ -675,6 +677,9 @@ async function performOp(
       return 'same';
     case 'crop edge drag':
       await cropEdgeDrag(next, flag);
+      return 'same';
+    case 'shift resize image':
+      await shiftResizeImage(next, flag);
       return 'same';
     case 'rail multi-delete': {
       // Select both slides in the rail with real clicks, then a deletion key.
@@ -1241,6 +1246,72 @@ async function cropEdgeDrag(
     }
   }
   if (await masking() !== IMAGE) flag('routing', `${label} ended crop mode`);
+}
+
+/**
+ * Shift-drag the image's south-east handle, in crop mode or out of it, as the
+ * walk left it. Shift locks proportions on a resize and on a crop alike, and
+ * no drag writes the image's fit ("Keep aspect ratio"): a Shift-resize used
+ * to free the box and save the picture stretched for good.
+ */
+async function shiftResizeImage(
+  next: () => number,
+  flag: (oracle: 'routing' | 'census', detail: string) => void,
+): Promise<void> {
+  const { cdp } = session;
+  if ((await session.state()).selection.join() !== IMAGE) await session.click(IMAGE);
+  // The outline is the frame the drag starts from: for an uncropped picture
+  // that is the picture it paints, not the box saved for it.
+  const read = () => cdp.evaluate<{ w: number; h: number; fit: string; x: number; y: number } | null>(`(() => {
+    const el = window.store.slide.elements.find((e) => e.id === ${JSON.stringify(IMAGE)});
+    const handle = document.querySelector('.overlay-layer .handle-se[data-element-id=${JSON.stringify(IMAGE)}]');
+    const box = handle?.parentElement;
+    if (!el || !box) return null;
+    const r = handle.getBoundingClientRect();
+    return {
+      w: parseFloat(box.style.width), h: parseFloat(box.style.height), fit: el.fit,
+      x: r.left + r.width / 2, y: r.top + r.height / 2,
+    };
+  })()`);
+  const before = await read();
+  if (!before) {
+    flag('routing', `clicking ${IMAGE} left it without a south-east handle`);
+    return;
+  }
+  const cropping = await cdp.evaluate<string | null>('window.canvas.maskingElement()') === IMAGE;
+  // Grow while there is room, shrink once it is large, and never along the
+  // box's own diagonal, so a free drag would have reshaped it.
+  const grow = before.w < 600 && before.h < 400;
+  const amount = (grow ? 1 : -1) * (20 + next() * 100);
+  const layer = await session.boxOf('.slide-layer');
+  const perSlidePixel = layer.width / await cdp.evaluate<number>('window.store.get().deck.canvas.w');
+  const dx = amount * perSlidePixel;
+  const dy = amount * (0.3 + next()) * perSlidePixel;
+  const mouse = (type: string, x: number, y: number, buttons: number) => cdp.call('Input.dispatchMouseEvent', {
+    type, x, y, button: type === 'mouseMoved' && buttons === 0 ? 'none' : 'left', buttons,
+    clickCount: type === 'mouseMoved' ? 0 : 1, modifiers: SHIFT,
+  });
+  await mouse('mouseMoved', before.x, before.y, 0);
+  await mouse('mousePressed', before.x, before.y, 1);
+  for (let i = 1; i <= 4; i++) {
+    await mouse('mouseMoved', before.x + (dx * i) / 4, before.y + (dy * i) / 4, 1);
+    await wait(16);
+  }
+  await mouse('mouseReleased', before.x + dx, before.y + dy, 0);
+  await wait(120);
+
+  const after = await read();
+  const label = `Shift-${cropping ? 'cropping' : 'resizing'} ${IMAGE} by ${Math.round(amount)}`;
+  if (TRACE) console.log(`  ${label}: ${JSON.stringify(before)} -> ${JSON.stringify(after)}`);
+  if (!after) {
+    flag('census', `${label} lost the image or its handles`);
+    return;
+  }
+  if (after.fit !== before.fit) flag('census', `${label} changed its fit from ${before.fit} to ${after.fit}`);
+  // Whole pixels: each side may round by one.
+  if (Math.abs(after.w * before.h - after.h * before.w) > before.w + before.h) {
+    flag('census', `${label} reshaped it from ${before.w}x${before.h} to ${after.w}x${after.h}`);
+  }
 }
 
 function firstDiff(a: string, b: string): string {

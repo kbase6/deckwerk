@@ -24,7 +24,7 @@ import {
 } from '../player/render.js';
 import { decodeImage } from '../player/imageDecode.js';
 import { cropWindow, fittedImageBox, paintedMediaBox, pannedSourceBox } from '@shared/mediaMask.js';
-import { mediaNaturalSize } from './mediaNatural.js';
+import { MEDIA_LOADING_NOTICE, mediaNaturalSize } from './mediaNatural.js';
 import { DecodedVideoPool, releaseDecodedVideo } from '../player/decodedVideoPool.js';
 import { ungateVideoLoad } from '../player/mediaLoadGate.js';
 import { openSlideLinkInNewTab, slideLinkFromEvent } from '../player/links.js';
@@ -768,7 +768,7 @@ type ResizeOrigin = Rect & {
   rot: number;
   sourceBox?: Rect | null;
   /** Media's `fit` when the drag began: it decides whether the drag keeps
-   * proportions, and is put back if Shift is let go mid-drag. */
+   * proportions. */
   fit?: 'cover' | 'contain' | 'fill';
   control?: { x: number; y: number } | null;
 };
@@ -2758,16 +2758,18 @@ export class EditorCanvas {
       const found = slide.elements.find((e) => e.id === target.dataset.elementId);
       const el = found && this.editingFrame(found);
       if (el) {
-        this.store.beginTransaction(
-          this.maskingId === el.id ? `Crop ${el.type}` : 'Move or resize objects',
-        );
-        if (el.type === 'image' || el.type === 'video') {
-          // Captured once per crop drag: the picture as painted, which for
-          // uncropped media is where object-fit put it, not the whole box.
-          this.maskOrigin = this.maskingId === el.id
-            ? paintedMediaBox(el, mediaNaturalSize(el.id, this.slideLayer))
-            : null;
+        // Captured once per crop drag: the picture as painted, which for
+        // uncropped media is where object-fit put it, not the whole box.
+        const cropping = this.maskingId === el.id;
+        const painted = cropping && (el.type === 'image' || el.type === 'video')
+          ? paintedMediaBox(el, mediaNaturalSize(el.id, this.slideLayer))
+          : null;
+        if (cropping && !painted) {
+          this.notice(MEDIA_LOADING_NOTICE);
+          return;
         }
+        this.store.beginTransaction(cropping ? `Crop ${el.type}` : 'Move or resize objects');
+        if (el.type === 'image' || el.type === 'video') this.maskOrigin = painted;
         const origins = new Map<string, ResizeOrigin>();
         for (const selected of this.store.selectedElements().map((e) => this.editingFrame(e))) {
           origins.set(selected.id, {
@@ -2812,7 +2814,12 @@ export class EditorCanvas {
       ) {
         // Uncropped media pans from the implicit crop of its painted picture,
         // so the whole gesture is one undoable step that restores `sourceBox: null`.
-        this.maskOrigin = paintedMediaBox(masked, mediaNaturalSize(masked.id, this.slideLayer));
+        const painted = paintedMediaBox(masked, mediaNaturalSize(masked.id, this.slideLayer));
+        if (!painted) {
+          this.notice(MEDIA_LOADING_NOTICE);
+          return;
+        }
+        this.maskOrigin = painted;
         this.store.beginTransaction(`Move ${masked.type} in mask`);
         this.drag = {
           kind: 'mask-pan',
@@ -3091,17 +3098,17 @@ export class EditorCanvas {
           if (edges.bottom) rect.h = o.h + dy;
         }
 
-        // A crop changes the window's shape, never the picture's, so it is
-        // free and Shift locks it. A resize of media follows its "Keep aspect
-        // ratio" box (any fit but 'fill'), and Shift inverts it; everything
-        // else resizes freely, Shift locking. The fit is read from the drag's
-        // origin, since a Shift-freed resize writes 'fill' mid-drag. A
-        // circular mask is square by construction, so it never frees: a free
-        // drag would stretch it back into an ellipse.
+        // Shift locks proportions on every resize and every crop. A crop
+        // changes the window's shape, never the picture's, so it is otherwise
+        // free; a resize of media otherwise follows its "Keep aspect ratio"
+        // box (any fit but 'fill'). No modifier writes the fit: unticking that
+        // box is how a picture is stretched. A circular mask is square by
+        // construction, so it never frees: a free drag would stretch it back
+        // into an ellipse.
         const media = resizing?.type === 'image' || resizing?.type === 'video';
         const keepsAspect = drag.origins.get(drag.elementId)?.fit !== 'fill';
         const constrained = media
-          ? resizing.maskShape === 'circle' || (cropping ? ev.shiftKey : keepsAspect !== ev.shiftKey)
+          ? resizing.maskShape === 'circle' || ev.shiftKey || (!cropping && keepsAspect)
           : ev.shiftKey;
         // Where the pointer is: the box a free resize would make.
         const pointerRect = rect;
@@ -3185,12 +3192,6 @@ export class EditorCanvas {
               w: Math.max(1, Math.round(origin.sourceBox.w * fx)),
               h: Math.max(1, Math.round(origin.sourceBox.h * fy)),
             };
-          }
-          if ((el.type === 'image' || el.type === 'video') && origin.fit) {
-            // A freed picture squashes with its box: it fills the box (or its
-            // scaled crop) exactly instead of letterboxing inside it. Letting
-            // go of Shift mid-drag gives it back the fit it had.
-            el.fit = media && !constrained ? 'fill' : origin.fit;
           }
           if (el.type === 'shape' && origin.control) {
             const control = resizePointByScale(origin.control, origin, resized, scaleX, scaleY);
@@ -5743,7 +5744,7 @@ export class EditorCanvas {
     }
     if (offsets) this.restoreTextRange(content, offsets);
     this.focusTextSurface(content);
-    this.commitLiveTextDom(value ? 'Change list marker colour' : 'Make list markers follow text colour');
+    this.commitLiveTextDom(value ? 'Change list marker color' : 'Make list markers follow text color');
     return true;
   }
 
@@ -6392,7 +6393,7 @@ export class EditorCanvas {
   private applyTextSelectionStyle(property: TextRunStyleProperty, value: string): boolean {
     const label = property === 'fontFamily' ? 'Change selected text font'
       : property === 'fontSize' ? 'Change selected text size'
-        : property === 'color' ? 'Change selected text colour'
+        : property === 'color' ? 'Change selected text color'
           : property === 'fontWeight' ? 'Change selected text weight'
             : property === 'fontStyle' ? 'Change selected text italic'
               : property === 'verticalAlign' ? 'Change selected text baseline'
@@ -6667,7 +6668,7 @@ export class EditorCanvas {
       cell.style[property] = value ?? '';
       if (!cell.getAttribute('style')?.trim()) cell.removeAttribute('style');
     }
-    this.commitTableDom(property === 'color' ? 'Change table text colour' : 'Change table cell colour');
+    this.commitTableDom(property === 'color' ? 'Change table text color' : 'Change table cell color');
   }
 
   applyTableCellTextStyle(

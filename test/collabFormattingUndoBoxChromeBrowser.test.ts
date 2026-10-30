@@ -102,7 +102,7 @@ describe.skipIf(!electronBinary)('box-level formatting scope and undo in the col
       'role did not apply');
     await session.undoChrome(OL_ID);
 
-    const colourTrigger = `${PANEL} .field-color .color-picker-trigger[aria-label^="Colour"]`;
+    const colourTrigger = `${PANEL} .field-color .color-picker-trigger[aria-label^="Color"]`;
     await editor.click(colourTrigger, 'text colour');
     await editor.click('.color-picker-popover .color-picker-palette-button[title="#1d7d45"]', 'green swatch');
     await eventually(async () => (await session!.liveElement(OL_ID)).style.color === '#1d7d45',

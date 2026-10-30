@@ -20,3 +20,6 @@ export function mediaNaturalSize(elementId: string, root: ParentNode = document)
   const h = media instanceof HTMLVideoElement ? media.videoHeight : media.naturalHeight;
   return w > 0 && h > 0 ? { w, h } : null;
 }
+
+/** What the status bar says when a crop or circle waits on that size. */
+export const MEDIA_LOADING_NOTICE = 'Picture still loading. Try again once it appears.';

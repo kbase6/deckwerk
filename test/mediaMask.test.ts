@@ -47,6 +47,12 @@ describe('circular mask geometry', () => {
           const el = image({ ...box, fit });
           const layout = circularMaskLayout(el, natural);
           const where = `${box.w}x${box.h} ${fit} natural=${natural ? `${natural.w}x${natural.h}` : 'unknown'}`;
+          // Only a stretched picture is painted the same whatever its size.
+          if (!natural && fit !== 'fill') {
+            expect(layout, where).toBeNull();
+            continue;
+          }
+          if (!layout) throw new Error(`no circle for ${where}`);
 
           // Square, never below the smallest usable handle box, centred on
           // the original box.
@@ -82,7 +88,7 @@ describe('circular mask geometry', () => {
     // layout on an element that already carries the crop. It must not creep.
     for (const box of boxes) {
       for (const natural of naturals) {
-        const el = image({ ...box, fit: 'cover' });
+        const el = image({ ...box, fit: natural ? 'cover' : 'fill' });
         setCircularMask(el, true, natural);
         const once = { x: el.x, y: el.y, w: el.w, h: el.h, sourceBox: { ...el.sourceBox! } };
         setCircularMask(el, true, natural);
@@ -122,13 +128,26 @@ describe('circular mask geometry', () => {
     expect(painted).not.toBe(sourceBox);
   });
 
-  it('paints fill and unknown-size media across the whole box', () => {
+  it('paints fill media across the whole box, known size or not', () => {
     expect(paintedMediaBox(image({ fit: 'fill' }), { w: 3, h: 2 }))
       .toEqual({ x: 0, y: 0, w: 800, h: 400 });
-    expect(paintedMediaBox(image({ fit: 'cover' }), null))
+    expect(paintedMediaBox(image({ fit: 'fill' }), null))
       .toEqual({ x: 0, y: 0, w: 800, h: 400 });
-    expect(paintedMediaBox(image({ fit: 'contain' }), { w: 0, h: 0 }))
-      .toEqual({ x: 0, y: 0, w: 800, h: 400 });
+  });
+
+  it('does not guess where a picture still loading will be painted', () => {
+    // Guessing the whole box locked a stretched picture into the first crop
+    // or circle made before an image loaded or a video's metadata arrived.
+    expect(paintedMediaBox(image({ fit: 'cover' }), null)).toBeNull();
+    expect(paintedMediaBox(image({ fit: 'contain' }), { w: 0, h: 0 })).toBeNull();
+    expect(circularMaskLayout(image({ fit: 'contain' }), null)).toBeNull();
+    const el = image({ fit: 'cover' });
+    expect(setCircularMask(el, true, null)).toBe(false);
+    expect(el).toEqual(image({ fit: 'cover' }));
+    // An existing crop already says where the picture is.
+    const sourceBox = { x: -100, y: 0, w: 1000, h: 400 };
+    expect(paintedMediaBox(image({ sourceBox }), null)).toEqual(sourceBox);
+    expect(circularMaskLayout(image({ sourceBox }), null)).not.toBeNull();
   });
 });
 
@@ -189,7 +208,7 @@ describe('fitting an uncropped picture frame to the picture', () => {
       const natural = { w: 1000, h: 1000 };
       const fitted = fittedImageBox(el, natural)!;
       expect(fitted).toMatchObject({ w: 400, h: 400, style: {} });
-      const before = pictureCentre(el, rot, paintedMediaBox(el, natural));
+      const before = pictureCentre(el, rot, paintedMediaBox(el, natural)!);
       const after = pictureCentre(fitted, rot, { x: 0, y: 0, w: fitted.w, h: fitted.h });
       expect(Math.abs(after.x - before.x)).toBeLessThanOrEqual(0.5);
       expect(Math.abs(after.y - before.y)).toBeLessThanOrEqual(0.5);

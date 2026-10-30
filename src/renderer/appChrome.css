@@ -21,6 +21,8 @@
   --green: #9ece6a;
   --yellow: #e0af68;
   --danger: #f7768e;
+  --canvas-bg: #101017;
+  --scrim: rgb(4 5 8 / 82%);
   --radius: 0;
   --mono: "Monaspace Krypton", monospace;
   --shadow: 0 1px 2px rgb(0 0 0 / 40%);
@@ -124,7 +126,7 @@ input:focus-visible {
   inset: 0;
   display: grid;
   padding: 28px;
-  background: rgb(4 5 8 / 82%);
+  background: var(--scrim);
   backdrop-filter: blur(8px);
   place-items: center;
 }

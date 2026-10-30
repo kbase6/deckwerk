@@ -19,11 +19,13 @@ import {
 import { collabClientDir } from './support/collabClient.js';
 
 /**
- * Shift frees a picture's or a video's proportions while it is resized, and a
- * freed one squashes with its box: it fills the box exactly, so the box is
- * always the picture. A fitted (cover/contain) one used to keep re-fitting
- * instead — the box changed shape and the picture inside did not. Real media,
- * real input.
+ * A picture or a video keeps its proportions while it is resized, Shift or
+ * not: Shift locks proportions everywhere, and it used to free them here and
+ * save the picture stretched for good. Unticking "Keep aspect ratio" is how a
+ * picture is stretched, and then it squashes with its box: it fills the box
+ * exactly, so the box is always the picture. A fitted (cover/contain) one used
+ * to keep re-fitting instead — the box changed shape and the picture inside
+ * did not. Real media, real input.
  */
 const DECK_ID = 'stretch';
 
@@ -50,8 +52,8 @@ const media = (id: string, type: 'image' | 'video', x: number, src: string, fit:
     : { alt: '' }),
 });
 
-describe.skipIf(!electronBinary)('Shift-resizing pictures and videos', () => {
-  it('squashes the picture with its box, and keeps proportions without Shift', { timeout: 120_000 }, async () => {
+describe.skipIf(!electronBinary)('resizing pictures and videos', () => {
+  it('keeps proportions with or without Shift, and squashes the picture with its box once unticked', { timeout: 120_000 }, async () => {
     workDir = await mkdtemp(join(tmpdir(), 'stretch-'));
     const decksRoot = join(workDir, 'decks');
     const deckDir = join(decksRoot, DECK_ID);
@@ -115,26 +117,53 @@ describe.skipIf(!electronBinary)('Shift-resizing pictures and videos', () => {
       await new Promise((resolve) => setTimeout(resolve, 300));
     };
 
-    for (const id of ['pic', 'clip']) {
+    const saved = (id: string, ok: (el: Deck['slides'][number]['elements'][number]) => boolean, what: string) => eventually(async () => {
+      const response = await fetch(`http://127.0.0.1:${server!.port}/api/deck?deck=${DECK_ID}`);
+      const el = (await response.json() as Deck).slides[0].elements.find((e) => e.id === id);
+      return el && ok(el) ? el : null;
+    }, `${id}: ${what}`);
+
+    for (const [id, fit] of [['pic', 'cover'], ['clip', 'contain']] as const) {
       const before = await drawn(id);
       // Without Shift the box keeps its shape, and the picture with it.
       await resize(id, 120, 10, false);
       const locked = await drawn(id);
       expect(locked.box, id).toBeCloseTo(before.box, 1);
       expect(locked.media, id).toBeCloseTo(160 / 90, 1);
-      // With Shift a much wider box, and the picture is as much wider: squashed.
+      const lockedWidth = (await saved(id, (el) => el.w > 560, 'the resize never saved'))!.w;
+      // With Shift too, and the box stays ticked.
       await resize(id, 160, -120, true);
+      const shifted = await drawn(id);
+      expect(shifted.box, `${id} Shift freed the box`).toBeCloseTo(before.box, 1);
+      expect(shifted.media, id).toBeCloseTo(160 / 90, 1);
+      const kept = await saved(id, (el) => el.w > lockedWidth + 60, 'the Shift resize never saved');
+      expect('fit' in kept! ? kept.fit : null, `${id} Shift resize wrote the fit`).toBe(fit);
+
+      // Untick "Keep aspect ratio": now a drag stretches the box.
+      const box = await eventually(() => cdp.evaluate<{ x: number; y: number } | null>(`(() => {
+        // A video's panel renders again once its clip length is probed,
+        // shifting everything under a click aimed before that.
+        if (document.querySelector('#inspector')?.textContent.includes('Reading clip length')) return null;
+        const input = [...document.querySelectorAll('label.field-check')]
+          .find((n) => n.textContent.trim() === 'Keep aspect ratio')?.querySelector('input');
+        if (!input?.checked) return null;
+        input.scrollIntoView({ block: 'center' });
+        const r = input.getBoundingClientRect();
+        return r.width > 0 ? { x: r.left + r.width / 2, y: r.top + r.height / 2 } : null;
+      })()`), `${id}: no visible, ticked "Keep aspect ratio" box`);
+      await cdp.clickAt(box!.x, box!.y);
+      await saved(id, (el) => 'fit' in el && el.fit === 'fill', 'unticking never saved');
+      // A much wider box, and the picture is as much wider: squashed. Kept
+      // clear of the other element and of the slide's edge.
+      await resize(id, 40, -160, false);
       const freed = await drawn(id);
       expect(freed.box, id).toBeGreaterThan(before.box * 1.5);
       expect(freed.media / (160 / 90), `${id} was not stretched`).toBeGreaterThan(1.4);
       // The box is the picture: it fills the box exactly, no crop, no bars.
       expect(freed.media, id).toBeCloseTo(freed.box, 2);
-      const saved = await eventually(async () => {
-        const response = await fetch(`http://127.0.0.1:${server!.port}/api/deck?deck=${DECK_ID}`);
-        const el = (await response.json() as Deck).slides[0].elements.find((e) => e.id === id);
-        return el && 'fit' in el && el.fit === 'fill' ? el : null;
-      }, `${id}'s stretch never reached the deck`);
-      expect('sourceBox' in saved! ? saved.sourceBox : null).toBeNull();
+      const stretched = await saved(id, (el) => 'fit' in el && el.fit === 'fill' && el.h < kept!.h - 60,
+        'the stretch never reached the deck');
+      expect('sourceBox' in stretched! ? stretched.sourceBox : null).toBeNull();
     }
   });
 });

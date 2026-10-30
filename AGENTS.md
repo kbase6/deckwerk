@@ -364,7 +364,7 @@ What the page can and cannot do:
   overflow checks. When the *content* could be ordinary slides, make ordinary
   slides — they stay editable and the design stays consistent.
 - On the editor canvas the page shows as its poster so it can be selected and
-  dragged; a human double-clicks it (or uses Props → "Interact with page") to
+  dragged; a human double-clicks it (or uses Format → "Interact with page") to
   run it in place, and Escape or a click elsewhere returns to editing. While
   presenting it is always live.
 - The page does not load the deck's `theme.css`: carry the deck's fonts and

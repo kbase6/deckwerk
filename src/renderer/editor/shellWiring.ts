@@ -6,7 +6,7 @@ import { EditorCanvas } from './canvas.js';
 import { ARRANGE_LABELS, arrangeSelection } from './arrange.js';
 import { setCircularMask } from '@shared/mediaMask.js';
 import { classifyMediaName, isPendingSrc } from '@shared/media.js';
-import { mediaNaturalSize } from './mediaNatural.js';
+import { MEDIA_LOADING_NOTICE, mediaNaturalSize } from './mediaNatural.js';
 import { Inspector } from './inspector.js';
 import { SlideRail } from './slideRail.js';
 import {
@@ -182,7 +182,7 @@ export function createClipboardActions(deps: ShellDeps): ClipboardActions {
   const copyToClipboard = async (verb: 'Copied' | 'Cut') => {
     if (store.get().selection.size > 0) {
       const n = await copySelectionToClipboard(store);
-      if (n) setStatusMessage(`${verb} ${n} element${n > 1 ? 's' : ''}.`);
+      if (n) setStatusMessage(`${verb} ${n} object${n > 1 ? 's' : ''}.`);
       return n ? ('elements' as const) : null;
     }
     const n = await copySlidesToClipboard(store, deps.currentThemeCss?.());
@@ -201,7 +201,7 @@ export function createClipboardActions(deps: ShellDeps): ClipboardActions {
       ? await deps.runOperation('Pasting clipboard content', paste)
       : await paste();
     if (pasted && pasted.count > 0) {
-      const noun = pasted.kind === 'slides' ? 'slide' : 'element';
+      const noun = pasted.kind === 'slides' ? 'slide' : 'object';
       const said = `Pasted ${pasted.count} ${noun}${pasted.count > 1 ? 's' : ''}.`;
       setStatusMessage(pasted.notice ? `${said} ${pasted.notice}` : said);
     } else if (pasted?.notice) {
@@ -223,7 +223,7 @@ export function createClipboardActions(deps: ShellDeps): ClipboardActions {
     const pasted = deps.runOperation
       ? await deps.runOperation('Uploading clipboard media', paste)
       : await paste();
-    if (pasted) setStatusMessage('Pasted 1 element.');
+    if (pasted) setStatusMessage('Pasted 1 object.');
   };
 
   return {
@@ -533,15 +533,16 @@ export function makeContextActions(
       if (el.type === 'image' || el.type === 'video') {
         items.push({
           label: el.maskShape === 'circle' ? 'Rectangular mask' : 'Circular mask',
-          action: () => store.updateSelected((target) => {
-            if (target.type === 'image' || target.type === 'video') {
-              setCircularMask(
-                target,
-                target.maskShape !== 'circle',
-                mediaNaturalSize(target.id),
-              );
-            }
-          }, { label: 'Mask shape' }),
+          action: () => {
+            let refused = false;
+            store.updateSelected((target) => {
+              if (target.type !== 'image' && target.type !== 'video') return;
+              if (!setCircularMask(target, target.maskShape !== 'circle', mediaNaturalSize(target.id))) {
+                refused = true;
+              }
+            }, { label: 'Mask shape' });
+            if (refused) deps.setStatusMessage(MEDIA_LOADING_NOTICE);
+          },
         });
       }
       if (el.type === 'video') {
