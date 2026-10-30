@@ -276,11 +276,11 @@ describe.skipIf(!electronBinary)('editor shell in the collaboration browser', ()
     await clickRail(0);
     await selectOnCanvas(VIDEO_ID);
     await copyChord();
-    await expectStatus('Copied 1 element.');
+    await expectStatus('Copied 1 object.');
 
     await clickRail(1);
     await pasteChord();
-    await expectStatus('Pasted 1 element.');
+    await expectStatus('Pasted 1 object.');
 
     const state = await snapshot();
     expect(state.slides[1]).toHaveLength(1);
@@ -320,7 +320,7 @@ describe.skipIf(!electronBinary)('editor shell in the collaboration browser', ()
     await clickRail(0);
     await selectOnCanvas(SHAPE_ID);
     await copyChord();
-    await expectStatus('Copied 1 element.');
+    await expectStatus('Copied 1 object.');
     await pasteChord();
     await eventually(async () => (await snapshot()).slides[0].length, 'same-slide paste did not land', (n) => n === 5);
     const state = await snapshot();
@@ -334,7 +334,7 @@ describe.skipIf(!electronBinary)('editor shell in the collaboration browser', ()
     await clickRail(0);
     await selectOnCanvas(TEXT_ID);
     await cutChord();
-    await expectStatus('Cut 1 element.');
+    await expectStatus('Cut 1 object.');
     await eventually(async () => (await snapshot()).slides[0].some((el) => el.id === TEXT_ID),
       'cut did not remove the text', (present) => !present);
 
@@ -364,7 +364,7 @@ describe.skipIf(!electronBinary)('editor shell in the collaboration browser', ()
     await cdp().rightClick(ON_CANVAS(IMAGE_ID), 'image context menu');
     await cdp().clickByText('#ctx-menu button', 'Copy');
     await eventually(async () => (await snapshot()).status, 'context-menu copy did not report',
-      (status) => status.includes('Copied 1 element.') || status.includes('1 selected'));
+      (status) => status.includes('Copied 1 object.') || status.includes('1 selected'));
     expect((await snapshot()).slides[0]).toHaveLength(countBefore);
 
     await clickRail(1);
@@ -484,7 +484,7 @@ describe.skipIf(!electronBinary)('editor shell in the collaboration browser', ()
     // With Chromium's `copy` command, as a real Cmd+C has: its copy event is
     // what puts the copy's token on the OS clipboard.
     await cdp().chord('c', 'KeyC', 67, MOD, ['copy']);
-    await expectStatus('Copied 1 element.');
+    await expectStatus('Copied 1 object.');
 
     await cdp().evaluate(`void setTimeout(() => {
       location.href = ${JSON.stringify(`/?deck=${OTHER_DECK_ID}&name=${encodeURIComponent(USER)}`)};
@@ -496,7 +496,7 @@ describe.skipIf(!electronBinary)('editor shell in the collaboration browser', ()
     ))()`).catch(() => false), 'the other presentation did not open', (ok) => ok);
     await focusCanvasBackground();
     await pasteChord();
-    await expectStatus('Pasted 1 element.');
+    await expectStatus('Pasted 1 object.');
 
     const [pasted] = (await snapshot()).slides[0];
     expect(pasted.type).toBe('image');

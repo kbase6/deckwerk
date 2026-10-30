@@ -109,17 +109,12 @@ function applyListStyleToHtml(html: string, style: ListStyle): string {
 const VIDEO_FLAG_LABELS = {
   autoplay: 'Autoplay',
   loop: 'Loop',
-  muted: 'Mute',
-  controls: 'Controls',
+  muted: 'Muted',
+  controls: 'Player bar',
 } as const;
 
-/** What fits in one stop of the playback toggle strip. */
-const VIDEO_FLAG_SHORT = {
-  autoplay: 'auto',
-  loop: 'loop',
-  muted: 'mute',
-  controls: 'ctrl',
-} as const;
+/** What the no-wrap compression modes are called; the stored values stay. */
+const NO_WRAP_MODE_LABELS = { shrink: 'Shrink text', condense: 'Narrow letters' };
 
 /**
  * The properties panel.
@@ -257,7 +252,7 @@ export class Inspector {
       if (this.continuousEdit) return;
       event.preventDefault();
       this.continuousEdit = true;
-      this.store.beginTransaction('Change colour');
+      this.store.beginTransaction('Change color');
     });
     this.host.addEventListener(COLOR_LIVE_END, () => {
       if (!this.continuousEdit) return;
@@ -532,7 +527,7 @@ export class Inspector {
     const layout = document.createElement('label');
     layout.className = 'field';
     const layoutLabel = document.createElement('span');
-    layoutLabel.textContent = 'Preset';
+    layoutLabel.textContent = 'Layout';
     const layoutSelect = document.createElement('select');
     if (layouts.mixed) {
       const mixed = document.createElement('option');
@@ -887,8 +882,8 @@ export class Inspector {
     wrap.appendChild(strip([
       ['distributeH', 'Distribute horizontally'],
       ['distributeV', 'Distribute vertically'],
-      ['matchW', 'Match width of the first selected element'],
-      ['matchH', 'Match height of the first selected element'],
+      ['matchW', 'Match width of the first selected object'],
+      ['matchH', 'Match height of the first selected object'],
     ]));
     return wrap;
   }
@@ -926,14 +921,14 @@ export class Inspector {
 
     const row2 = document.createElement('div');
     row2.className = 'field-grid field-grid-2';
-    const rotation = numberField('ROT', multi ? commonValue(selected.map((element) => element.rot)) : first.rot, (v) =>
+    const rotation = numberField('Rotation', multi ? commonValue(selected.map((element) => element.rot)) : first.rot, (v) =>
       this.store.updateSelected((el) => (el.rot = v)), { unit: '°' },
     );
     const rotationInput = rotation.querySelector('input');
     if (rotationInput) this.geometryInputs.set('rot', rotationInput);
     row2.appendChild(rotation);
     row2.appendChild(
-      numberField('Z', multi ? commonValue(selected.map((element) => element.z)) : first.z, (v) =>
+      numberField('Layer', multi ? commonValue(selected.map((element) => element.z)) : first.z, (v) =>
         this.store.updateSelected((el) => (el.z = Math.round(v))),
       ),
     );
@@ -1050,7 +1045,7 @@ export class Inspector {
     const row = document.createElement('div');
     row.className = 'compact-field-row';
     const authored = commonValue(shapes.map((shape) => shape.arrowSize ?? null));
-    row.appendChild(numberField('HEAD SIZE', authored, (value) =>
+    row.appendChild(numberField('Arrowhead size', authored, (value) =>
       this.store.updateSelected((element) => {
         if (element.type === 'shape') element.arrowSize = Math.max(1, Math.min(1000, value));
       }, { label: 'Change arrowhead size' }), {
@@ -1106,14 +1101,14 @@ export class Inspector {
       }, { label });
     const to = commonValue(gradients.map((gradient) => gradient.to));
     box.appendChild(colorField('To', to ?? gradients[0].to, (value) => {
-      if (value) change((gradient) => { gradient.to = value; }, 'Change gradient colour');
+      if (value) change((gradient) => { gradient.to = value; }, 'Change gradient color');
     }, { mixed: to === null }));
     if (gradients.every((gradient) => gradient.kind !== 'radial')) {
       const row = document.createElement('div');
       row.className = 'compact-field-row shadow-direction-row';
       const angle = commonValue(gradients.map((gradient) => gradient.angle));
       const turn = (value: number): void => change((gradient) => { gradient.angle = ((value % 360) + 360) % 360; }, 'Turn gradient');
-      const angleField = numberField('ANGLE', angle, turn, { unit: '°' });
+      const angleField = numberField('Angle', angle, turn, { unit: '°' });
       row.appendChild(angleDial(angle, {
         onBegin: () => { this.continuousEdit = true; this.store.beginTransaction('Turn gradient'); },
         onInput: (degrees) => {
@@ -1206,7 +1201,7 @@ export class Inspector {
     const numbers = document.createElement('div');
     numbers.className = 'compact-field-row';
     numbers.appendChild(numberField(
-      'BLUR',
+      'Blur',
       commonValue(shadows.map((shadow) => shadow.blur)),
       (value) => change((shadow) => { shadow.blur = Math.max(0, value); }, 'Change shadow blur'),
       { unit: 'px' },
@@ -1224,7 +1219,7 @@ export class Inspector {
       Object.assign(shadow, shadowOffset(value, shadowPolar(shadow).distance));
     }, 'Turn shadow');
     const angle = commonValue(polar.map((value) => value.angle));
-    const angleField = numberField('ANGLE', angle, turn, { unit: '°' });
+    const angleField = numberField('Angle', angle, turn, { unit: '°' });
     // The knob and the number are two faces of one value: turning the knob
     // previews on the canvas as it goes and is one undo step when let go.
     direction.appendChild(angleDial(angle, {
@@ -1245,7 +1240,7 @@ export class Inspector {
     }, 'Shadow angle'));
     direction.appendChild(angleField);
     direction.appendChild(numberField(
-      'DISTANCE',
+      'Distance',
       commonValue(polar.map((value) => value.distance)),
       (value) => change((shadow) => {
         Object.assign(shadow, shadowOffset(shadowPolar(shadow).angle, value));
@@ -1311,9 +1306,9 @@ export class Inspector {
     }, { clear: { kind: 'none', label: 'No shadow' }, mixed: color === null }));
     const numbers = document.createElement('div');
     numbers.className = 'compact-field-row';
-    numbers.appendChild(numberField('LIFT', commonValue(shadows.map((shadow) => shadow.lift)),
+    numbers.appendChild(numberField('Lift', commonValue(shadows.map((shadow) => shadow.lift)),
       (value) => change((shadow) => { shadow.lift = Math.max(0, value); }, 'Change shadow lift'), { unit: 'px' }));
-    numbers.appendChild(numberField('BLUR', commonValue(shadows.map((shadow) => shadow.blur)),
+    numbers.appendChild(numberField('Blur', commonValue(shadows.map((shadow) => shadow.blur)),
       (value) => change((shadow) => { shadow.blur = Math.max(0, value); }, 'Change shadow blur'), { unit: 'px' }));
     section.content.appendChild(numbers);
     return section.section;
@@ -1353,7 +1348,7 @@ export class Inspector {
 
     const numbers = document.createElement('div');
     numbers.className = 'compact-field-row';
-    numbers.appendChild(numberField('WIDTH', paint.border?.width ?? 0, (value) =>
+    numbers.appendChild(numberField('Width', paint.border?.width ?? 0, (value) =>
       update((style) => {
         const border = textBoxPaint(style).border;
         setTextBoxBorder(style, value > 0
@@ -1362,7 +1357,7 @@ export class Inspector {
       { unit: 'px' },
     ));
     // A round box (50%) has no pixel radius to show; typing one makes it a rounded rectangle.
-    numbers.appendChild(numberField('RADIUS', paint.round ? null : paint.radius, (value) =>
+    numbers.appendChild(numberField('Radius', paint.round ? null : paint.radius, (value) =>
       update((style) => setTextBoxRadius(style, Math.max(0, value)), 'Change box radius'),
       { unit: 'px' },
     ));
@@ -1407,18 +1402,20 @@ export class Inspector {
       wrap.appendChild(this.gradientFields(shapes));
     }
 
+    // A line's paint is the line itself; a box's is its border.
+    const lined = kind === 'line' || kind === 'arrow' || kind === 'brace';
     wrap.appendChild(colorField(
-      'Stroke',
+      lined ? 'Line' : 'Border',
       commonValue(shapes.map((shape) => shape.stroke)) ?? shapes[0].stroke,
       (value) => this.store.updateSelected((element) => {
         if (element.type === 'shape') element.stroke = value;
       }),
-      { clear: { kind: 'none', label: 'No stroke' } },
+      { clear: { kind: 'none', label: lined ? 'No line' : 'No border' } },
     ));
     const numbers = document.createElement('div');
     numbers.className = 'field-grid';
     numbers.appendChild(numberField(
-      'WIDTH',
+      'Width',
       commonValue(shapes.map((shape) => shape.strokeWidth)),
       (value) => this.store.updateSelected((element) => {
         if (element.type === 'shape') element.strokeWidth = Math.max(0, value);
@@ -1428,7 +1425,7 @@ export class Inspector {
     if (kind === 'line' || kind === 'arrow') numbers.appendChild(this.lineEndsField(shapes));
     if (kind === 'rect' || kind === 'ellipse') {
       numbers.appendChild(numberField(
-        'RADIUS',
+        'Radius',
         commonValue(shapes.map((shape) => shape.radius)),
         (value) => this.store.updateSelected((element) => {
           if (element.type === 'shape') element.radius = Math.max(0, value);
@@ -1492,6 +1489,7 @@ export class Inspector {
         (v) => this.store.updateSelected((element) => {
           if (element.type === 'text') element.noWrapMode = v as 'shrink' | 'condense';
         }),
+        NO_WRAP_MODE_LABELS,
       ));
     }
 
@@ -1591,14 +1589,14 @@ export class Inspector {
         || !markerStates.every((state) => state.value === markerStates[0].value);
       const inherited = this.textPaintInfo(texts[0]).inheritedValue;
       wrap.appendChild(colorField(
-        markerMixed ? 'Marker colour (mixed)' : 'Marker colour',
+        markerMixed ? 'Marker color (mixed)' : 'Marker color',
         markerMixed ? null : markerStates[0].value,
         (value) => this.store.updateSelected((element) => {
           if (element.type === 'text') element.html = setListMarkerColor(element.html, value);
-        }, { label: value ? 'Change list marker colour' : 'Make list markers follow text colour' }),
+        }, { label: value ? 'Change list marker color' : 'Make list markers follow text color' }),
         {
           inheritedValue: inherited,
-          clear: { kind: 'css', label: 'Follow text colour' },
+          clear: { kind: 'css', label: 'Follow text color' },
         },
       ));
     }
@@ -1606,7 +1604,7 @@ export class Inspector {
     const colors = commonValue(texts.map((text) => text.style.color ?? ''));
     const paint = this.textPaintInfo(texts[0]);
     wrap.appendChild(colorField(
-      colors === null ? 'Colour (mixed)' : 'Colour',
+      colors === null ? 'Color (mixed)' : 'Color',
       colors === null ? paint.value : (colors || paint.value),
       (value) => this.store.updateSelected((element) => {
         if (element.type !== 'text') return;
@@ -1631,6 +1629,7 @@ export class Inspector {
       (value) => this.store.updateSelected((element) => {
         if (element.type === 'text') element.valign = value as 'top';
       }),
+      { top: 'Top', middle: 'Middle', bottom: 'Bottom' },
     ));
     const spacings = sharedValue(texts.map((text) => text.paragraphSpacing ?? null));
     const themeSpacings = sharedValue(
@@ -1690,7 +1689,7 @@ export class Inspector {
           (value) => this.store.updateSelected((element) => {
             if (element.type === 'video') element[key] = value;
           }),
-        ), VIDEO_FLAG_SHORT[key]));
+        ), VIDEO_FLAG_LABELS[key]));
       }
       playback.content.appendChild(flags);
       wrap.appendChild(playback.section);
@@ -1796,7 +1795,7 @@ export class Inspector {
                 if (e.type === 'video') e[key] = v;
               }),
             ),
-            VIDEO_FLAG_SHORT[key],
+            VIDEO_FLAG_LABELS[key],
           ));
         }
         playback.content.appendChild(flags);
@@ -1880,6 +1879,7 @@ export class Inspector {
             (v) => this.store.updateSelected((target) => {
               if (target.type === 'text') target.noWrapMode = v as 'shrink' | 'condense';
             }, { label: 'Change no-wrap compression' }),
+            NO_WRAP_MODE_LABELS,
           ));
         }
 
@@ -2099,7 +2099,7 @@ export class Inspector {
           follow.disabled = !hasOwnTextType(el);
           follow.title = follow.disabled
             ? 'This box has no customisations; the theme decides its type'
-            : 'Remove this box’s own type so the theme decides its face, size, weight and colour';
+            : 'Remove this box’s own type so the theme decides its face, size, weight and color';
           const id = el.id;
           const previewFollow = () => {
             if (follow.disabled) return;
@@ -2168,7 +2168,7 @@ export class Inspector {
         if (authoredMarker.hasList) {
           const marker = this.textSelectionMarkerColor?.() ?? authoredMarker;
           listRow.appendChild(colorField(
-            marker.mixed ? 'Marker colour (mixed)' : 'Marker colour',
+            marker.mixed ? 'Marker color (mixed)' : 'Marker color',
             marker.value,
             (value) => {
               if (this.onApplyTextSelectionMarkerColor?.(value)) return;
@@ -2176,11 +2176,11 @@ export class Inspector {
                 if (target.type === 'text') {
                   target.html = setListMarkerColor(target.html, value);
                 }
-              }, { label: value ? 'Change list marker colour' : 'Make list markers follow text colour' });
+              }, { label: value ? 'Change list marker color' : 'Make list markers follow text color' });
             },
             {
               inheritedValue: this.textPaintInfo(el).inheritedValue,
-              clear: { kind: 'css', label: 'Follow text colour' },
+              clear: { kind: 'css', label: 'Follow text color' },
             },
           ));
           listRow.lastElementChild?.classList.add('field-color-stacked');
@@ -2217,7 +2217,7 @@ export class Inspector {
             table.content.appendChild(colorField(
               'Cell text', null,
               (value) => this.onApplyTableCellColor?.('color', value),
-              { clear: { kind: 'none', label: 'Inherited text colour' } },
+              { clear: { kind: 'none', label: 'Inherited text color' } },
             ));
             const borderSettings = this.tableBorderSettings?.() ?? {
               color: '#000000', width: 1, drawing: false,
@@ -2272,7 +2272,7 @@ export class Inspector {
         // otherwise empty row.
         const paint = this.textPaintInfo(el);
         const colour = colorField(
-          'Colour',
+          'Color',
           paint.value,
           (v) => {
             if (this.onApplyTextSelectionColor?.(v)) return;
@@ -2475,15 +2475,15 @@ export class Inspector {
           fill.classList.add('field-color-stacked');
           paint.appendChild(fill);
         }
-        const stroke = colorField('Stroke', el.stroke, (v) =>
+        const stroke = colorField(stroked ? 'Line' : 'Border', el.stroke, (v) =>
           this.store.updateSelected((e) => {
             if (e.type === 'shape') e.stroke = v;
           }),
-          { clear: { kind: 'none', label: 'No stroke' } },
+          { clear: { kind: 'none', label: stroked ? 'No line' : 'No border' } },
         );
         stroke.classList.add('field-color-stacked');
         paint.appendChild(stroke);
-        const width = numberField('WIDTH', el.strokeWidth, (v) =>
+        const width = numberField('Width', el.strokeWidth, (v) =>
           this.store.updateSelected((e) => {
             if (e.type === 'shape') e.strokeWidth = Math.max(0, v);
           }), { unit: 'px' },
@@ -2497,7 +2497,7 @@ export class Inspector {
           nums.className = 'compact-field-row';
           nums.appendChild(width);
           nums.appendChild(
-            numberField('RADIUS', el.radius, (v) =>
+            numberField('Radius', el.radius, (v) =>
               this.store.updateSelected((e) => {
                 if (e.type === 'shape') e.radius = Math.max(0, v);
               }), { unit: 'px' },
@@ -2508,7 +2508,7 @@ export class Inspector {
           const row = document.createElement('div');
           row.className = 'compact-field-row';
           row.appendChild(
-            numberField('DEPTH', braceDepthOf(el), (v) =>
+            numberField('Depth', braceDepthOf(el), (v) =>
               this.store.updateSelected((e) => {
                 if (e.type === 'shape') e.braceDepth = v;
               }, { label: 'Change brace depth' }), { unit: 'px' },
@@ -2728,7 +2728,7 @@ export class Inspector {
         ? '0.05' : '1';
       value.value = String(effectValue(effect));
       value.title = effect.type === 'blur' ? 'Blur radius in pixels' :
-        effect.type === 'posterize' ? 'Number of colour levels' : 'Amount from 0 to 1';
+        effect.type === 'posterize' ? 'Number of color levels' : 'Amount from 0 to 1';
       value.setAttribute('aria-label', value.title);
       value.addEventListener('change', () => {
         const next = Number(value.value);
@@ -3371,6 +3371,7 @@ function selectField(
   options: string[],
   value: string,
   onChange: (v: string) => void,
+  labels: Record<string, string> = {},
 ): HTMLElement {
   const wrap = document.createElement('label');
   wrap.className = 'field';
@@ -3380,7 +3381,7 @@ function selectField(
   for (const o of options) {
     const opt = document.createElement('option');
     opt.value = o;
-    opt.textContent = o;
+    opt.textContent = labels[o] ?? o;
     select.appendChild(opt);
   }
   select.value = value;

@@ -288,7 +288,7 @@ describe.skipIf(!electronBinary)('a text selection while the author works in the
     await session.doubleClick(TEXT_A);
     await session.selectWord(TEXT_A, 7);
     await session.cdp.click(
-      '.editor-inspector .field-color .color-picker-trigger[aria-label^="Colour"]', 'Colour');
+      '.editor-inspector .field-color .color-picker-trigger[aria-label^="Color"]', 'Colour');
     await wait(120);
     const found = await session.cdp.evaluate<boolean>(`(() => {
       const swatch = [...document.querySelectorAll('.color-picker-popover .color-picker-palette-button')]

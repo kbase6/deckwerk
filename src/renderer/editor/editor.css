@@ -4387,8 +4387,9 @@ button.cthread-where:disabled { cursor: default; opacity: 1; }
 .video-playback-options > .panel-action { width: auto; margin: 0; padding: 0 10px; height: 26px; font-size: 11px; white-space: nowrap; }
 .video-checkbox-grid {
   display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: minmax(0, 1fr);
+  /* Two by two, under the play button: "Autoplay" and "Player bar" do not fit four abreast. */
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0;
   overflow: hidden;
   border: 1px solid var(--line);
@@ -4408,7 +4409,8 @@ button.cthread-where:disabled { cursor: default; opacity: 1; }
   cursor: pointer;
   user-select: none;
 }
-.toggle-segment:first-child { border-left: 0; }
+.toggle-segment:nth-child(odd) { border-left: 0; }
+.toggle-segment:nth-child(n + 3) { border-top: 1px solid var(--line); }
 .toggle-segment:hover { color: var(--text); }
 .toggle-segment > input,
 .toggle-segment > span:not(.toggle-segment-short) {

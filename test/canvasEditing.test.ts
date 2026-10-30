@@ -28,7 +28,8 @@ import {
   insertText,
 } from '../src/renderer/editor/elementCreation.js';
 import { Inspector } from '../src/renderer/editor/inspector.js';
-import { applySlideLayout } from '../src/renderer/editor/slideLayouts.js';
+import { LAYOUT_LABELS_BY_ID } from '../src/renderer/editor/layoutPreview.js';
+import { LAYOUT_LABELS, applySlideLayout } from '../src/renderer/editor/slideLayouts.js';
 import { EditorStore, copySelectionToClipboard } from '../src/renderer/editor/store.js';
 
 /**
@@ -2754,7 +2755,7 @@ describe('native line endpoint editing', () => {
     const arrowStyle = [...inspectorHost.querySelectorAll<HTMLElement>('.insp-group')]
       .find((section) => section.querySelector('h4')?.textContent === 'Arrow style')!;
     const widthField = [...arrowStyle.querySelectorAll<HTMLLabelElement>('label')]
-      .find((label) => label.querySelector('span')?.textContent === 'WIDTH')!;
+      .find((label) => label.querySelector('span')?.textContent === 'Width')!;
     const width = widthField.querySelector<HTMLInputElement>('input')!;
     expect(width.value).toBe('7');
 
@@ -2765,7 +2766,7 @@ describe('native line endpoint editing', () => {
     expect(selected.map((element) => element.type === 'shape' && element.strokeWidth))
       .toEqual([11.5, 11.5]);
     const rerenderedWidth = [...inspectorHost.querySelectorAll<HTMLLabelElement>('label')]
-      .find((label) => label.querySelector('span')?.textContent === 'WIDTH')!
+      .find((label) => label.querySelector('span')?.textContent === 'Width')!
       .querySelector<HTMLInputElement>('input')!;
     expect(rerenderedWidth.value).toBe('11.5');
   });
@@ -4321,5 +4322,87 @@ describe('shape fill style', () => {
     style().value = 'Solid';
     style().dispatchEvent(new Event('change'));
     expect(current().fill).toBe(shape.fill);
+  });
+});
+
+describe('Props wording', () => {
+  beforeEach(() => document.body.replaceChildren());
+
+  /** Every label, heading, option, tooltip and accessible name Props shows. */
+  const shown = (panel: HTMLElement): string[] => [
+    ...[...panel.querySelectorAll('.field > span, .toggle-segment-short, h4, option')]
+      .map((node) => node.textContent ?? ''),
+    ...[...panel.querySelectorAll('[title], [aria-label]')]
+      .flatMap((node) => [node.getAttribute('title') ?? '', node.getAttribute('aria-label') ?? '']),
+  ].filter(Boolean);
+  const field = (panel: HTMLElement, label: string) => [...panel.querySelectorAll<HTMLElement>('.field')]
+    .find((node) => node.querySelector('span')?.textContent === label);
+  const optionsOf = (panel: HTMLElement, label: string) =>
+    [...field(panel, label)!.querySelectorAll('option')].map((option) => option.textContent);
+
+  it('uses full words in sentence case, American spelling, and one word per idea', () => {
+    const { store } = setup();
+    // The single-clip trim section asks the preload bridge for the clip's length.
+    Object.assign(window.api, { probeAsset: async () => ({ duration: 6 }) });
+    const rect = insertShape(store, 'rect');
+    const rect2 = insertShape(store, 'rect');
+    const arrow = insertLine(store, 'arrow');
+    const arrow2 = insertLine(store, 'arrow');
+    store.commit((deck) => {
+      const [text] = deck.slides[0].elements;
+      if (text.type === 'text') text.noWrap = true;
+      deck.slides[0].elements.push({ ...structuredClone(text), id: 'text-2', y: 250 });
+    });
+    const panel = document.createElement('aside');
+    document.body.appendChild(panel);
+    new Inspector(panel, store);
+
+    const words: string[] = [];
+    const look = (ids: string[]) => {
+      store.select(ids);
+      words.push(...shown(panel));
+    };
+
+    look([]);
+    expect(optionsOf(panel, 'Layout').slice(0, 3)).toEqual(['Freeform', 'Title + body', 'Title slide']);
+
+    look([rect.id]);
+    for (const label of ['Rotation', 'Layer', 'Border', 'Width', 'Radius']) {
+      expect(field(panel, label), label).toBeTruthy();
+    }
+    expect(field(panel, 'Border')!.querySelector('.color-picker-trigger')).toBeTruthy();
+    look([rect.id, rect2.id]);
+    expect(field(panel, 'Border')).toBeTruthy();
+
+    look([arrow.id]);
+    expect(field(panel, 'Line')).toBeTruthy();
+    expect(field(panel, 'Arrowhead size')).toBeTruthy();
+    look([arrow.id, arrow2.id]);
+    expect(field(panel, 'Line')).toBeTruthy();
+    expect(field(panel, 'Arrowhead size')).toBeTruthy();
+
+    look(['text-1']);
+    expect(field(panel, 'Color')).toBeTruthy();
+    expect(optionsOf(panel, 'Compress by')).toEqual(['Shrink text', 'Narrow letters']);
+    look(['text-1', 'text-2']);
+    expect(optionsOf(panel, 'Vertical')).toEqual(['Top', 'Middle', 'Bottom']);
+    expect(optionsOf(panel, 'Compress by')).toEqual(['Shrink text', 'Narrow letters']);
+
+    look(['video-1']);
+    expect([...panel.querySelectorAll('.toggle-segment-short')].map((node) => node.textContent))
+      .toEqual(['Autoplay', 'Loop', 'Muted', 'Player bar']);
+    look(['video-1', 'text-1']);
+
+    // The whole walk: no shorthand, no shouting, one spelling, one word.
+    for (const banned of ['Preset', 'ROT', 'Z', 'HEAD SIZE', 'Stroke', 'No stroke', 'auto', 'mute', 'ctrl']) {
+      expect(words, banned).not.toContain(banned);
+    }
+    expect(words.filter((word) => /colour/i.test(word))).toEqual([]);
+    expect(words.filter((word) => /^[A-Z]{2,}( [A-Z]+)*$/.test(word))).toEqual([]);
+    expect(words.filter((word) => /\belements?\b/.test(word))).toEqual([]);
+  });
+
+  it('names each slide layout the same way everywhere', () => {
+    expect(Object.entries(LAYOUT_LABELS_BY_ID)).toEqual(LAYOUT_LABELS);
   });
 });
