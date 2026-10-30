@@ -34,7 +34,7 @@ import {
 } from '@shared/themes.js';
 import { ARRANGE_LABELS, arrangeSelection } from './arrange.js';
 import { COLOR_LIVE_END, COLOR_LIVE_START, colorField, colorForInput } from './colorPicker.js';
-import { editableCircularMask, resetCrop, setCircularMask } from '@shared/mediaMask.js';
+import { editableCircularMask, resetCrop, resizeMediaBox, setCircularMask } from '@shared/mediaMask.js';
 import {
   hasTextBox,
   setTextBoxBorder,
@@ -211,6 +211,8 @@ export class Inspector {
   maskingElement?: () => string | null;
   /** Tell the shell's status bar something the user needs to know. */
   onStatus?: (text: string) => void;
+  /** An element as the canvas outlines it: a letterboxed picture is the picture. */
+  editingFrame?: <T extends SlideElement>(el: T) => T;
   /** Show the frame at a given time on the canvas while a trim handle moves. */
   onSeekPreview?: (elementId: string, time: number) => void;
   /** Clip length from the canvas video element, when ffprobe cannot say. */
@@ -427,7 +429,7 @@ export class Inspector {
 
   /** Write the selection's current box into the geometry readouts. */
   private refreshGeometryReadouts(): void {
-    const selected = this.store.selectedElements();
+    const selected = this.store.selectedElements().map((el) => this.editingFrame?.(el) ?? el);
     if (selected.length === 0) return;
     for (const [key, input] of this.geometryInputs) {
       // A field being typed into keeps what the author is typing.
@@ -876,13 +878,26 @@ export class Inspector {
 
     const row = document.createElement('div');
     row.className = 'field-grid';
+    // The box the canvas outlines, which for a letterboxed picture is the picture.
+    const frames = selected.map((el) => this.editingFrame?.(el) ?? el);
     for (const key of ['x', 'y', 'w', 'h'] as const) {
       const field = numberField(
         key.toUpperCase(),
-        multi ? commonValue(selected.map((element) => element[key])) : first[key],
+        commonValue(frames.map((element) => element[key])),
         (v) => {
           this.store.updateSelected((el) => {
-            if (key === 'w' || key === 'h') el[key] = Math.max(8, v);
+            // A typed value is measured against the box shown, so it starts there.
+            if (this.editingFrame) Object.assign(el, this.editingFrame(el));
+            if ((key === 'w' || key === 'h') && (el.type === 'image' || el.type === 'video')) {
+              // As a handle drag sizes media: the crop scales with its window,
+              // and unless "Keep aspect ratio" is off the other side follows;
+              // a circle always stays round.
+              const size = Math.max(8, v);
+              const keep = editableCircularMask(el) || el.fit !== 'fill';
+              const w = key === 'w' ? size : keep ? Math.max(1, Math.round(size * el.w / el.h)) : el.w;
+              const h = key === 'h' ? size : keep ? Math.max(1, Math.round(size * el.h / el.w)) : el.h;
+              resizeMediaBox(el, w, h);
+            } else if (key === 'w' || key === 'h') el[key] = Math.max(8, v);
             else {
               const delta = v - el[key];
               el[key] = v;

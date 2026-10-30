@@ -34,8 +34,8 @@ import type { SlideElement } from '../src/shared/deck.js';
  * panning and zooming the view with a plain mouse and the keyboard, the
  * Props tab's line Ends control on one or both lines, its Show slide numbers
  * box, the zoom bar's Gridlines toggle, dragging a crop window by the
- * whole length of one of its edges, Shift-dragging the image's corner, and
- * resetting that crop from Props.
+ * whole length of one of its edges, Shift-dragging the image's corner,
+ * resetting its crop, and typing its width or height in Props.
  *
  * After EVERY step five oracles run: the whole-editor invariant set from
  * selectionSession, keystroke routing via per-step nonce strings, an element
@@ -161,7 +161,7 @@ type OpName =
   | 'rail hop' | 'undo' | 'redo' | 'undo round-trip' | 'delete selection'
   | 'cmd+a' | 'click with stray hover' | 'rail multi-delete' | 'stack key' | 'spelling fix'
   | 'size from sidebar' | 'viewport gesture' | 'line ends' | 'slide numbers' | 'gridlines'
-  | 'crop edge drag' | 'shift resize image' | 'reset crop' | 'theme pick';
+  | 'crop edge drag' | 'shift resize image' | 'reset crop' | 'theme pick' | 'geometry from sidebar';
 
 interface Violation { seed: number; step: number; op: OpName; oracle: string; detail: string }
 
@@ -484,6 +484,7 @@ function chooseOp(next: () => number, pre: CrossState): OpName {
   if (pre.elements.includes(IMAGE)) add('crop edge drag', 2);
   if (pre.elements.includes(IMAGE)) add('shift resize image', 1);
   if (pre.elements.includes(IMAGE)) add('reset crop', 1);
+  if (pre.elements.includes(IMAGE)) add('geometry from sidebar', 1);
   return pick(next, ops);
 }
 
@@ -724,6 +725,9 @@ async function performOp(
       return 'same';
     case 'reset crop':
       await resetCrop(next, flag);
+      return 'same';
+    case 'geometry from sidebar':
+      await geometryFromSidebar(next, flag);
       return 'same';
     case 'rail multi-delete': {
       // Select both slides in the rail with real clicks, then a deletion key.
@@ -1417,6 +1421,95 @@ async function resetCrop(
   }
   if ((await session.state()).selection.join() !== IMAGE) {
     flag('routing', `Reset mask changed the selection to [${(await session.state()).selection.join(', ')}]`);
+  }
+}
+
+/**
+ * Select the image with a real click and type a width or height into the
+ * Props geometry fields, as a person sizes a picture exactly. It takes that
+ * size the way a handle drag gives it: Props shows the box the canvas
+ * outlines (for the letterboxed fixture, the picture rather than its empty
+ * frame), a crop scales with its window instead of showing a different part
+ * of the picture, the proportions hold while "Keep aspect ratio" is on, and
+ * nothing else on the slide changes.
+ */
+async function geometryFromSidebar(
+  next: () => number,
+  flag: (oracle: 'routing' | 'census', detail: string) => void,
+): Promise<void> {
+  const { cdp } = session;
+  await session.clickEmpty();
+  await session.click(IMAGE);
+  const selected = (await session.state()).selection;
+  if (selected.join() !== IMAGE) {
+    flag('routing', `clicking ${IMAGE} selected [${selected.join(', ')}]`);
+    return;
+  }
+  type Rect = { x: number; y: number; w: number; h: number };
+  const read = () => cdp.evaluate<{
+    box: Rect; sourceBox: Rect | null; fit: string; outline: Rect | null; props: Rect; others: string;
+  } | null>(`(() => {
+    const elements = window.store.slide.elements;
+    const el = elements.find((e) => e.id === ${JSON.stringify(IMAGE)});
+    if (!el) return null;
+    const outline = document.querySelector('.overlay-layer .sel-box');
+    const field = (label) => Number([...document.querySelectorAll('.editor-inspector .geometry-section .field-number')]
+      .find((node) => node.querySelector('span')?.textContent === label)?.querySelector('input')?.value);
+    return {
+      box: { x: el.x, y: el.y, w: el.w, h: el.h },
+      sourceBox: el.sourceBox ?? null,
+      fit: el.fit,
+      outline: outline ? {
+        x: parseFloat(outline.style.left), y: parseFloat(outline.style.top),
+        w: parseFloat(outline.style.width), h: parseFloat(outline.style.height),
+      } : null,
+      props: { x: field('X'), y: field('Y'), w: field('W'), h: field('H') },
+      others: JSON.stringify(elements.filter((e) => e.id !== ${JSON.stringify(IMAGE)})),
+    };
+  })()`);
+  const before = await read();
+  if (!before?.outline) {
+    flag('routing', `selecting ${IMAGE} draws no outline`);
+    return;
+  }
+  const key = pick(next, ['w', 'h'] as const);
+  const value = pick(next, [160, 200, 240]);
+  const label = `typing ${key.toUpperCase()} ${value} for ${IMAGE}`;
+  await sidebarSelectionProbes(cdp).setField(key.toUpperCase(), String(value));
+  const after = await read();
+  if (TRACE) console.log(`  ${label}: ${JSON.stringify(before)} -> ${JSON.stringify(after)}`);
+  if (!after?.outline) {
+    flag('census', `${label} lost the image or its outline`);
+    return;
+  }
+  const near = (a: number, b: number, tolerance = 1) => Math.abs(a - b) <= tolerance;
+  for (const side of ['x', 'y', 'w', 'h'] as const) {
+    if (!near(after.props[side], after.outline[side])) {
+      flag('census', `after ${label} Props shows ${JSON.stringify(after.props)} for the outline ${JSON.stringify(after.outline)}`);
+      break;
+    }
+  }
+  if (!near(after.outline[key], value)) {
+    flag('census', `${label} outlined a box of ${key} ${after.outline[key]}`);
+  }
+  if (after.fit !== 'fill'
+    && !near(after.outline.w / after.outline.h, before.outline.w / before.outline.h, 0.02 * before.outline.w / before.outline.h)) {
+    flag('census', `${label} changed the proportions from ${JSON.stringify(before.outline)} to ${JSON.stringify(after.outline)}`);
+  }
+  if (before.sourceBox) {
+    // The crop scales with its window, so the same part of the picture shows.
+    const fx = after.box.w / before.box.w;
+    const fy = after.box.h / before.box.h;
+    const crop = before.sourceBox;
+    const expected = { x: crop.x * fx, y: crop.y * fy, w: crop.w * fx, h: crop.h * fy };
+    const got = after.sourceBox;
+    if (!got || !(['x', 'y', 'w', 'h'] as const).every((side) => near(got[side], expected[side], 1.5))) {
+      flag('census', `${label} re-cropped the picture: crop ${JSON.stringify(crop)} in ${JSON.stringify(before.box)}`
+        + ` became ${JSON.stringify(got)} in ${JSON.stringify(after.box)}`);
+    }
+  }
+  if (after.others !== before.others) {
+    flag('census', `${label} changed another object; diff: ${firstDiff(before.others, after.others)}`);
   }
 }
 

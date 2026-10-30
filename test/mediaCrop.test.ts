@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { emptyDeck, NEW_MEDIA_FIT, type SlideElement } from '../src/shared/deck.js';
 import { EditorCanvas } from '../src/renderer/editor/canvas.js';
 import { Inspector } from '../src/renderer/editor/inspector.js';
@@ -89,10 +89,10 @@ function media(type: 'image' | 'video', fit: Fit, extra: Partial<Media> = {}): M
     : { ...base, type, alt: '', ...extra }) as Media;
 }
 
-function setup(element: Media) {
+function setup(element: Media, others: SlideElement[] = []) {
   installDomShims();
   const deck = emptyDeck('Crop test');
-  deck.slides[0].elements = [element];
+  deck.slides[0].elements = [element, ...others];
   const canvasHost = document.createElement('div');
   const inspectorHost = document.createElement('div');
   document.body.replaceChildren(canvasHost, inspectorHost);
@@ -103,6 +103,7 @@ function setup(element: Media) {
   // The shell's wiring between the two (shellWiring.ts).
   inspector.onToggleMask = (id) => canvas.toggleMaskMode(id);
   inspector.maskingElement = () => canvas.maskingElement();
+  inspector.editingFrame = (el) => canvas.editingFrame(el);
   canvas.onMaskModeChange = () => inspector.render();
   canvasHost.querySelector<HTMLElement>('.stage')!.getBoundingClientRect = () =>
     ({ left: 0, top: 0, width: 1920, height: 1080 }) as DOMRect;
@@ -143,7 +144,39 @@ function setup(element: Media) {
     canvasHost.dispatchEvent(event('pointerup', start.x + dx, start.y + dy));
     return current();
   };
-  return { store, canvas, inspectorHost, current, checkbox, keepAspectBox, setKeepAspect, toggleMask, drag };
+  /** A Props geometry field: X, Y, W or H. */
+  const geometryInput = (label: 'X' | 'Y' | 'W' | 'H') => {
+    const field = [...inspectorHost.querySelectorAll('.geometry-section label.field-number')]
+      .find((node) => node.querySelector('span')?.textContent === label);
+    expect(field, `no ${label} field in Props`).toBeTruthy();
+    return field!.querySelector<HTMLInputElement>('input')!;
+  };
+  /** Type a value into a Props geometry field and commit it, as Return does. */
+  const typeGeometry = (label: 'X' | 'Y' | 'W' | 'H', value: number) => {
+    const input = geometryInput(label);
+    input.value = String(value);
+    input.dispatchEvent(new Event('change'));
+    return current();
+  };
+  /** What Props shows for the selection's box. */
+  const readouts = () => ({
+    x: Number(geometryInput('X').value),
+    y: Number(geometryInput('Y').value),
+    w: Number(geometryInput('W').value),
+    h: Number(geometryInput('H').value),
+  });
+  /** The selection outline the canvas draws, in slide pixels. */
+  const outline = () => {
+    const box = canvasHost.querySelector<HTMLElement>('.sel-box')!;
+    return {
+      x: parseFloat(box.style.left), y: parseFloat(box.style.top),
+      w: parseFloat(box.style.width), h: parseFloat(box.style.height),
+    };
+  };
+  return {
+    store, canvas, canvasHost, inspectorHost, current, checkbox, keepAspectBox, setKeepAspect, toggleMask, drag,
+    typeGeometry, readouts, outline,
+  };
 }
 
 /** Where the whole picture sits on the slide: what a crop must never move or reshape. */
@@ -412,5 +445,135 @@ describe('new media starts with "Keep aspect ratio" on', () => {
     const [pasted] = t.store.selectedElements() as Media[];
     expect(pasted).toMatchObject({ type: 'video', fit: 'contain' });
     expect(t.keepAspectBox().checked).toBe(true);
+  });
+});
+
+/** Give every picture on the page this intrinsic size, as a loaded one has; returns the undo. */
+function stubNaturalSize(size: { w: number; h: number }): () => void {
+  const proto = HTMLImageElement.prototype;
+  const saved = (['naturalWidth', 'naturalHeight'] as const)
+    .map((name) => [name, Object.getOwnPropertyDescriptor(proto, name)] as const);
+  Object.defineProperty(proto, 'naturalWidth', { configurable: true, get: () => size.w });
+  Object.defineProperty(proto, 'naturalHeight', { configurable: true, get: () => size.h });
+  return () => {
+    for (const [name, descriptor] of saved) {
+      if (descriptor) Object.defineProperty(proto, name, descriptor);
+      else delete (proto as unknown as Record<string, unknown>)[name];
+    }
+  };
+}
+
+/**
+ * One picture, one box. A size typed in Props re-cropped a cropped picture
+ * (the window grew, its crop did not) and stretched a circle into an
+ * ellipse, where dragging a handle scales both; and a letterboxed picture,
+ * outlined on the picture it paints, showed its empty frame's size in Props
+ * and snapped other objects to that frame's invisible edges.
+ */
+describe('a size typed in Props does what a handle drag does', () => {
+  const crop = { x: -80, y: -40, w: 800, h: 450 };
+
+  for (const type of ['video', 'image'] as const) {
+    it(`${type}, cropped: a typed width or height scales the crop with its window`, () => {
+      const dragged = setup(media(type, 'contain', { sourceBox: crop })).drag('se', -320, -180);
+      expect(dragged).toMatchObject({ w: 320, h: 180, sourceBox: { x: -40, y: -20, w: 400, h: 225 } });
+      for (const [label, value] of [['W', 320], ['H', 180]] as const) {
+        const typed = setup(media(type, 'contain', { sourceBox: crop })).typeGeometry(label, value);
+        expect(typed, `typed ${label}`).toMatchObject({ x: 400, y: 200 });
+        expect({ w: typed.w, h: typed.h, sourceBox: typed.sourceBox }, `typed ${label}`)
+          .toEqual({ w: dragged.w, h: dragged.h, sourceBox: dragged.sourceBox });
+      }
+    });
+
+    it(`${type}, cropped with "Keep aspect ratio" off: a typed width stretches the crop with its box`, () => {
+      const t = setup(media(type, 'fill', { sourceBox: crop }));
+      expect(t.typeGeometry('W', 320)).toMatchObject({
+        w: 320, h: 360, sourceBox: { x: -40, y: -40, w: 400, h: 450 },
+      });
+    });
+
+    it(`${type}: a typed width keeps a circle declared by CSS round`, () => {
+      const t = setup(media(type, 'fill', {
+        w: 300, h: 300, style: { 'border-radius': '50%' },
+        sourceBox: { x: -150, y: 0, w: 600, h: 300 },
+      }));
+      expect(t.typeGeometry('W', 150)).toMatchObject({ w: 150, h: 150 });
+    });
+
+    it(`${type}: a typed width keeps a circular mask round`, () => {
+      const t = setup(media(type, 'contain'));
+      t.checkbox('Circular mask').click();
+      t.setKeepAspect(false);
+      const before = t.current();
+      expect(before.w).toBe(before.h);
+      const after = t.typeGeometry('W', before.w / 2);
+      expect({ w: after.w, h: after.h }).toEqual({ w: before.w / 2, h: before.h / 2 });
+      expect(after.sourceBox).toEqual({
+        x: Math.round(before.sourceBox!.x / 2), y: Math.round(before.sourceBox!.y / 2),
+        w: Math.round(before.sourceBox!.w / 2), h: Math.round(before.sourceBox!.h / 2),
+      });
+    });
+  }
+
+  describe('a letterboxed picture', () => {
+    // A 16:9 picture in a 640x500 frame: painted 640x360 at y 270, the frame's
+    // bottom edge (y 700) 70px below the picture's (y 630).
+    let restore: () => void = () => {};
+    beforeEach(() => { restore = stubNaturalSize({ w: 160, h: 90 }); });
+    afterEach(() => restore());
+    const picture = { x: 400, y: 270, w: 640, h: 360 };
+    const block = {
+      id: 'block', type: 'shape', shape: 'rect', x: 1300, y: 600, w: 300, h: 100, rot: 0, z: 2, opacity: 1,
+      class: [], style: {}, fill: '#888888', stroke: null, strokeWidth: 0, radius: 0,
+      path: null, pathSize: null, arrowStart: false, arrowEnd: false,
+    } as SlideElement;
+    const blockOf = (t: ReturnType<typeof setup>) => t.store.slide!.elements.find((e) => e.id === 'block')!;
+    const pointer = (type: string, x: number, y: number) => new PointerEvent(type, {
+      clientX: x, clientY: y, bubbles: true, pointerId: 1, button: 0,
+    });
+
+    it('shows in Props the box its outline draws, and takes a typed size from it', () => {
+      const t = setup(media('image', 'contain', { h: 500 }));
+      expect(t.outline(), 'the outline is not on the picture').toEqual(picture);
+      expect(t.readouts(), 'Props shows the empty frame, not the outlined picture').toEqual(picture);
+      expect(t.current(), 'looking at the picture edited it').toMatchObject({ y: 200, h: 500, sourceBox: null });
+
+      expect(t.typeGeometry('W', 320)).toMatchObject({ x: 400, y: 270, w: 320, h: 180, sourceBox: null });
+      expect(t.readouts()).toEqual({ x: 400, y: 270, w: 320, h: 180 });
+      expect(t.outline()).toEqual(t.readouts());
+
+      // A typed position places the picture, not the empty frame around it.
+      t.store.undo();
+      expect(t.readouts()).toEqual(picture);
+      expect(t.typeGeometry('Y', 100)).toMatchObject({ y: 100, h: 360 });
+      expect(t.outline()).toEqual({ ...picture, y: 100 });
+    });
+
+    it('is snapped to by the edges it shows, not by its frame', () => {
+      const t = setup(media('image', 'contain', { h: 500 }), [block]);
+      // A move: the block's top edge 3px below the picture's bottom snaps onto it…
+      const move = (dy: number) => {
+        t.store.select([]);
+        t.canvasHost.dispatchEvent(pointer('pointerdown', 1450, 650));
+        t.canvasHost.dispatchEvent(pointer('pointermove', 1450, 650 + dy / 2));
+        t.canvasHost.dispatchEvent(pointer('pointermove', 1450, 650 + dy));
+        t.canvasHost.dispatchEvent(pointer('pointerup', 1450, 650 + dy));
+        const y = blockOf(t).y;
+        t.store.undo();
+        return y;
+      };
+      expect(move(27), 'the move did not snap to the picture\'s bottom edge').toBe(630);
+      // …and 3px above the frame's invisible bottom edge, nothing pulls it.
+      expect(move(97), 'the move snapped to the empty frame\'s bottom edge').toBe(697);
+
+      // A resize snaps to the picture too.
+      t.store.select(['block']);
+      const handle = t.canvasHost.querySelector<HTMLElement>('.handle-n[data-element-id="block"]')!;
+      handle.dispatchEvent(pointer('pointerdown', 1450, 600));
+      t.canvasHost.dispatchEvent(pointer('pointermove', 1450, 615));
+      t.canvasHost.dispatchEvent(pointer('pointermove', 1450, 627));
+      t.canvasHost.dispatchEvent(pointer('pointerup', 1450, 627));
+      expect(blockOf(t), 'the resize did not snap to the picture\'s bottom edge').toMatchObject({ y: 630, h: 70 });
+    });
   });
 });
