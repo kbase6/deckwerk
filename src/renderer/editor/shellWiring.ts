@@ -4,7 +4,7 @@ import { commentHighlightsShown, setCommentHighlightsShown } from './comments.js
 import { elementFollowsLayout, layoutGeometryFor, realignElementToLayout } from '@shared/layoutMasters.js';
 import { EditorCanvas } from './canvas.js';
 import { ARRANGE_LABELS, arrangeSelection } from './arrange.js';
-import { setCircularMask } from '@shared/mediaMask.js';
+import { editableCircularMask, setCircularMask } from '@shared/mediaMask.js';
 import { classifyMediaName, isPendingSrc } from '@shared/media.js';
 import { MEDIA_LOADING_NOTICE, mediaNaturalSize } from './mediaNatural.js';
 import { Inspector } from './inspector.js';
@@ -531,16 +531,20 @@ export function makeContextActions(
         });
       }
       if (el.type === 'image' || el.type === 'video') {
+        // The same test and the same History labels as the Props checkbox, so a
+        // picture rounded by CSS reads as circular here too.
+        const circular = !editableCircularMask(el);
+        const label = circular ? 'Circular mask' : 'Rectangular mask';
         items.push({
-          label: el.maskShape === 'circle' ? 'Rectangular mask' : 'Circular mask',
+          label,
           action: () => {
             let refused = false;
             store.updateSelected((target) => {
               if (target.type !== 'image' && target.type !== 'video') return;
-              if (!setCircularMask(target, target.maskShape !== 'circle', mediaNaturalSize(target.id))) {
+              if (!setCircularMask(target, circular, mediaNaturalSize(target.id))) {
                 refused = true;
               }
-            }, { label: 'Mask shape' });
+            }, { label });
             if (refused) deps.setStatusMessage(MEDIA_LOADING_NOTICE);
           },
         });

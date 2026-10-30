@@ -23,7 +23,7 @@ import {
   syncSlideNumber,
 } from '../player/render.js';
 import { decodeImage } from '../player/imageDecode.js';
-import { cropWindow, fittedImageBox, paintedMediaBox, pannedSourceBox } from '@shared/mediaMask.js';
+import { cropWindow, editableCircularMask, fittedImageBox, paintedMediaBox, pannedSourceBox } from '@shared/mediaMask.js';
 import { MEDIA_LOADING_NOTICE, mediaNaturalSize } from './mediaNatural.js';
 import { DecodedVideoPool, releaseDecodedVideo } from '../player/decodedVideoPool.js';
 import { ungateVideoLoad } from '../player/mediaLoadGate.js';
@@ -3116,7 +3116,7 @@ export class EditorCanvas {
         const media = resizing?.type === 'image' || resizing?.type === 'video';
         const keepsAspect = drag.origins.get(drag.elementId)?.fit !== 'fill';
         const constrained = media
-          ? resizing.maskShape === 'circle' || ev.shiftKey || (!cropping && keepsAspect)
+          ? editableCircularMask(resizing) || ev.shiftKey || (!cropping && keepsAspect)
           : ev.shiftKey;
         // Where the pointer is: the box a free resize would make.
         const pointerRect = rect;
@@ -7675,7 +7675,7 @@ function mediaMaskContainsPoint(
 
   if (x < el.x || x > el.x + el.w || y < el.y || y > el.y + el.h) return false;
 
-  if (el.maskShape === 'circle') {
+  if (editableCircularMask(el)) {
     const rx = el.w / 2;
     const ry = el.h / 2;
     const dx = x - (el.x + rx);
