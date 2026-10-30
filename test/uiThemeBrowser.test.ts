@@ -140,7 +140,7 @@ describe.skipIf(!electronBinary)('light mode', () => {
       (n) => n.source === 'light')).toEqual({ source: 'light', background: '#ECEEF2' });
     await eventually(async () => editor!.evaluate<boolean>(`matchMedia('(prefers-color-scheme: light)').matches`),
       'pages still see the OS appearance');
-    await choose('System');
+    await choose('Match system');
     expect((await eventually(native, 'native parts kept the old choice',
       (n) => n.source === 'system')).source).toBe('system');
   });
