@@ -3,6 +3,7 @@ import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, extname, join, relative, resolve } from 'node:path';
 import type { Deck, Slide } from '@shared/deck.js';
 import type { WebExportQuality } from '@shared/ipc.js';
+import { paintedMediaBox, type Size } from '@shared/mediaMask.js';
 import { loadTheme, resolveAsset } from './deckStore.js';
 import { encodeImageWebp, probeImage, probeMedia, transcodeVideoForWeb } from './ffmpeg.js';
 import { copyFileStreamed } from './copyFileStreamed.js';
@@ -190,7 +191,7 @@ export async function exportDeck(
       rel,
       outDir,
       profile,
-      renderedLongEdge(exported, rel),
+      (natural) => renderedLongEdge(exported, rel, natural),
       range,
       (verb, fraction) => report(`${verb} assets/${name} (${label})`, source.bytes * fraction),
     );
@@ -294,7 +295,7 @@ async function exportAsset(
   rel: string,
   outDir: string,
   profile: QualityProfile,
-  renderedEdge: number,
+  renderedEdge: (natural: Size | null) => number,
   range: PlayedRange | null,
   progress: (verb: string, fraction: number) => void,
 ): Promise<{ rel: string; bytes: number; to: string; trimmedFrom?: number }> {
@@ -330,13 +331,13 @@ async function encodeVideo(
   source: SourceAsset,
   output: string,
   profile: VideoProfile,
-  renderedEdge: number,
+  renderedEdge: (natural: Size | null) => number,
   range: PlayedRange | null,
   progress: (verb: string, fraction: number) => void,
 ): Promise<number | null> {
   progress('Compressing', 0);
   const info = await probeMedia(source.path);
-  const size = fitLongEdge(info.width, info.height, targetLongEdge(profile, renderedEdge));
+  const size = fitLongEdge(info.width, info.height, targetLongEdge(profile, renderedEdge(naturalSize(info))));
   await mkdir(dirname(output), { recursive: true });
   // A clip cut to what the slides play is smaller for free, so a trim is
   // worth keeping even when the re-encode itself is not.
@@ -399,7 +400,7 @@ async function encodeImage(
   source: SourceAsset,
   output: string,
   profile: ImageProfile,
-  renderedEdge: number,
+  renderedEdge: (natural: Size | null) => number,
   progress: (verb: string, fraction: number) => void,
 ): Promise<number | null> {
   progress('Compressing', 0);
@@ -407,7 +408,7 @@ async function encodeImage(
   // An animated WebP or APNG is a clip in a still's clothing; a single frame
   // of it would freeze the slide. Leave it alone.
   if (info.frames !== null && info.frames > 1) return null;
-  const size = fitLongEdge(info.width, info.height, targetLongEdge(profile, renderedEdge));
+  const size = fitLongEdge(info.width, info.height, targetLongEdge(profile, renderedEdge(naturalSize(info))));
   await mkdir(dirname(output), { recursive: true });
   try {
     await encodeImageWebp(source.path, output, { quality: profile.quality, ...size });
@@ -425,6 +426,10 @@ async function keepIfSmaller(output: string, originalBytes: number): Promise<num
   // attempt so the export folder holds exactly one copy under one name.
   await rm(output, { force: true });
   return null;
+}
+
+function naturalSize(info: { width: number | null; height: number | null }): Size | null {
+  return info.width && info.height ? { w: info.width, h: info.height } : null;
 }
 
 function targetLongEdge(profile: { maxLongEdge: number; renderedScale: number }, renderedEdge: number): number {
@@ -453,19 +458,27 @@ function withExtension(path: string, ext: string): string {
  * The largest edge, in canvas pixels, at which any slide shows this asset. A
  * figure in a 400×300 box needs nowhere near its 4000-pixel original; a
  * full-bleed background needs the whole canvas.
+ *
+ * With the asset's pixel size, a picture is measured as it is painted, not as
+ * its box: `cover` paints a wide picture in a square box far wider than the
+ * box, and a stretch scales one axis more than the other.
  */
-export function renderedLongEdge(deck: Deck, rel: string): number {
+export function renderedLongEdge(deck: Deck, rel: string, natural: Size | null = null): number {
   const canvasEdge = Math.max(deck.canvas.w, deck.canvas.h);
+  // The picture's long edge when it is drawn filling `rect`.
+  const drawn = (rect: Size): number => natural && natural.w > 0 && natural.h > 0
+    ? Math.max(natural.w, natural.h) * Math.max(rect.w / natural.w, rect.h / natural.h)
+    : Math.max(rect.w, rect.h);
   let edge = 0;
   for (const slide of deck.slides) {
-    if (slide.background.image === rel) edge = Math.max(edge, canvasEdge);
+    // A background covers the canvas.
+    if (slide.background.image === rel) edge = Math.max(edge, drawn(deck.canvas));
     for (const el of slide.elements) {
       if (el.type === 'image' || el.type === 'video') {
         if (el.src !== rel && !(el.type === 'video' && el.poster === rel)) continue;
         // A crop shows a window onto the whole picture: the picture itself is
         // laid out at the source box's size, which can exceed the element.
-        const box = el.sourceBox ?? el;
-        edge = Math.max(edge, box.w, box.h);
+        edge = Math.max(edge, drawn(paintedMediaBox(el, natural) ?? el));
       } else if (el.type === 'html' && (el.html.includes(rel) || (el.css ?? '').includes(rel))) {
         // Nothing measures inside an HTML region; assume it could be anything
         // up to the region's own box.

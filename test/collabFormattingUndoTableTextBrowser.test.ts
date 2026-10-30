@@ -109,7 +109,7 @@ describe.skipIf(!electronBinary)('table text formatting and borders in the colla
     await session.undoEditing(TABLE_ID);
 
     await selectTableWord();
-    const wordColourTrigger = `${PANEL} .field-color .color-picker-trigger[aria-label^="Colour"]`;
+    const wordColourTrigger = `${PANEL} .field-color .color-picker-trigger[aria-label^="Color"]`;
     await editor.click(wordColourTrigger, 'table word colour');
     await editor.click(
       '.color-picker-popover .color-picker-palette-button[title="#1d7d45"]',

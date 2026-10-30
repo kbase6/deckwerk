@@ -39,6 +39,9 @@ let following = false;
 export function applyUiTheme(): UiTheme {
   const theme = resolveUiTheme();
   document.documentElement.dataset.uiTheme = theme;
+  // The desktop app's native parts (dialogs, menus, the window behind the
+  // page) follow the same choice; the browser client has no such bridge.
+  window.api?.setUiTheme?.(storedUiThemePreference());
   if (!following) {
     following = true;
     if (typeof matchMedia === 'function') {
@@ -61,10 +64,15 @@ export function setUiThemePreference(preference: UiThemePreference): UiTheme {
   return applyUiTheme();
 }
 
-/** The Appearance section of the DeckWerk menu. */
+/**
+ * The Editor appearance section of the DeckWerk menu. "Appearance" names only
+ * this switch; the slides' own light/dark is "Slide colors" in the Design tab,
+ * and the note points there.
+ */
 export function appearanceMenuSection(): {
   label: string;
   options: { label: string; action: () => void; checked: () => boolean }[];
+  note: string;
 } {
   const option = (label: string, preference: UiThemePreference) => ({
     label,
@@ -72,7 +80,8 @@ export function appearanceMenuSection(): {
     checked: () => storedUiThemePreference() === preference,
   });
   return {
-    label: 'Appearance',
-    options: [option('System', 'system'), option('Light', 'light'), option('Dark', 'dark')],
+    label: 'Editor appearance',
+    options: [option('Match system', 'system'), option('Light', 'light'), option('Dark', 'dark')],
+    note: 'Slide colors are in the Design tab',
   };
 }

@@ -16,7 +16,7 @@
 }
 
 .remote-picker-floating { left: 24px; bottom: 24px; }
-.remote-picker-lead { margin: 0; color: var(--muted); }
+.remote-picker-lead { margin: 0; color: var(--dw-muted); }
 
 .remote-picker-list {
   display: grid;
@@ -32,13 +32,13 @@
   align-items: center;
   gap: 8px;
   padding: 6px 8px;
-  border: 1px solid var(--line);
-  background: var(--panel-2);
+  border: 1px solid var(--dw-line);
+  background: var(--dw-panel-2);
 }
 
 .remote-picker-dot { width: 8px; height: 8px; border-radius: 50%; }
 .remote-picker-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.remote-picker-state { color: var(--green); font-size: 11px; }
+.remote-picker-state { color: var(--dw-green); font-size: 11px; }
 .remote-picker-close { align-self: flex-end; }
 
 /* The audience view's way in: out of sight until the pointer moves. */
@@ -52,7 +52,7 @@
   transition: opacity .2s;
 }
 .remote-launcher.visible { opacity: 1; pointer-events: auto; }
-.remote-launcher[data-active="true"] { border-color: var(--green); color: var(--green); }
+.remote-launcher[data-active="true"] { border-color: var(--dw-green); color: var(--dw-green); }
 
 /* --- the question ------------------------------------------------------------ */
 
@@ -68,7 +68,7 @@
   z-index: 10002;
   inset: 0;
   overflow: hidden;
-  background: var(--bg);
+  background: var(--dw-bg);
   /* Taps are clicks here, never a double-tap zoom. */
   touch-action: manipulation;
 }

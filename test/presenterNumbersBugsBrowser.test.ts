@@ -56,7 +56,7 @@ async function deckOnDisk(): Promise<{ raw: string; showSlideNumbers: boolean }>
 async function clickShowSlideNumbers(): Promise<boolean> {
   const checked = await editor!.evaluate<boolean | null>(`(() => {
     const field = [...document.querySelectorAll('#inspector label.field-check')]
-      .find((node) => node.querySelector('span')?.textContent === 'Show slide numbers');
+      .find((node) => node.querySelector('span')?.textContent === 'Show slide numbers (all slides)');
     const input = field?.querySelector('input');
     if (!input) return null;
     input.id = 'test-show-slide-numbers';
@@ -79,7 +79,7 @@ async function onSlide2(numbered?: boolean): Promise<void> {
   if (numbered === undefined) return;
   const checked = await editor!.evaluate<boolean | null>(`(() => {
     const field = [...document.querySelectorAll('#inspector label.field-check')]
-      .find((node) => node.querySelector('span')?.textContent === 'Show slide numbers');
+      .find((node) => node.querySelector('span')?.textContent === 'Show slide numbers (all slides)');
     return field?.querySelector('input')?.checked ?? null;
   })()`);
   if (checked !== numbered) expect(await clickShowSlideNumbers()).toBe(numbered);

@@ -156,16 +156,17 @@ describe('stackable media effects', () => {
     new Inspector(host, store);
     store.select(['photo']);
 
-    expect(host.querySelector('.insp-title')?.textContent).toBe('image');
+    expect(host.querySelector('.insp-title')?.textContent).toBe('Image');
     expect([...host.querySelectorAll<HTMLElement>('.insp-group')]
       .some((section) => section.querySelector('h3')?.textContent === 'Image')).toBe(false);
     const sections = [...host.querySelectorAll<HTMLElement>('.insp-type-sections .insp-option-section')];
     expect(sections.map((section) => section.querySelector('h4')?.textContent))
-      .toEqual(['Mask', 'Border', 'Effects']);
+      .toEqual(['Crop & corners', 'Border', 'Effects']);
     expect(sections[0].textContent).toContain('Keep aspect ratio');
     expect(sections[0].textContent).toContain('Corner radius');
-    expect(sections[0].textContent).toContain('Circular mask');
-    expect(sections[0].textContent).toContain('Edit mask');
+    expect(sections[0].textContent).toContain('Crop to circle');
+    expect(sections[0].textContent).toContain('Crop…');
+    expect(host.textContent).not.toMatch(/mask/i);
     expect(sections[1].textContent).toContain('Color');
     expect(sections[1].textContent).toContain('Width');
     expect(sections[1].textContent).not.toContain('Corner radius');

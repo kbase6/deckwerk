@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { emptyDeck, type SlideElement } from '../src/shared/deck.js';
@@ -28,7 +28,8 @@ import {
   insertText,
 } from '../src/renderer/editor/elementCreation.js';
 import { Inspector } from '../src/renderer/editor/inspector.js';
-import { applySlideLayout } from '../src/renderer/editor/slideLayouts.js';
+import { LAYOUT_LABELS_BY_ID } from '../src/renderer/editor/layoutPreview.js';
+import { LAYOUT_LABELS, applySlideLayout } from '../src/renderer/editor/slideLayouts.js';
 import { EditorStore, copySelectionToClipboard } from '../src/renderer/editor/store.js';
 
 /**
@@ -1217,13 +1218,16 @@ describe('inline text editing', () => {
       .toBe('Geometry');
     const headings = [...inspectorHost.querySelectorAll<HTMLElement>('.insp-group > h3')]
       .map((heading) => heading.textContent);
-    expect(inspectorHost.querySelector('.insp-title')?.textContent).toBe('text');
+    expect(inspectorHost.querySelector('.insp-title')?.textContent).toBe('Text');
     expect([...inspectorHost.querySelectorAll('.insp-type-sections .insp-subtitle')]
       .map((heading) => heading.textContent))
       .toEqual(['Typography', 'Paragraph', 'Box', 'Text shadow']);
     expect(headings).not.toContain('Style');
     expect(inspectorHost.textContent).not.toContain('CSS classes');
     expect(inspectorHost.textContent).not.toContain('Inline style');
+
+    store.select(['text-1', 'video-1']);
+    expect(inspectorHost.querySelector('.insp-title')?.textContent).toBe('2 objects');
   });
 
   it('aligns text on the canvas from the inspector alignment buttons', () => {
@@ -2023,11 +2027,19 @@ describe('inline text editing', () => {
       new MouseEvent('dblclick', { clientX: 1300, clientY: 400, bubbles: true }),
     );
 
+    // The banner is what says why a drag now moves the picture in its frame.
+    const banner = () => host.querySelector<HTMLElement>('.crop-mode-banner');
+    expect(banner()?.hidden).not.toBe(false);
     dblclick();
     expect(canvas.maskingElement()).toBe('image-1');
     expect([...store.get().selection]).toEqual(['image-1']);
+    expect(banner()?.hidden).toBe(false);
+    expect(banner()?.textContent).toBe(
+      'Cropping. Drag edges to crop, drag the picture to reposition, click outside or press Esc to finish.',
+    );
     dblclick();
     expect(canvas.maskingElement()).toBeNull();
+    expect(banner()?.hidden).toBe(true);
   });
 
   it('crops a picture on a pointer double-click without a native dblclick (Safari)', () => {
@@ -2068,7 +2080,7 @@ describe('inline text editing', () => {
     stage.getBoundingClientRect = () =>
       ({ left: 0, top: 0, width: 1920, height: 1080 }) as DOMRect;
     canvas.contextActions = (element) => element?.type === 'video'
-      ? [{ label: 'Edit mask (crop)', action: () => canvas.toggleMaskMode(element.id) }]
+      ? [{ label: 'Crop', action: () => canvas.toggleMaskMode(element.id) }]
       : [];
     host.dispatchEvent(new MouseEvent('contextmenu', {
       clientX: 300, clientY: 400, bubbles: true,
@@ -2090,6 +2102,11 @@ describe('inline text editing', () => {
   });
 
   it('records video cropping as one undoable action', () => {
+    // The clip's metadata has arrived: a crop starts from where it is painted.
+    for (const [name, value] of [['videoWidth', 640], ['videoHeight', 360]] as const) {
+      const size = vi.spyOn(HTMLVideoElement.prototype, name, 'get').mockReturnValue(value);
+      onTestFinished(() => size.mockRestore());
+    }
     const { store, canvas, host } = setup();
     const stage = host.querySelector<HTMLElement>('.stage')!;
     stage.getBoundingClientRect = () =>
@@ -2156,13 +2173,52 @@ describe('inline text editing', () => {
     // The window has not moved; the picture inside it has.
     expect(video).toMatchObject({ x: 100, y: 300, w: 640, h: 360 });
     expect(video.sourceBox).toEqual({ x: -120, y: -85, w: 800, h: 450 });
-    expect(store.history()[0]?.label).toBe('Move video in mask');
+    expect(store.history()[0]?.label).toBe('Reposition video in crop');
     expect(canvas.maskingElement()).toBe('video-1');
 
     // One undoable step, back to where the picture was.
     store.undo();
     video = store.slide!.elements.find((element) => element.id === 'video-1')!;
     expect(video.type === 'video' ? video.sourceBox : null).toEqual({ x: -80, y: -60, w: 800, h: 450 });
+  });
+
+  /**
+   * Whether a pan moved nothing is decided when it ends. Restoring the
+   * uncropped original on every move that came back to the start swapped the
+   * media's page structure (crop wrapper ↔ bare tag) mid-gesture.
+   */
+  it('keeps an uncropped pan cropped mid-gesture, and restores it when the pan ends where it began', () => {
+    const { store, canvas, host } = setup();
+    const stage = host.querySelector<HTMLElement>('.stage')!;
+    stage.getBoundingClientRect = () =>
+      ({ left: 0, top: 0, width: 1920, height: 1080 }) as DOMRect;
+    store.commit((deck) => {
+      const target = deck.slides[0].elements.find((element) => element.id === 'video-1');
+      if (target?.type === 'video') target.fit = 'cover';
+    }, { history: false });
+    canvas.toggleMaskMode('video-1');
+    // An 800x360 picture covering the 640x360 window paints at -80,0 and can pan sideways.
+    const node = host.querySelector<HTMLVideoElement>('[data-element-id="video-1"] video')!;
+    Object.defineProperty(node, 'videoWidth', { configurable: true, value: 800 });
+    Object.defineProperty(node, 'videoHeight', { configurable: true, value: 360 });
+
+    const at = (type: string, clientX: number) => host.dispatchEvent(new PointerEvent(type, {
+      clientX, clientY: 480, bubbles: true, pointerId: 1, button: 0,
+    }));
+    const video = () => {
+      const el = store.slide!.elements.find((element) => element.id === 'video-1')!;
+      if (el.type !== 'video') throw new Error('expected video fixture');
+      return el;
+    };
+    at('pointerdown', 400);
+    at('pointermove', 360);
+    expect(video().sourceBox).toEqual({ x: -120, y: 0, w: 800, h: 360 });
+    at('pointermove', 400);
+    expect(video().sourceBox, 'back at the start mid-gesture dropped the crop').toEqual({ x: -80, y: 0, w: 800, h: 360 });
+    at('pointerup', 400);
+
+    expect(video()).toMatchObject({ x: 100, y: 300, w: 640, h: 360, sourceBox: null });
+    expect(store.canUndo(), 'a pan that ended where it began left an undo step').toBe(false);
   });
 
   it('finishes mask editing when the user clicks outside the active mask', () => {
@@ -2749,7 +2805,7 @@ describe('native line endpoint editing', () => {
     const arrowStyle = [...inspectorHost.querySelectorAll<HTMLElement>('.insp-group')]
       .find((section) => section.querySelector('h4')?.textContent === 'Arrow style')!;
     const widthField = [...arrowStyle.querySelectorAll<HTMLLabelElement>('label')]
-      .find((label) => label.querySelector('span')?.textContent === 'WIDTH')!;
+      .find((label) => label.querySelector('span')?.textContent === 'Width')!;
     const width = widthField.querySelector<HTMLInputElement>('input')!;
     expect(width.value).toBe('7');
 
@@ -2760,7 +2816,7 @@ describe('native line endpoint editing', () => {
     expect(selected.map((element) => element.type === 'shape' && element.strokeWidth))
       .toEqual([11.5, 11.5]);
     const rerenderedWidth = [...inspectorHost.querySelectorAll<HTMLLabelElement>('label')]
-      .find((label) => label.querySelector('span')?.textContent === 'WIDTH')!
+      .find((label) => label.querySelector('span')?.textContent === 'Width')!
       .querySelector<HTMLInputElement>('input')!;
     expect(rerenderedWidth.value).toBe('11.5');
   });
@@ -2840,7 +2896,7 @@ describe('same-kind multi-selection properties', () => {
     expect(optionSections.map((section) => section.querySelector('h4')?.textContent))
       .toEqual([
         'Playback',
-        'Mask',
+        'Crop & corners',
         'Border',
         'Effects',
       ]);
@@ -2848,7 +2904,7 @@ describe('same-kind multi-selection properties', () => {
     // Keep-aspect-ratio clips like the mask does, so it lives in that section.
     expect(optionSections[1].textContent).toContain('Keep aspect ratio');
     expect(optionSections[1].textContent).toContain('Corner radius');
-    expect(optionSections[1].textContent).toContain('Circular mask');
+    expect(optionSections[1].textContent).toContain('Crop to circle');
     expect(optionSections[2].textContent).toContain('Color');
     expect(optionSections[2].textContent).toContain('Width');
     expect(optionSections[2].textContent).not.toContain('Corner radius');
@@ -2860,7 +2916,8 @@ describe('same-kind multi-selection properties', () => {
     autoplay.dispatchEvent(new Event('change', { bubbles: true }));
     expect(store.selectedElements().map((element) => element.type === 'video' && element.autoplay))
       .toEqual([true, true]);
-    expect(videoGroup.textContent).not.toContain('Edit mask');
+    expect(videoGroup.textContent).not.toContain('Crop…');
+    expect(videoGroup.textContent).not.toMatch(/mask/i);
     expect(videoGroup.textContent).not.toContain('Trim');
   });
 });
@@ -4197,14 +4254,16 @@ describe('resizing pictures and videos', () => {
     return store.slide!.elements.find((e) => e.id === id)!;
   }
 
-  it('keeps a video in proportion by default, even a cropped one, and frees it with Shift', () => {
-    expect(dragCorner('video-1', 160, 20)).toMatchObject({ w: 800, h: 450 });
-    expect(dragCorner('video-1', 160, 20, true)).toMatchObject({ w: 800, h: 380 });
+  // Shift locks proportions here as on every other resize, and as in crop
+  // mode. It used to free a picture and save it stretched (fit: 'fill').
+  it('keeps a video in proportion, even a cropped one, with or without Shift', () => {
+    expect(dragCorner('video-1', 160, 20)).toMatchObject({ w: 800, h: 450, fit: 'contain' });
+    expect(dragCorner('video-1', 160, 20, true)).toMatchObject({ w: 800, h: 450, fit: 'contain' });
   });
 
-  it('keeps a picture in proportion by default and frees it with Shift', () => {
-    expect(dragCorner('image-1', 200, 10)).toMatchObject({ w: 600, h: 450 });
-    expect(dragCorner('image-1', 200, 10, true)).toMatchObject({ w: 600, h: 310 });
+  it('keeps a picture in proportion with or without Shift', () => {
+    expect(dragCorner('image-1', 200, 10)).toMatchObject({ w: 600, h: 450, fit: 'cover' });
+    expect(dragCorner('image-1', 200, 10, true)).toMatchObject({ w: 600, h: 450, fit: 'cover' });
   });
 
   it('keeps the pointer on the box\'s edge wherever a corner is dragged', () => {
@@ -4231,10 +4290,8 @@ describe('resizing pictures and videos', () => {
         expect(py, where).toBeLessThanOrEqual(bottom + reach);
         expect(Math.min(Math.abs(right - px), Math.abs(bottom - py)), where).toBeLessThanOrEqual(reach);
         expect(box.w / box.h, where).toBeCloseTo(4 / 3, 1);
-        // Freed with Shift, the corner is under the pointer, or at the minimum.
-        const free = dragCorner('image-1', dx, dy, true);
-        expect(Math.abs(free.x + free.w - Math.max(px, 1208)), where).toBeLessThanOrEqual(reach);
-        expect(Math.abs(free.y + free.h - Math.max(py, 308)), where).toBeLessThanOrEqual(reach);
+        // Shift changes nothing: the picture already keeps its proportions.
+        expect(dragCorner('image-1', dx, dy, true), where).toMatchObject({ x: box.x, y: box.y, w: box.w, h: box.h });
       }
     }
   });
@@ -4316,5 +4373,120 @@ describe('shape fill style', () => {
     style().value = 'Solid';
     style().dispatchEvent(new Event('change'));
     expect(current().fill).toBe(shape.fill);
+  });
+});
+
+describe('Props wording', () => {
+  beforeEach(() => document.body.replaceChildren());
+
+  /** Every label, heading, option, tooltip and accessible name Props shows. */
+  const shown = (panel: HTMLElement): string[] => [
+    ...[...panel.querySelectorAll('.field > span, .toggle-segment-short, h4, option')]
+      .map((node) => node.textContent ?? ''),
+    ...[...panel.querySelectorAll('[title], [aria-label]')]
+      .flatMap((node) => [node.getAttribute('title') ?? '', node.getAttribute('aria-label') ?? '']),
+  ].filter(Boolean);
+  const field = (panel: HTMLElement, label: string) => [...panel.querySelectorAll<HTMLElement>('.field')]
+    .find((node) => node.querySelector('span')?.textContent === label);
+  const optionsOf = (panel: HTMLElement, label: string) =>
+    [...field(panel, label)!.querySelectorAll('option')].map((option) => option.textContent);
+
+  it('uses full words in sentence case, American spelling, and one word per idea', () => {
+    const { store } = setup();
+    // The single-clip trim section asks the preload bridge for the clip's length.
+    Object.assign(window.api, { probeAsset: async () => ({ duration: 6 }) });
+    const rect = insertShape(store, 'rect');
+    const rect2 = insertShape(store, 'rect');
+    const arrow = insertLine(store, 'arrow');
+    const arrow2 = insertLine(store, 'arrow');
+    store.commit((deck) => {
+      const [text] = deck.slides[0].elements;
+      if (text.type === 'text') text.noWrap = true;
+      deck.slides[0].elements.push({ ...structuredClone(text), id: 'text-2', y: 250 });
+    });
+    const panel = document.createElement('aside');
+    document.body.appendChild(panel);
+    new Inspector(panel, store);
+
+    const words: string[] = [];
+    const look = (ids: string[]) => {
+      store.select(ids);
+      words.push(...shown(panel));
+    };
+
+    look([]);
+    expect(optionsOf(panel, 'Layout').slice(0, 3)).toEqual(['Freeform', 'Title + body', 'Title slide']);
+
+    look([rect.id]);
+    for (const label of ['Rotation', 'Layer', 'Border', 'Width', 'Radius']) {
+      expect(field(panel, label), label).toBeTruthy();
+    }
+    expect(field(panel, 'Border')!.querySelector('.color-picker-trigger')).toBeTruthy();
+    look([rect.id, rect2.id]);
+    expect(field(panel, 'Border')).toBeTruthy();
+
+    look([arrow.id]);
+    expect(field(panel, 'Line')).toBeTruthy();
+    expect(field(panel, 'Arrowhead size')).toBeTruthy();
+    look([arrow.id, arrow2.id]);
+    expect(field(panel, 'Line')).toBeTruthy();
+    expect(field(panel, 'Arrowhead size')).toBeTruthy();
+
+    look(['text-1']);
+    expect(field(panel, 'Color')).toBeTruthy();
+    expect(optionsOf(panel, 'If too long')).toEqual(['Shrink text', 'Narrow letters']);
+    look(['text-1', 'text-2']);
+    expect(optionsOf(panel, 'Vertical')).toEqual(['Top', 'Middle', 'Bottom']);
+    expect(optionsOf(panel, 'If too long')).toEqual(['Shrink text', 'Narrow letters']);
+
+    look(['video-1']);
+    expect([...panel.querySelectorAll('.toggle-segment-short')].map((node) => node.textContent))
+      .toEqual(['Autoplay', 'Loop', 'Muted', 'Player bar']);
+    look(['video-1', 'text-1']);
+
+    // The whole walk: no shorthand, no shouting, one spelling, one word.
+    for (const banned of ['Preset', 'ROT', 'Z', 'HEAD SIZE', 'Stroke', 'No stroke', 'auto', 'mute', 'ctrl']) {
+      expect(words, banned).not.toContain(banned);
+    }
+    expect(words.filter((word) => /colour/i.test(word))).toEqual([]);
+    expect(words.filter((word) => /^[A-Z]{2,}( [A-Z]+)*$/.test(word))).toEqual([]);
+    expect(words.filter((word) => /\belements?\b/.test(word))).toEqual([]);
+  });
+
+  it('names each slide layout the same way everywhere', () => {
+    expect(Object.entries(LAYOUT_LABELS_BY_ID)).toEqual(LAYOUT_LABELS);
+  });
+});
+describe('shape Props wording', () => {
+  beforeEach(() => document.body.replaceChildren());
+
+  it('names the shape, its paint and its shadow type instead of calling each "Style"', () => {
+    const { store } = setup();
+    const shape = insertShape(store, 'rect');
+    const panel = document.createElement('div');
+    document.body.appendChild(panel);
+    new Inspector(panel, store).render();
+    const headings = () => [...panel.querySelectorAll('.insp-subtitle')].map((node) => node.textContent);
+    const labels = () => [...panel.querySelectorAll('.field > span')].map((node) => node.textContent);
+    const field = (label: string) => [...panel.querySelectorAll<HTMLElement>('.field')]
+      .find((node) => node.querySelector('span')?.textContent === label);
+    const current = () => store.slide!.elements.find((e) => e.id === shape.id) as Extract<SlideElement, { type: 'shape' }>;
+
+    expect(headings()).toContain('Fill & outline');
+    expect(field('Shape')?.querySelector('select')?.value).toBe('rect');
+
+    field('Drop shadow')!.querySelector('input')!.click();
+    const type = field('Shadow type')!.querySelector('select')!;
+    expect(type.value).toBe('Drop');
+    type.value = 'Curved';
+    type.dispatchEvent(new Event('change'));
+    expect(current().style['--curl-lift']).toBeDefined();
+
+    // A curved shadow's toggle is not a drop shadow.
+    expect(field('Shadow')?.querySelector('input')?.checked).toBe(true);
+    expect(labels()).not.toContain('Drop shadow');
+    expect(labels()).not.toContain('Style');
+    expect(labels()).not.toContain('Kind');
+    expect(headings()).not.toContain('Style');
   });
 });

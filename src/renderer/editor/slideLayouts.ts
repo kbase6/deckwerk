@@ -20,8 +20,11 @@ export function applySlideLayout(
   });
 }
 
-export const LAYOUT_LABELS: Array<[SlideLayout, string]> = [
-  ['freeform', 'Freeform'],
-  ['standard', 'Title + body'],
-  ['title', 'Title slide'],
-];
+/** What each layout is called wherever the editor names one: Props, the rail, the Design tab. */
+export const LAYOUT_LABELS_BY_ID: Record<SlideLayout, string> = {
+  freeform: 'Freeform',
+  standard: 'Title + body',
+  title: 'Title slide',
+};
+
+export const LAYOUT_LABELS = Object.entries(LAYOUT_LABELS_BY_ID) as Array<[SlideLayout, string]>;

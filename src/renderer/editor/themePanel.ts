@@ -22,12 +22,14 @@ import {
 } from '@shared/themes.js';
 import { fitAutoText, renderSlide } from '../player/render.js';
 import { colorField } from './colorPicker.js';
+import { showConfirmDialog } from './confirmDialog.js';
 import type { CssEditor } from './cssEditor.js';
 import { fontFamilyField } from './fontPicker.js';
 import { numberField } from './inspector.js';
 import { lineSpacingValue } from '@shared/lineHeight.js';
 import { FIXED_LAYOUTS, LAYOUT_LABELS_BY_ID, masterTile } from './layoutPreview.js';
 import { barButton } from './shellWiring.js';
+import { undoShortcutLabel } from './slideRail.js';
 import type { EditorStore } from './store.js';
 import {
   createThemeGallery,
@@ -114,8 +116,19 @@ export interface ThemePanel {
   refreshSwatches(): void;
   /** Reflect a freshly opened deck's installed preset in the gallery. */
   noteDeckOpened(deck: Deck): void;
-  /** Close the theme chooser/editor and end its central preview session. */
+  /**
+   * Close the theme chooser/editor and end its central preview session. A
+   * theme edit with changes is asked about first; while that question is
+   * open this returns false, so its Escape reaches the question.
+   */
   dismiss(): boolean;
+  /**
+   * End a theme edit before the author goes elsewhere. One that changed
+   * nothing ends at once and this returns false. One with changes asks
+   * "Discard theme changes?" and returns true: `then` runs if the author
+   * discards them, and never if they keep editing.
+   */
+  confirmDiscardDraft(then: () => void): boolean;
 }
 
 /** Things on slides the last theme change left alone or pushed out of their box. */
@@ -137,12 +150,17 @@ export function createThemePanel(deps: ThemePanelDeps): ThemePanel {
   let mastersHost: HTMLElement | null = null;
   let mastersKey = '';
   let modeButtons = new Map<ThemeMode, HTMLButtonElement>();
+  /** The Slide colors label and switch, whose tooltip names the theme. */
+  let slideColors: HTMLElement[] = [];
   let activeThemeHost: HTMLElement | null = null;
   let chooser: HTMLElement | null = null;
   let themeEditor: HTMLElement | null = null;
   let themePreviewOpen = false;
   /** A theme edit in progress; nothing lands on the deck until Done. */
   let draft: { style: ThemeStyle; base: ThemePreset } | null = null;
+  let editThemeButton: HTMLButtonElement | null = null;
+  /** "Discard theme changes?" is being asked. */
+  let askingToDiscard = false;
 
   function currentTheme(): ThemePreset | null {
     const deck = store.get().deck;
@@ -157,6 +175,7 @@ export function createThemePanel(deps: ThemePanelDeps): ThemePanel {
 
   function renderActiveTheme(): void {
     if (!activeThemeHost) return;
+    if (editThemeButton) editThemeButton.disabled = Boolean(draft);
     const theme = currentTheme();
     activeThemeHost.replaceChildren();
     if (!theme) return;
@@ -182,6 +201,13 @@ export function createThemePanel(deps: ThemePanelDeps): ThemePanel {
       const on = themeMode(theme) === mode;
       button.classList.toggle('selected', on);
       button.setAttribute('aria-pressed', String(on));
+    }
+    const pool = deckThemes(store.get().deck);
+    const name = themeById(baseThemeId(theme.id, pool), pool)?.name ?? theme.name;
+    for (const node of slideColors) {
+      node.title = `Switches every slide to the light or dark version of ${name}. `
+        + `${undoShortcutLabel()} undoes it. The editor window's own light or dark look `
+        + 'is under DeckWerk menu › Editor appearance.';
     }
   }
 
@@ -241,7 +267,7 @@ export function createThemePanel(deps: ThemePanelDeps): ThemePanel {
 
   /**
    * Put `theme` on every slide as one undo step, then report what kept its
-   * own look. Choosing a card, the Light/Dark switch and Done in the theme
+   * own look. Choosing a card, the Slide colors switch and Done in the theme
    * editor all come through here.
    */
   function restyle(theme: ThemePreset, label: string): void {
@@ -485,11 +511,12 @@ export function createThemePanel(deps: ThemePanelDeps): ThemePanel {
     modeRow.className = 'theme-default-row';
     const modeLabel = document.createElement('span');
     modeLabel.className = 'theme-default-label';
-    modeLabel.textContent = 'Default';
+    modeLabel.textContent = 'Slide colors';
     const modeToggle = document.createElement('div');
     modeToggle.className = 'theme-mode-toggle theme-default-mode';
     modeToggle.setAttribute('role', 'group');
-    modeToggle.setAttribute('aria-label', 'Deck default appearance');
+    modeToggle.setAttribute('aria-label', 'Slide colors');
+    slideColors = [modeLabel, modeToggle];
     modeButtons = new Map();
     for (const [value, label] of [['light', 'Light'], ['dark', 'Dark']] as const) {
       const button = document.createElement('button');
@@ -503,9 +530,10 @@ export function createThemePanel(deps: ThemePanelDeps): ThemePanel {
       modeButtons.set(value, button);
       modeToggle.appendChild(button);
     }
-    const editTheme = barButton('Edit…', () => (draft ? cancelDraft() : openDraft()));
-    editTheme.classList.add('theme-edit-button');
-    modeRow.append(modeLabel, modeToggle, editTheme);
+    // Disabled while editing: Done and Cancel are the ways out of an edit.
+    editThemeButton = barButton('Edit theme…', openDraft);
+    editThemeButton.classList.add('theme-edit-button');
+    modeRow.append(modeLabel, modeToggle, editThemeButton);
 
     themeEditor = document.createElement('section');
     themeEditor.className = 'theme-inline-editor';
@@ -522,15 +550,8 @@ export function createThemePanel(deps: ThemePanelDeps): ThemePanel {
     /* --- layouts --- */
     mastersHost = document.createElement('div');
     mastersHost.className = 'layout-popover-grid design-masters';
-    const mastersRow = document.createElement('div');
-    mastersRow.className = 'theme-default-row design-masters-row';
-    const editLayouts = barButton('Edit layouts…', () => deps.onEditLayouts?.(
-      (store.slide?.layout ?? 'standard') as FixedLayout,
-    ));
-    editLayouts.classList.add('theme-section-action');
-    mastersRow.append(editLayouts);
     const layoutsSection = panelSection('Layouts', 'layouts-section');
-    layoutsSection.append(mastersHost, mastersRow);
+    layoutsSection.append(mastersHost);
 
     wrap.append(intro, themeSection, layoutsSection);
     refreshPreviousBadge();
@@ -569,11 +590,45 @@ export function createThemePanel(deps: ThemePanelDeps): ThemePanel {
     notifyThemePreview();
   }
 
+  /** Whether the draft differs from what the deck wears. */
+  function draftChanged(): boolean {
+    if (!draft) return false;
+    const deck = store.get().deck;
+    return JSON.stringify(draft.style) !== JSON.stringify(deck.themeStyle ?? themeStyleOf(draft.base));
+  }
+
+  function confirmDiscardDraft(then: () => void): boolean {
+    if (askingToDiscard) return true;
+    if (!draft) return false;
+    if (!draftChanged()) {
+      cancelDraft();
+      return false;
+    }
+    askingToDiscard = true;
+    const name = draft.base.name.replace(' · Modified', '');
+    // Asked a task later: a press on a rail row focuses the rail after it
+    // gets here, and the question must hold focus for Return and Escape.
+    setTimeout(() => {
+      void showConfirmDialog({
+        title: 'Discard theme changes?',
+        description: `Your edits to ${name} are not on the slides yet. To keep them, keep editing and press Done.`,
+        confirmLabel: 'Discard',
+        cancelLabel: 'Keep editing',
+        destructive: true,
+      }).then((discard) => {
+        askingToDiscard = false;
+        if (!discard) return;
+        cancelDraft();
+        then();
+      });
+    });
+    return true;
+  }
+
   function finishDraft(): void {
     if (!draft) return;
     const { style, base } = draft;
-    const deck = store.get().deck;
-    const changed = JSON.stringify(style) !== JSON.stringify(deck.themeStyle ?? themeStyleOf(base));
+    const changed = draftChanged();
     draft = null;
     if (themeEditor) themeEditor.hidden = true;
     deps.onPreviewThemeDraft?.(null);
@@ -602,17 +657,17 @@ export function createThemePanel(deps: ThemePanelDeps): ThemePanel {
     const ROLE_LABELS: Record<'title' | 'body' | 'caption', string> = {
       title: 'Title', body: 'Body', caption: 'Caption',
     };
-    themeEditor.appendChild(groupLabel('Typefaces'));
+    themeEditor.appendChild(groupLabel('Fonts'));
     for (const role of ['title', 'body', 'caption'] as const) {
       themeEditor.appendChild(fontFamilyField(
-        `${ROLE_LABELS[role]} typeface`,
+        `${ROLE_LABELS[role]} font`,
         style.fonts[role].family,
         (family) => {
           if (family) mutate((target) => { target.fonts[role].family = family; });
         },
       ));
     }
-    themeEditor.appendChild(groupLabel('Type scale'));
+    themeEditor.appendChild(groupLabel('Text sizes'));
     for (const role of ['title', 'body', 'caption'] as const) {
       const sizeField = numberField(
         `${ROLE_LABELS[role]} size`,
@@ -638,11 +693,11 @@ export function createThemePanel(deps: ThemePanelDeps): ThemePanel {
       themeEditor.appendChild(spacingField);
     }
 
-    themeEditor.appendChild(groupLabel('Semantic colours'));
+    themeEditor.appendChild(groupLabel('Main colors'));
     for (const [key, label] of [
       ['background', 'Background'],
       ['text', 'Text'],
-      ['muted', 'Muted text'],
+      ['muted', 'Secondary text'],
       ['accent', 'Accent'],
     ] as const) {
       themeEditor.appendChild(colorField(label, style.colors[key], (value) => {
@@ -650,9 +705,9 @@ export function createThemePanel(deps: ThemePanelDeps): ThemePanel {
       }));
     }
 
-    themeEditor.appendChild(groupLabel('Palette swatches'));
+    themeEditor.appendChild(groupLabel('Extra colors for shapes'));
     style.palette.forEach((color, index) => {
-      themeEditor!.appendChild(colorField(`Swatch ${index + 1}`, color, (value) => {
+      themeEditor!.appendChild(colorField(`Color ${index + 1}`, color, (value) => {
         if (value) mutate((target) => { target.palette[index] = value; });
       }));
     });
@@ -694,13 +749,15 @@ export function createThemePanel(deps: ThemePanelDeps): ThemePanel {
     currentTheme,
     refreshSwatches,
     dismiss: () => {
+      if (askingToDiscard) return false;
       const wasOpen = themePreviewOpen
         || Boolean(chooser && !chooser.hidden)
         || Boolean(draft);
-      if (draft) cancelDraft();
+      confirmDiscardDraft(() => {});
       endPreview();
       return wasOpen;
     },
+    confirmDiscardDraft,
     noteDeckOpened: (deck) => {
       if (draft) cancelDraft();
       // A deck with presets of its own (or a different current theme, which

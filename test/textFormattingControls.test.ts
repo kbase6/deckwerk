@@ -212,16 +212,44 @@ describe('text formatting from the inspector controls', () => {
 
   it('sizes a box to its text from the inspector, turning auto-fit off with it', () => {
     const { store, inspectorHost } = setup([textElement('text-1', { autoFit: true })]);
-    const toggle = () => field(inspectorHost, 'Size box to text')
-      .querySelector<HTMLInputElement>('input[type="checkbox"]')!;
-    expect(toggle().checked).toBe(false);
+    const fit = () => field(inspectorHost, 'Text fit').querySelector<HTMLSelectElement>('select')!;
+    expect(fit().value).toBe('shrink');
+    expect([...fit().options].map((option) => option.textContent))
+      .toEqual(['Off', 'Grow box to fit text', 'Shrink text to fit box']);
 
-    toggle().click();
+    pick(fit(), 'grow');
     expect(store.slide!.elements[0]).toMatchObject({ autoSize: true, autoFit: false });
-    expect(toggle().checked).toBe(true);
+    expect(fit().value).toBe('grow');
 
-    toggle().click();
+    pick(fit(), 'off');
     expect(store.slide!.elements[0]).not.toHaveProperty('autoSize');
+    expect(store.slide!.elements[0]).toMatchObject({ autoFit: false });
+  });
+
+  // Turning auto-fit on used to leave "Size box to text" on, and a box sized
+  // to its text is never fitted, so the text kept overflowing.
+  it('fits the text to a box that was sized to its text when auto-fit goes on', () => {
+    const { store, canvasHost, inspectorHost } = setup([textElement('text-1', { autoSize: true })]);
+    const fit = () => field(inspectorHost, 'Text fit').querySelector<HTMLSelectElement>('select')!;
+    expect(fit().value).toBe('grow');
+    pick(fit(), 'shrink');
+    expect(store.slide!.elements[0]).toMatchObject({ autoFit: true });
+    expect(store.slide!.elements[0]).not.toHaveProperty('autoSize');
+    expect(nodeOf(canvasHost, 'text-1').dataset.autoFit).toBe('true');
+  });
+
+  it('sets one text fit across several boxes, never leaving one both growing and shrinking', () => {
+    const { store, inspectorHost } = setup([
+      textElement('text-1', { autoSize: true }),
+      textElement('text-2', { autoFit: true }),
+    ]);
+    const fit = () => field(inspectorHost, 'Text fit').querySelector<HTMLSelectElement>('select')!;
+    expect(fit().value).toBe('__mixed__');
+    pick(fit(), 'shrink');
+    for (const element of store.slide!.elements) {
+      expect(element).toMatchObject({ autoFit: true });
+      expect(element).not.toHaveProperty('autoSize');
+    }
   });
 
   it('keeps the exhaustive formatting matrix synchronized with the shipped text and table controls', () => {
@@ -231,10 +259,10 @@ describe('text formatting from the inspector controls', () => {
       .map((node) => node.textContent?.trim());
 
     expect(labels('.text-typography-options .field > span')).toEqual([
-      'Text style', 'Font family', 'Font size', 'Font weight', 'Style', 'Colour',
+      'Text style', 'Font family', 'Font size', 'Font weight', 'Format', 'Color',
     ]);
     expect(labels('.text-layout-options .field > span')).toEqual([
-      'Size box to text', 'Auto-fit text to box', 'Disable automatic line breaks', 'List',
+      'Text fit', 'Keep on one line', 'List',
       'Align', 'Vertical', 'Paragraph spacing', 'Line spacing',
     ]);
     expect(labels('.text-format-buttons button')).toEqual(['B', 'I', 'U', 'x²', 'x₂']);
@@ -302,7 +330,7 @@ describe('text formatting from the inspector controls', () => {
 
   it('picks a theme colour swatch, then clears back to the theme default', () => {
     const { store, canvasHost, inspectorHost } = setup([textElement('text-1')]);
-    const trigger = () => field(inspectorHost, 'Colour')
+    const trigger = () => field(inspectorHost, 'Color')
       .querySelector<HTMLButtonElement>('.color-picker-trigger')!;
 
     trigger().click();
@@ -324,7 +352,7 @@ describe('text formatting from the inspector controls', () => {
 
   it('sets an arbitrary colour from the hex box and keeps opacity as authored', () => {
     const { store, inspectorHost } = setup([textElement('text-1')]);
-    field(inspectorHost, 'Colour')
+    field(inspectorHost, 'Color')
       .querySelector<HTMLButtonElement>('.color-picker-trigger')!.click();
 
     const picker = document.querySelector<HTMLElement>('.color-picker-popover')!;
@@ -384,7 +412,7 @@ describe('text formatting from the inspector controls', () => {
     const { store, canvasHost, inspectorHost } = setup([
       textElement('text-1', { html: '<ul><li>First</li><li>Second</li></ul>' }),
     ]);
-    const trigger = () => field(inspectorHost, 'Marker colour')
+    const trigger = () => field(inspectorHost, 'Marker color')
       .querySelector<HTMLButtonElement>('.color-picker-trigger')!;
 
     trigger().click();
@@ -408,7 +436,7 @@ describe('text formatting from the inspector controls', () => {
     closePopover();
     trigger().click();
     const clear = document.querySelector<HTMLButtonElement>('.color-picker-clear')!;
-    expect(clear.textContent).toBe('Follow text colour');
+    expect(clear.textContent).toBe('Follow text color');
     clear.click();
     expect(textOf(store, 'text-1').html).toBe('<ul><li>First</li><li>Second</li></ul>');
   });
@@ -427,7 +455,7 @@ describe('text formatting from the inspector controls', () => {
     window.getSelection()!.addRange(caret);
     document.dispatchEvent(new Event('selectionchange'));
 
-    field(inspectorHost, 'Marker colour')
+    field(inspectorHost, 'Marker color')
       .querySelector<HTMLButtonElement>('.color-picker-trigger')!.click();
     document.querySelector<HTMLButtonElement>(
       '.color-picker-palette-button[title="#ff8800"]',
@@ -787,7 +815,7 @@ describe('text formatting from the inspector controls', () => {
     type(field(inspectorHost, 'Font size').querySelector<HTMLInputElement>('input')!, '48');
     type(field(inspectorHost, 'Font weight').querySelector<HTMLInputElement>('input')!, '450');
 
-    field(inspectorHost, 'Colour')
+    field(inspectorHost, 'Color')
       .querySelector<HTMLButtonElement>('.color-picker-trigger')!.click();
     document.querySelectorAll<HTMLButtonElement>('.color-picker-palette-button')[1].click();
     alignButtons(inspectorHost)[1].click();
@@ -1388,7 +1416,7 @@ describe('text formatting from the inspector controls', () => {
       textElement('text-1', { html: TABLE_WORD_HTML }),
     ]);
     const { content } = selectTableWord(canvas, canvasHost);
-    const trigger = () => field(inspectorHost, 'Colour')
+    const trigger = () => field(inspectorHost, 'Color')
       .querySelector<HTMLButtonElement>('.color-picker-trigger')!;
 
     trigger().click();
@@ -1722,7 +1750,7 @@ describe('text formatting across a multi-selection', () => {
     const spacing = () => field(inspectorHost, 'Paragraph spacing')
       .querySelector<HTMLInputElement>('input')!;
     expect(spacing().placeholder).toBe('Mixed');
-    expect(field(inspectorHost, 'Colour (mixed)')).toBeTruthy();
+    expect(field(inspectorHost, 'Color (mixed)')).toBeTruthy();
     expect([...field(inspectorHost, 'Text style').querySelectorAll('option')].map((option) => option.textContent))
       .toEqual(['Title', 'Body', 'Caption', 'None']);
 
@@ -1777,7 +1805,7 @@ describe('text formatting across a multi-selection', () => {
       textElement('text-1'),
       textElement('text-2', { y: 400 }),
     ]);
-    field(inspectorHost, 'Colour')
+    field(inspectorHost, 'Color')
       .querySelector<HTMLButtonElement>('.color-picker-trigger')!.click();
     document.querySelectorAll<HTMLButtonElement>('.color-picker-palette-button')[1].click();
 
@@ -1865,13 +1893,13 @@ describe('the layout preset as formatting', () => {
   }
 
   const presetSelect = (host: HTMLElement): HTMLSelectElement =>
-    field(host, 'Preset').querySelector<HTMLSelectElement>('select')!;
+    field(host, 'Layout').querySelector<HTMLSelectElement>('select')!;
 
   it('offers the layout presets once the selection is the slide itself', () => {
     const { store, inspectorHost } = layoutHarness();
     store.clearSelection();
     expect([...presetSelect(inspectorHost).options].map((option) => option.textContent))
-      .toEqual(['Freeform', 'Title + body', 'Title slide', 'Edit layouts…']);
+      .toEqual(['Freeform', 'Title + body', 'Title slide']);
     expect(presetSelect(inspectorHost).value).toBe('standard');
   });
 
@@ -1916,7 +1944,7 @@ describe('the layout preset as formatting', () => {
     store.updateSelected((element) => {
       if (element.type === 'text') element.html = 'Authored <b>title</b>';
     }, { label: 'inline bold' });
-    field(inspectorHost, 'Colour').querySelector<HTMLButtonElement>('.color-picker-trigger')!.click();
+    field(inspectorHost, 'Color').querySelector<HTMLButtonElement>('.color-picker-trigger')!.click();
     document.querySelectorAll<HTMLButtonElement>('.color-picker-palette-button')[0].click();
     expect(textOf(store, 'text-title').style.color).toBe('#112233');
 
@@ -2465,7 +2493,7 @@ describe('theming through the panel, the rail and the inspector', () => {
     expect(computed(canvasHost, 'title').fontSize).toBe(`${before}px`);
 
     // Edit the deck's title size in the Design tab: a draft until Done.
-    panelButton(panel.element, 'Edit…').click();
+    panelButton(panel.element, 'Edit theme…').click();
     const titleSize = [...panel.element.querySelectorAll<HTMLElement>('.theme-role-size')]
       .find((node) => node.querySelector('span')?.textContent === 'Title size')!
       .querySelector<HTMLInputElement>('input')!;
@@ -2490,6 +2518,24 @@ describe('theming through the panel, the rail and the inspector', () => {
       element.type === 'text' && element.layoutPlaceholder === 'title')!;
     expect(fresh.style['font-size']).toBeUndefined();
     expect(computed(canvasHost, fresh.id).fontSize).toBe('60px');
+  });
+
+  it('points the locked size field in the layout editor at the tab and button that change sizes', () => {
+    const { store, inspector, inspectorHost, panel } = themedSetup([[textElement('title', IMPORTED_TITLE)]]);
+    inspector.editsLayoutMasters = true;
+    store.select([]);
+    store.select(['title']);
+
+    // The tooltip names "<tab> › <button>". Follow it: the button must be on
+    // the Design tab's panel, and pressing it must offer the theme's sizes.
+    const pointer = /under (.+) › (.+)$/.exec(sizeField(inspectorHost).title);
+    expect(pointer?.[1]).toBe('Design');
+    const button = panelButton(panel.element, pointer?.[2] ?? '');
+    expect(button, `a Design tab button labelled "${pointer?.[2]}"`).toBeDefined();
+    button.click();
+    const sizeLabels = [...panel.element.querySelectorAll<HTMLElement>('.theme-role-size span')]
+      .map((node) => node.textContent);
+    expect(sizeLabels).toContain('Title size');
   });
 
   it('changes a theme weight and typeface the same way', () => {

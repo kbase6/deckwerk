@@ -26,6 +26,7 @@ import { Cdp, findTarget, stopBrowser, wait } from './browserSession.js';
 import { sharedBuild } from './collabClient.js';
 import { startCollabServerProcess, type CollabServerProcess } from './collabServerProcess.js';
 import { isEditorTarget, launchDesktopApp, materializeDesktopApp } from './desktopApp.js';
+import { minimalPdf } from './mediaFixtures.js';
 
 /**
  * An agent's workspace, the three ways an agent works on a deck — the harness
@@ -76,6 +77,10 @@ export interface AgentWorkspace {
   saveWatched?(name: string, html: string): Promise<WatchedSave>;
   /** A person editing the same deck at the same time, through the product. */
   human?: HumanPeer;
+  /** The desktop editor's page, for a person working in the app itself. */
+  editor?: Cdp;
+  /** What the desktop editor's status bar says now. */
+  status?(): Promise<string>;
   /** Everything the processes involved said, for a failure message. */
   logs(): string;
   close(): Promise<void>;
@@ -298,6 +303,7 @@ function fixtureClip(): Promise<Buffer> {
 export async function writeDeckFolder(dir: string, deck: Deck, theme = FIXTURE_THEME): Promise<void> {
   await mkdir(join(dir, 'assets'), { recursive: true });
   await writeFile(join(dir, 'assets', 'pic.png'), PNG);
+  await writeFile(join(dir, 'assets', 'figure.pdf'), minimalPdf());
   await writeFile(join(dir, 'assets', 'clip.mp4'), await fixtureClip());
   await writeFile(join(dir, 'theme.css'), theme, 'utf8');
   await saveDeck(dir, deck);
@@ -364,10 +370,12 @@ export async function desktopWorkspace(deck: Deck = agentFixtureDeck()): Promise
     kind: 'desktop',
     dir,
     deckDir: dir,
+    editor: cdp,
     run: (...args) => cliIn(dir, args),
     deck: async () => parseDeck((await session())!.deck),
     write: (name, html) => writeFile(join(dir, 'edit', name), html, 'utf8'),
     read: (name) => readFile(join(dir, 'edit', name), 'utf8'),
+    status: () => cdp.evaluate("document.getElementById('status')?.textContent ?? ''"),
     logs: () => app.log(),
     close: async () => {
       cdp.close();

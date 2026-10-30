@@ -4,9 +4,9 @@ import { commentHighlightsShown, setCommentHighlightsShown } from './comments.js
 import { elementFollowsLayout, layoutGeometryFor, realignElementToLayout } from '@shared/layoutMasters.js';
 import { EditorCanvas } from './canvas.js';
 import { ARRANGE_LABELS, arrangeSelection } from './arrange.js';
-import { setCircularMask } from '@shared/mediaMask.js';
+import { editableCircularMask, setCircularMask } from '@shared/mediaMask.js';
 import { classifyMediaName, isPendingSrc } from '@shared/media.js';
-import { mediaNaturalSize } from './mediaNatural.js';
+import { MEDIA_LOADING_NOTICE, mediaNaturalSize } from './mediaNatural.js';
 import { Inspector } from './inspector.js';
 import { SlideRail } from './slideRail.js';
 import {
@@ -151,6 +151,7 @@ export function wireCanvasInspector(
   inspector.textComputedTypography = (elementId) => canvas.textComputedTypography(elementId);
   inspector.onToggleMask = (id) => canvas.toggleMaskMode(id);
   inspector.maskingElement = () => canvas.maskingElement();
+  inspector.editingFrame = (el) => canvas.editingFrame(el);
   inspector.onSeekPreview = (id, t) => canvas.seekVideo(id, t);
   inspector.videoDuration = (id) => canvas.videoDuration(id);
   canvas.onMaskModeChange = () => inspector.render();
@@ -182,7 +183,7 @@ export function createClipboardActions(deps: ShellDeps): ClipboardActions {
   const copyToClipboard = async (verb: 'Copied' | 'Cut') => {
     if (store.get().selection.size > 0) {
       const n = await copySelectionToClipboard(store);
-      if (n) setStatusMessage(`${verb} ${n} element${n > 1 ? 's' : ''}.`);
+      if (n) setStatusMessage(`${verb} ${n} object${n > 1 ? 's' : ''}.`);
       return n ? ('elements' as const) : null;
     }
     const n = await copySlidesToClipboard(store, deps.currentThemeCss?.());
@@ -201,7 +202,7 @@ export function createClipboardActions(deps: ShellDeps): ClipboardActions {
       ? await deps.runOperation('Pasting clipboard content', paste)
       : await paste();
     if (pasted && pasted.count > 0) {
-      const noun = pasted.kind === 'slides' ? 'slide' : 'element';
+      const noun = pasted.kind === 'slides' ? 'slide' : 'object';
       const said = `Pasted ${pasted.count} ${noun}${pasted.count > 1 ? 's' : ''}.`;
       setStatusMessage(pasted.notice ? `${said} ${pasted.notice}` : said);
     } else if (pasted?.notice) {
@@ -223,7 +224,7 @@ export function createClipboardActions(deps: ShellDeps): ClipboardActions {
     const pasted = deps.runOperation
       ? await deps.runOperation('Uploading clipboard media', paste)
       : await paste();
-    if (pasted) setStatusMessage('Pasted 1 element.');
+    if (pasted) setStatusMessage('Pasted 1 object.');
   };
 
   return {
@@ -526,22 +527,27 @@ export function makeContextActions(
       }
       if (el.type === 'image' || el.type === 'video') {
         items.push('separator', {
-          label: canvas.maskingElement() === el.id ? 'Done editing mask' : 'Edit mask (crop)',
+          label: canvas.maskingElement() === el.id ? 'Done cropping' : 'Crop',
           action: () => canvas.toggleMaskMode(el.id),
         });
       }
       if (el.type === 'image' || el.type === 'video') {
+        // The same test and the same History labels as the Props checkbox, so a
+        // picture rounded by CSS reads as circular here too.
+        const circular = !editableCircularMask(el);
+        const label = circular ? 'Crop to circle' : 'Crop to rectangle';
         items.push({
-          label: el.maskShape === 'circle' ? 'Rectangular mask' : 'Circular mask',
-          action: () => store.updateSelected((target) => {
-            if (target.type === 'image' || target.type === 'video') {
-              setCircularMask(
-                target,
-                target.maskShape !== 'circle',
-                mediaNaturalSize(target.id),
-              );
-            }
-          }, { label: 'Mask shape' }),
+          label,
+          action: () => {
+            let refused = false;
+            store.updateSelected((target) => {
+              if (target.type !== 'image' && target.type !== 'video') return;
+              if (!setCircularMask(target, circular, mediaNaturalSize(target.id))) {
+                refused = true;
+              }
+            }, { label });
+            if (refused) deps.setStatusMessage(MEDIA_LOADING_NOTICE);
+          },
         });
       }
       if (el.type === 'video') {

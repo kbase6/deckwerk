@@ -136,7 +136,7 @@ describe('pasting a browser copy into another tab', () => {
     expect(server.files.has(`talk-b/${pasted.src}`)).toBe(true);
     // Its build came along, retargeted at the new id.
     expect(b.store.get().deck.slides[0].timeline).toMatchObject([{ action: { target: pasted.id } }]);
-    await vi.waitFor(() => expect(status).toContain('Pasted 1 element.'));
+    await vi.waitFor(() => expect(status).toContain('Pasted 1 object.'));
   });
 
   it('pastes whole slides from another deck with every file they show', async () => {

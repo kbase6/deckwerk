@@ -79,7 +79,7 @@ export class TimelinePanel {
     header.className = 'panel-header';
     const title = document.createElement('h3');
     title.className = 'insp-title';
-    title.textContent = 'Build';
+    title.textContent = 'Animations';
     header.appendChild(title);
     this.host.appendChild(header);
 

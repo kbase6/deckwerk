@@ -5,6 +5,8 @@ import {
   fittedImageBox,
   paintedMediaBox,
   pannedSourceBox,
+  resetCrop,
+  relinkTrimmedVideo,
   setCircularMask,
   type MaskRect,
 } from '../src/shared/mediaMask.js';
@@ -47,6 +49,12 @@ describe('circular mask geometry', () => {
           const el = image({ ...box, fit });
           const layout = circularMaskLayout(el, natural);
           const where = `${box.w}x${box.h} ${fit} natural=${natural ? `${natural.w}x${natural.h}` : 'unknown'}`;
+          // Only a stretched picture is painted the same whatever its size.
+          if (!natural && fit !== 'fill') {
+            expect(layout, where).toBeNull();
+            continue;
+          }
+          if (!layout) throw new Error(`no circle for ${where}`);
 
           // Square, never below the smallest usable handle box, centred on
           // the original box.
@@ -78,11 +86,11 @@ describe('circular mask geometry', () => {
   });
 
   it('is stable when applied a second time', () => {
-    // Toggling the checkbox off and on, or Reset mask on a circle, re-runs the
+    // Toggling the checkbox off and on, or Reset crop on a circle, re-runs the
     // layout on an element that already carries the crop. It must not creep.
     for (const box of boxes) {
       for (const natural of naturals) {
-        const el = image({ ...box, fit: 'cover' });
+        const el = image({ ...box, fit: natural ? 'cover' : 'fill' });
         setCircularMask(el, true, natural);
         const once = { x: el.x, y: el.y, w: el.w, h: el.h, sourceBox: { ...el.sourceBox! } };
         setCircularMask(el, true, natural);
@@ -122,13 +130,26 @@ describe('circular mask geometry', () => {
     expect(painted).not.toBe(sourceBox);
   });
 
-  it('paints fill and unknown-size media across the whole box', () => {
+  it('paints fill media across the whole box, known size or not', () => {
     expect(paintedMediaBox(image({ fit: 'fill' }), { w: 3, h: 2 }))
       .toEqual({ x: 0, y: 0, w: 800, h: 400 });
-    expect(paintedMediaBox(image({ fit: 'cover' }), null))
+    expect(paintedMediaBox(image({ fit: 'fill' }), null))
       .toEqual({ x: 0, y: 0, w: 800, h: 400 });
-    expect(paintedMediaBox(image({ fit: 'contain' }), { w: 0, h: 0 }))
-      .toEqual({ x: 0, y: 0, w: 800, h: 400 });
+  });
+
+  it('does not guess where a picture still loading will be painted', () => {
+    // Guessing the whole box locked a stretched picture into the first crop
+    // or circle made before an image loaded or a video's metadata arrived.
+    expect(paintedMediaBox(image({ fit: 'cover' }), null)).toBeNull();
+    expect(paintedMediaBox(image({ fit: 'contain' }), { w: 0, h: 0 })).toBeNull();
+    expect(circularMaskLayout(image({ fit: 'contain' }), null)).toBeNull();
+    const el = image({ fit: 'cover' });
+    expect(setCircularMask(el, true, null)).toBe(false);
+    expect(el).toEqual(image({ fit: 'cover' }));
+    // An existing crop already says where the picture is.
+    const sourceBox = { x: -100, y: 0, w: 1000, h: 400 };
+    expect(paintedMediaBox(image({ sourceBox }), null)).toEqual(sourceBox);
+    expect(circularMaskLayout(image({ sourceBox }), null)).not.toBeNull();
   });
 });
 
@@ -189,7 +210,7 @@ describe('fitting an uncropped picture frame to the picture', () => {
       const natural = { w: 1000, h: 1000 };
       const fitted = fittedImageBox(el, natural)!;
       expect(fitted).toMatchObject({ w: 400, h: 400, style: {} });
-      const before = pictureCentre(el, rot, paintedMediaBox(el, natural));
+      const before = pictureCentre(el, rot, paintedMediaBox(el, natural)!);
       const after = pictureCentre(fitted, rot, { x: 0, y: 0, w: fitted.w, h: fitted.h });
       expect(Math.abs(after.x - before.x)).toBeLessThanOrEqual(0.5);
       expect(Math.abs(after.y - before.y)).toBeLessThanOrEqual(0.5);
@@ -272,6 +293,45 @@ describe('dragging a crop window', () => {
   });
 });
 
+describe('resetting a crop', () => {
+  it('keeps the crop when a circle cannot be reset until the picture loads', () => {
+    const el = image({ w: 300, h: 300, maskShape: 'circle', sourceBox: { x: -100, y: 0, w: 600, h: 300 } });
+    const before = structuredClone(el);
+    expect(resetCrop(el, null)).toBe(false);
+    expect(el).toEqual(before);
+  });
+
+  it('re-centres a circle declared by CSS without changing its window', () => {
+    const el = image({ w: 300, h: 300, style: { 'border-radius': '50%' }, sourceBox: { x: -500, y: -20, w: 900, h: 450 } });
+    resetCrop(el, { w: 2, h: 1 });
+    expect(el).toMatchObject({ w: 300, h: 300, sourceBox: { x: -150, y: 0, w: 600, h: 300 } });
+  });
+
+  it('restores the whole picture where it was, rather than squeezing it into the window', () => {
+    for (const rot of [0, 30]) {
+      // A 4:3 picture cropped to a 200x150 window, panned off-centre.
+      const crop = { x: -120, y: -40, w: 400, h: 300 };
+      const el = image({ x: 500, y: 300, w: 200, h: 150, rot, sourceBox: crop, style: { 'object-position': '10px 20px' } });
+      const natural = { w: 800, h: 600 };
+      const before = pictureCentre(el, rot, crop);
+      resetCrop(el, natural);
+      expect(el).toMatchObject({ w: 400, h: 300, sourceBox: null, style: {} });
+      // Exactly the picture, so no fit letterboxes, stretches or re-covers it.
+      expect(paintedMediaBox(el, natural)).toEqual({ x: 0, y: 0, w: 400, h: 300 });
+      const after = pictureCentre(el, rot, { x: 0, y: 0, w: el.w, h: el.h });
+      expect(Math.abs(after.x - before.x)).toBeLessThanOrEqual(0.5);
+      expect(Math.abs(after.y - before.y)).toBeLessThanOrEqual(0.5);
+      expect([el.x, el.y, el.w, el.h].every(Number.isInteger)).toBe(true);
+    }
+  });
+
+  it('re-centres a circle in its window instead of dropping the crop', () => {
+    const el = image({ x: 100, y: 100, w: 300, h: 300, maskShape: 'circle', sourceBox: { x: -500, y: -20, w: 900, h: 450 } });
+    resetCrop(el, { w: 2, h: 1 });
+    expect(el).toMatchObject({ x: 100, y: 100, w: 300, h: 300, sourceBox: { x: -150, y: 0, w: 600, h: 300 } });
+  });
+});
+
 describe('panning a crop', () => {
   it('stops where the picture would leave its window, without a jump at the start', () => {
     const picture = { x: -100, y: -50, w: 600, h: 300 };
@@ -281,5 +341,45 @@ describe('panning a crop', () => {
     // Smaller than its window (letterboxed): stays inside it.
     expect(pannedSourceBox({ x: 0, y: 75, w: 800, h: 450 }, { w: 800, h: 600 }, 40, 500))
       .toEqual({ x: 0, y: 150, w: 800, h: 450 });
+  });
+});
+
+describe('relinking a trimmed video', () => {
+  type Video = Extract<SlideElement, { type: 'video' }>;
+  const video = (overrides: Partial<Video>): Video => ({
+    ...base, id: 'vid', type: 'video', w: 400, h: 400, src: 'assets/clip.mp4', fit: 'contain',
+    autoplay: true, loop: true, muted: true, controls: false, start: 2, end: 6, poster: null,
+    sourceBox: null, ...overrides,
+  });
+  const trimmed = { src: 'assets/clip.trim.mp4', width: 1920, height: 1080, duration: 4 };
+
+  it('keeps a square crop and a circle exactly as they were after a trim alone', () => {
+    // A 16:9 clip cropped to a square, and the same clip in a circle.
+    const square = video({ sourceBox: { x: -178, y: 0, w: 711, h: 400 } });
+    const circle = video({ maskShape: 'circle', w: 300, h: 300, sourceBox: { x: -117, y: 0, w: 533, h: 300 } });
+    for (const el of [square, circle]) {
+      const before = structuredClone(el);
+      relinkTrimmedVideo(el, { ...trimmed, cropped: false });
+      expect(el).toEqual({ ...before, src: trimmed.src, start: 0, end: null });
+    }
+  });
+
+  it('drops the old crop and takes the new proportions when ffmpeg cropped the frame', () => {
+    const el = video({ sourceBox: { x: -178, y: 0, w: 711, h: 400 } });
+    relinkTrimmedVideo(el, { ...trimmed, width: 800, height: 600, cropped: true });
+    expect(el).toMatchObject({ x: 10, y: 20, w: 400, h: 300, sourceBox: null, src: trimmed.src, start: 0, end: null });
+  });
+
+  it('lays a circle out again over the newly cropped frame, still round', () => {
+    const el = video({ maskShape: 'circle', w: 300, h: 300, sourceBox: { x: -117, y: 0, w: 533, h: 300 } });
+    relinkTrimmedVideo(el, { ...trimmed, width: 600, height: 800, cropped: true });
+    expect(el).toMatchObject({ x: 10, y: 20, w: 300, h: 300, maskShape: 'circle' });
+    // The new 3:4 frame covers the circle at its own aspect ratio.
+    const box = el.sourceBox!;
+    expect(box.w / box.h).toBeCloseTo(600 / 800, 2);
+    expect(box.x).toBeLessThanOrEqual(0);
+    expect(box.y).toBeLessThanOrEqual(0);
+    expect(box.x + box.w).toBeGreaterThanOrEqual(300);
+    expect(box.y + box.h).toBeGreaterThanOrEqual(300);
   });
 });

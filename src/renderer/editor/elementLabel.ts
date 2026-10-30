@@ -131,6 +131,28 @@ export function describeElement(el: SlideElement): string {
   }
 }
 
+/** The kind of object, in plain words, for the Props heading. */
+export function elementTypeName(el: SlideElement): string {
+  switch (el.type) {
+    case 'text':
+      return tableShape(el.html) ? 'Table' : 'Text';
+    case 'shape': {
+      const name = SHAPE_NAMES[el.shape] ?? 'shape';
+      return name[0]!.toUpperCase() + name.slice(1);
+    }
+    case 'image':
+      return 'Image';
+    case 'video':
+      return 'Video';
+    case 'web':
+      return 'Web page';
+    case 'html':
+      return 'HTML block';
+    case 'unsupported':
+      return 'Unconverted object';
+  }
+}
+
 /**
  * Fill `host` with the element's name plus colour swatches. Callers that only
  * need a plain string (titles, aria-labels) use `describeElement` directly.

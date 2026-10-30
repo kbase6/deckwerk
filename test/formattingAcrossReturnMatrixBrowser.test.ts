@@ -73,7 +73,7 @@ async function setField(label: string, value: string): Promise<void> {
 
 /** Pick the first swatch in the palette that is neither white nor black. */
 async function pickColour(): Promise<void> {
-  await session.cdp.click('#inspector .field-color .color-picker-trigger[aria-label^="Colour"]', 'Colour');
+  await session.cdp.click('#inspector .field-color .color-picker-trigger[aria-label^="Color"]', 'Colour');
   const found = await session.cdp.evaluate<boolean>(`(() => {
     const swatch = [...document.querySelectorAll('.color-picker-popover .color-picker-palette-button')]
       .find((node) => !['#ffffff', '#000000'].includes(node.title.toLowerCase()));

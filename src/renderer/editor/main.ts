@@ -10,6 +10,7 @@ import { emptyDeck } from '@shared/deck.js';
 import type { AgentSessionConnection, AuthoredHtmlFile, PresentationImportResult } from '@shared/ipc.js';
 import { captureEditorView, decodeEditorView, restoreEditorView } from '@shared/editorView.js';
 import { setIdSuffix } from '@shared/geometry.js';
+import { relinkTrimmedVideo } from '@shared/mediaMask.js';
 import { adoptAuthoredIds, describeHtmlSync, htmlSyncSummary, pageStampOf, stampPage } from '@shared/htmlSlides.js';
 import { rangeForSlideSelection } from '@shared/presentationRange.js';
 import {
@@ -28,7 +29,7 @@ import { CANVAS_NOTICE_EVENT, EditorCanvas } from './canvas.js';
 import { CssEditor } from './cssEditor.js';
 import { Inspector } from './inspector.js';
 import { HistoryPanel } from './historyPanel.js';
-import { authoredHtmlSync, fileName } from './htmlCompile.js';
+import { authoredHtmlSync, compileStillHolds, fileName } from './htmlCompile.js';
 import { createShapeInsertPicker, createTableInsertPicker, insertText } from './elementCreation.js';
 import { createToolbarPicker, createToolbarSplitButton } from './exportPicker.js';
 import { showPdfExportDialog } from './pdfExportDialog.js';
@@ -53,6 +54,7 @@ import { installWindowApiPosterProvider } from '../player/previewPosterProvider.
 import { EditorStore } from './store.js';
 import { statusBarText } from './statusBar.js';
 import { TimelinePanel } from './timelinePanel.js';
+import { SIDE_PANELS, buildSidePanelTabs } from './sidePanels.js';
 import { WelcomeScreen } from './welcomeScreen.js';
 import { CollabBridge } from '../collab/collabBridge.js';
 import { PresenceOverlay } from '../collab/presenceOverlay.js';
@@ -151,6 +153,7 @@ new TimelinePanel(el('timeline'), store);
 new HistoryPanel(el('history'), store);
 const rail = new SlideRail(el('rail'), store);
 rail.onStatus = setStatusMessage;
+inspector.onStatus = setStatusMessage;
 const editorBody = el('body');
 const railDivider = document.createElement('div');
 railDivider.className = 'panel-resize-divider panel-resize-rail';
@@ -338,9 +341,11 @@ function applyHtmlEdit(
     let stampedContents: string | null = null;
     try {
       const outcome = await runOperation(`Compiling ${name}…`, async (operation): Promise<HtmlSyncOutcome> => {
-        // Compiling takes a moment, and the user may edit during it. The
-        // operations address slides by id in a deck that has since been replaced,
-        // so compile again rather than apply them to a document that moved.
+        // Compiling takes a moment, and the user may edit during it. An edit to
+        // a slide the page governs outdates the compile, so compile again rather
+        // than apply it over that edit; one elsewhere (speaker notes being typed
+        // on another slide) does not, and the operations land on the deck as it
+        // now stands.
         for (let attempt = 0; attempt < 3; attempt++) {
           operation.update(`Laying out slides from ${name}`);
           const deck = store.get().deck;
@@ -350,7 +355,7 @@ function applyHtmlEdit(
             cssEditor.getValue(),
             options,
           );
-          if (store.get().deck !== deck) continue;
+          if (!compileStillHolds(deck, store.get().deck, file, slides)) continue;
           // Inline style the browser's parser dropped would otherwise vanish
           // silently: the page measured without it, yet the apply reads as clean.
           const warned = warnings.length === 0 ? ''
@@ -370,7 +375,7 @@ function applyHtmlEdit(
           });
           if (!transaction) return summarise(`${name} asks for no change${warned}`, []);
           operation.update(`Applying slides from ${name}`);
-          store.replaceWithHistory(applyAgentTransaction(deck, transaction), transaction.label);
+          store.replaceWithHistory(applyAgentTransaction(store.get().deck, transaction), transaction.label);
           await save();
           // Stamp the ids this compile assigned back into the file, so saving it
           // again replaces these slides rather than inserting them a second time
@@ -669,6 +674,9 @@ async function toggleAgentPanel(): Promise<void> {
   }
 }
 
+/** Collaborate has no sign-in: say so plainly whenever it starts. */
+const OPEN_ON_NETWORK = 'Anyone on your local network can open and edit this presentation.';
+
 async function startSharing(): Promise<void> {
   try {
     if (activeSessionMode === 'collaboration') {
@@ -695,7 +703,7 @@ async function startSharing(): Promise<void> {
       });
       connectAgentSession(connection);
     });
-    setStatusMessage('Collaboration link copied to clipboard.');
+    setStatusMessage(`Collaboration link copied. ${OPEN_ON_NETWORK}`);
   } catch (err) {
     setStatusMessage(`Collaboration failed: ${err instanceof Error ? err.message : err}`);
   }
@@ -805,7 +813,7 @@ function connectAgentSession(connection: AgentSessionConnection): void {
       publishAgentPresence();
       queueAgentSessionSnapshot();
       setStatusMessage(activeSessionMode === 'collaboration'
-        ? 'Collaboration connected — edits and cursors sync live.'
+        ? `Collaboration connected. ${OPEN_ON_NETWORK}`
         : 'Filesystem agent connected — edits sync live.');
     },
     onDeckReplaced: (deck, label, options) => {
@@ -946,7 +954,7 @@ async function importPresentation(
   }
 }
 
-/** The Theme sidebar tab, shared with the browser collab shell. */
+/** The Design sidebar tab, shared with the browser collab shell. */
 const designWorkspace = new DesignWorkspace({
   canvasHost: el('canvas'),
   store,
@@ -978,27 +986,11 @@ document.addEventListener('keydown', (event) => {
     event.stopPropagation();
   }
 }, true);
-inspector.onEditLayouts = (layout) => designWorkspace.openLayoutEditor(layout);
 inspector.onPreviewSlide = (slide, label) => designWorkspace.previewSlideOnCanvas(slide, label);
 /* --- side panel tabs --- */
 
-const PANELS = [
-  { id: 'inspector', label: 'Props' },
-  { id: 'themePanel', label: 'Design' },
-  { id: 'timeline', label: 'Build' },
-  { id: 'history', label: 'History' },
-] as const;
-
 function buildTabs(): void {
-  const tabs = el('side-tabs');
-  tabs.replaceChildren();
-  for (const panel of PANELS) {
-    const b = document.createElement('button');
-    b.textContent = panel.label;
-    b.dataset.panel = panel.id;
-    b.addEventListener('click', () => showPanel(panel.id));
-    tabs.appendChild(b);
-  }
+  buildSidePanelTabs(el('side-tabs'), SIDE_PANELS, showPanel);
   showPanel('inspector');
 }
 
@@ -1006,8 +998,10 @@ let activePanelId = 'inspector';
 
 function showPanel(id: string): void {
   if (store.get().slideSelection.size > 1 && id !== 'themePanel' && id !== 'inspector') return;
+  // Leaving Design ends a theme edit first, and asks when it has changes.
+  if (id !== 'themePanel' && themePanel.confirmDiscardDraft(() => showPanel(id))) return;
   activePanelId = id;
-  for (const panel of PANELS) {
+  for (const panel of SIDE_PANELS) {
     el(panel.id).hidden = panel.id !== id;
   }
   for (const b of el('side-tabs').querySelectorAll('button')) {
@@ -1020,7 +1014,7 @@ function showPanel(id: string): void {
   canvas.setBuildBadgesVisible(id === 'timeline');
 }
 
-/** Multi-slide selection is a deck-level editing context: Theme and Props (Morph) apply. */
+/** Multi-slide selection is a deck-level editing context: Design and Format (Morph) apply. */
 function syncSlideSelectionContext(): void {
   const count = store.get().slideSelection.size;
   const multiple = count > 1;
@@ -1196,17 +1190,28 @@ const operationProgress = new DelayedOperationProgress(({ message, busy }) => {
 
 window.api.onOperationProgress?.((progress) => operationProgress.update(progress));
 
-async function runOperation<T>(
+/** Settles once the operation the status bar is showing has ended. */
+let operationEnded: Promise<unknown> = Promise.resolve();
+
+function runOperation<T>(
   initialMessage: string,
   action: (operation: OperationHandle) => Promise<T>,
 ): Promise<T> {
   const operation = operationProgress.begin(initialMessage);
-  try {
-    return await action(operation);
-  } finally {
-    operation.finish();
-  }
+  const run = (async () => {
+    try {
+      return await action(operation);
+    } finally {
+      operation.finish();
+    }
+  })();
+  operationEnded = run.catch(() => undefined);
+  return run;
 }
+
+// A deck is watched before its window has finished opening it, and the open's
+// progress text would wipe a notice that arrived meanwhile: show it after.
+window.api.onWatchNotice?.((text) => void operationEnded.then(() => setStatusMessage(text)));
 
 function setStatusMessage(text: string): void {
   statusMessage = text;
@@ -1280,18 +1285,9 @@ window.api.onTrimDone((result) => {
   store.commit((deck) => {
     for (const slide of deck.slides) {
       const element = slide.elements.find((e) => e.id === targetId);
-      if (!element || element.type !== 'video') continue;
-      element.src = result.src;
-      // The trim is baked into the file, so the non-destructive in/out points
-      // must reset or they'd clip the already-clipped result.
-      element.start = 0;
-      element.end = null;
-      if (result.width && result.height) {
-        // Keep the on-slide width and adopt the crop's new aspect ratio.
-        element.h = Math.round((element.w * result.height) / result.width);
-      }
+      if (element?.type === 'video') relinkTrimmedVideo(element, result);
     }
-  });
+  }, { label: 'Trim video' });
   void save();
 });
 

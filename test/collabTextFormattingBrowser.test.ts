@@ -63,7 +63,7 @@ const PANEL = '#inspector';
 const ALIGN_BUTTON = (index: number) => `${PANEL} .align-button:nth-of-type(${index + 1})`;
 // Scope to the typography colour: the panel also carries slide background and
 // border colour fields, and picking the wrong one would pass for the wrong reason.
-const COLOR_TRIGGER = `${PANEL} .field-color .color-picker-trigger[aria-label^="Colour"]`;
+const COLOR_TRIGGER = `${PANEL} .field-color .color-picker-trigger[aria-label^="Color"]`;
 const SWATCH = (color: string) => `.color-picker-popover .color-picker-palette-button[title="${color}"]`;
 const CLEAR_COLOR = '.color-picker-popover .color-picker-clear';
 const HEX_INPUT = '.color-picker-popover input[aria-label="Hex color"]';
@@ -133,7 +133,7 @@ describe.skipIf(!electronBinary)('text formatting in the collaboration browser',
     // tab. Nothing below assumes which side panel happened to open first.
     const panelLabels = await editor.evaluate<string[]>(
       `[...document.querySelectorAll('#side-tabs button')].map((b) => b.textContent.trim())`);
-    expect(panelLabels).toEqual(['Props', 'Design', 'Build', 'History', 'Chat']);
+    expect(panelLabels).toEqual(['Format', 'Design', 'Animations', 'History', 'Chat']);
     await editor.click('#side-tabs button[data-panel="themePanel"]', 'Design tab');
     await editor.click('#side-tabs button[data-panel="inspector"]', 'Props tab');
     expect(await editor.evaluate<boolean>(

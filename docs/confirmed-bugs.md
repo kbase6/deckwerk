@@ -411,7 +411,10 @@ a visual one.** The non-text bugs are all of this kind:
   every slide object was identical and the row cache handed the same DOM node
   back — the re-render meant to clear the mark never rebuilt the row carrying
   it. Aborted gestures are a whole unfuzzed class: begin-and-abandon for drag,
-  resize, crop, marquee and text editing.
+  resize, crop, marquee and text editing. The cross-context walk's `abandon
+  gesture` now covers the canvas half (a drag, a resize, a crop or a marquee
+  cut short by pointer-cancel, Escape or a window blur); rail drags and text
+  editing are still uncovered.
 
 The transferable rule: **an oracle that only asks "is this well-formed?" will
 never find a bug whose output is well-formed**, and most of the bugs an author

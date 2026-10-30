@@ -392,8 +392,8 @@ the participant id.
   surface ends the show on both. Speaker View needs pop-ups allowed for the
   site; if the second window is refused, Present falls back to presenting in
   this tab and says why.
-- **Sidebar tabs** — Props, Theme (the full preset gallery + adoption
-  controls, shared code with the desktop app), Build, History. Restoring a
+- **Sidebar tabs** — Format, Design (the full preset gallery + adoption
+  controls, shared code with the desktop app), Animations, History. Restoring a
   history snapshot broadcasts as an ordinary transaction.
 
 ## Local development

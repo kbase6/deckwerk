@@ -30,10 +30,12 @@ import { collabClientDir } from './support/collabClient.js';
  * bars) snapped into the picture on its first crop, a circular mask grew past
  * the picture and lost its circle, a pan could drag the picture off its window,
  * and a pan that could not move still left an undo step and a crop behind.
+ * In crop mode the ghost of what is cut away was a tint without the picture,
+ * stood upright beside turned media, and was missing for an uncropped `cover`.
  *
  * The invariants: **looking at a slide never edits it; a crop moves only the
  * edge dragged, never the picture; the window never shows past the picture;
- * geometry is whole pixels.** Real media, the real Edit mask button, real CDP
+ * geometry is whole pixels.** Real media, the real Crop… button, real CDP
  * pointer input; test/mediaCrop.test.ts walks the arithmetic.
  */
 const DECK_ID = 'crop-outline-bugs';
@@ -64,11 +66,15 @@ const FRAMED: Rect = { x: 80, y: 580, w: 700, h: 460 };
 const BACKED: Rect = { x: 860, y: 60, w: 400, h: 400 };
 const CLIP: Rect = { x: 860, y: 560, w: 480, h: 400 };
 const EXACT: Rect = { x: 1380, y: 620, w: 480, h: 270 };
+// Cropped and turned: what the crop cuts away turns with it.
+const TURNED: Rect = { x: 1420, y: 390, w: 180, h: 100 };
+// Uncropped `cover`: the picture overflows its window with no crop written.
+const COVERED: Rect = { x: 1420, y: 920, w: 160, h: 140 };
 // The circle touches the picture's top and bottom: 270 square, picture 480x270.
 const ROUND = circularMaskLayout(
   media('round', 'image', { x: 1380, y: 60, w: 480, h: 270 }) as never,
   NATURAL,
-);
+)!;
 
 beforeAll(async () => {
   if (!electronBinary) return;
@@ -90,6 +96,8 @@ beforeAll(async () => {
     media('clip', 'video', CLIP),
     media('exact', 'image', EXACT),
     media('round', 'image', ROUND, { maskShape: 'circle', sourceBox: ROUND.sourceBox }),
+    media('turned', 'image', TURNED, { rot: 30, sourceBox: { x: -60, y: -40, w: 320, h: 180 } }),
+    media('covered', 'image', COVERED, { fit: 'cover' }),
   ] as Deck['slides'][number]['elements'];
   await saveDeck(deckDir, deck);
   await writeFile(join(deckDir, 'theme.css'), '.slide { background: #fff; }\n', 'utf8');
@@ -98,7 +106,7 @@ beforeAll(async () => {
   const target = await findTarget(browser.debugPort, (c) => c.url.includes(`deck=${DECK_ID}`), browser.log);
   cdp = await Cdp.connect(target.webSocketDebuggerUrl!);
   await eventually(() => cdp.evaluate<boolean>(`(() => {
-    const ids = ${JSON.stringify(['fit', 'framed', 'backed', 'exact', 'round'])};
+    const ids = ${JSON.stringify(['fit', 'framed', 'backed', 'exact', 'round', 'turned', 'covered'])};
     const images = ids.map((id) => document.querySelector('#canvas [data-element-id="' + id + '"] img'));
     const video = document.querySelector('#canvas [data-element-id="clip"] video');
     return images.every((img) => img?.naturalWidth > 0) && video?.videoWidth > 0;
@@ -247,13 +255,13 @@ const clickControl = async (selector: string, text: string) => {
 
 const enterCrop = async (id: string, box: Rect) => {
   await select(id, box);
-  await clickControl('.mask-action-row .panel-action', 'Edit mask');
+  await clickControl('.mask-action-row .panel-action', 'Crop…');
   await eventually(() => cdp.evaluate<boolean>(`!!document.querySelector('#canvas .sel-box.masking')`),
     `${id}: mask mode never began`);
 };
 
 const leaveCrop = async () => {
-  await clickControl('.mask-action-row .panel-action', 'Done editing mask');
+  await clickControl('.mask-action-row .panel-action', 'Done cropping');
   await eventually(() => cdp.evaluate<boolean>(`!document.querySelector('#canvas .sel-box.masking')`),
     'mask mode never ended');
 };
@@ -311,6 +319,24 @@ describe.skipIf(!electronBinary)('the crop outline and the first crop of letterb
       await leaveCrop();
     }
     expect(await onServer('fit')).toEqual({ ...FIT, sourceBox: null });
+  });
+
+  // The click-away test read the empty frame while the pan read the picture,
+  // so a press in the letterbox bars neither ended the crop nor panned: it
+  // moved the whole object with crop mode still on.
+  it('ends crop mode on a click in the letterbox bars, as anywhere outside the picture', { timeout: 120_000 }, async () => {
+    const before = await edits();
+    const picture = await painted('fit');
+    await enterCrop('fit', FIT);
+    const bar = await screenPoint(FIT.x + FIT.w / 2, (FIT.y + picture.y) / 2);
+    // Soundness: the point is inside the frame and outside the picture.
+    expect(picture.y - FIT.y, 'the fixture has no letterbox bar').toBeGreaterThan(40);
+    await cdp.clickAt(bar.x, bar.y);
+    await wait(600);
+    expect(await cdp.evaluate<string | null>('window.canvas.maskingElement()'), 'crop mode after the click')
+      .toBeNull();
+    expect(await element('fit'), 'the click edited the picture').toEqual({ ...FIT, sourceBox: null });
+    expect(await edits(), 'the click left an edit behind').toEqual(before);
   });
 
   it('crops a fitted picture from the picture, moving only the dragged edge', { timeout: 120_000 }, async () => {
@@ -413,5 +439,48 @@ describe.skipIf(!electronBinary)('the crop outline and the first crop of letterb
       wholePixels(panned, 'round after panning');
     }
     await leaveCrop();
+  });
+
+  it('shows the whole picture faintly where the crop cuts it away, turned as the media is', { timeout: 120_000 }, async () => {
+    // `clip` was cropped by an earlier case, so a video's frame is covered too.
+    const clip = await element('clip');
+    const cases = [
+      ['turned', TURNED],
+      ['covered', COVERED],
+      ['clip', { x: clip.x, y: clip.y, w: clip.w, h: clip.h }],
+    ] as const;
+    for (const [id, box] of cases) {
+      // The picture as painted, turned or not: for a turned crop, the bounds
+      // of the whole turned picture.
+      const picture = await painted(id);
+      // Soundness: the crop really does cut part of the picture away.
+      expect(picture.w, `${id}: the fixture cuts nothing away`).toBeGreaterThan(box.w + 40);
+      await enterCrop(id, box);
+      const ghost = await onSlide('#canvas .mask-ghost');
+      expect(ghost, `${id}: nothing shows what the crop cuts away`).not.toBeNull();
+      near(ghost!, picture, `${id}: the ghost is not where the whole picture is painted`);
+      // It is the picture itself, faint, not merely a tinted box.
+      const copy = await eventually(() => cdp.evaluate<{ same: boolean; drawn: boolean; opacity: number } | null>(`(() => {
+        const copy = document.querySelector('#canvas .mask-ghost > img, #canvas .mask-ghost > canvas');
+        const live = document.querySelector('#canvas [data-element-id="${id}"]').querySelector('img, video');
+        if (!copy) return null;
+        const image = copy.tagName === 'IMG';
+        return {
+          same: image
+            ? copy.currentSrc === live.currentSrc
+            : copy.width === live.videoWidth && copy.height === live.videoHeight,
+          drawn: image
+            ? copy.complete && copy.naturalWidth > 0
+            : copy.getContext('2d').getImageData(copy.width >> 1, copy.height >> 1, 1, 1).data[3] === 255,
+          opacity: Number(getComputedStyle(copy).opacity),
+        };
+      })()`), `${id}: the ghost never showed the picture`, (c) => Boolean(c?.drawn));
+      expect(copy!.same, `${id}: the ghost shows something other than this picture`).toBe(true);
+      expect(copy!.opacity, `${id}: the ghost's picture is not faint`).toBeGreaterThan(0);
+      expect(copy!.opacity, `${id}: the ghost's picture is not faint`).toBeLessThan(1);
+      near((await onSlide('#canvas .mask-ghost > :is(img, canvas)'))!, picture,
+        `${id}: the ghost's picture does not sit on the picture`);
+      await leaveCrop();
+    }
   });
 });

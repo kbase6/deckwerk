@@ -80,7 +80,7 @@ describe.skipIf(!electronBinary)('new slide from Return in the slide picker (web
     await eventually(() => computedType(cdp, 'imported'), 'Done did not match the preview', (type) => type.size === '100px');
 
     await cdp.click(ACTIVE_CARD, 'current theme card');
-    await cdp.clickByText(`${CHOOSER} .theme-mode-option`, 'Dark', 'Dark appearance');
+    await cdp.clickByText('#themePanel .theme-default-mode .theme-mode-option', 'Dark', 'Slide colors: Dark');
     await cdp.click(NOIR_CARD, 'Noir theme card');
     const changed = await eventually(fetchDeck, 'Noir did not reach the server', (current) => current.themePreset === 'noir');
     expect(changed.slides[1].background.color).toBe(swiss.colors.background);
@@ -160,7 +160,7 @@ describe.skipIf(!electronBinary)('new slide from Return in the slide picker (web
       'theme chooser did not open',
       (display) => display !== 'none',
     );
-    await cdp.clickByText(`${CHOOSER} .theme-mode-option`, 'Dark', 'Dark appearance');
+    await cdp.clickByText('#themePanel .theme-default-mode .theme-mode-option', 'Dark', 'Slide colors: Dark');
     await eventually(
       () => cdp.evaluate<boolean>(`Boolean(document.querySelector(${JSON.stringify(NOIR_CARD)}))`),
       'gallery did not offer the Noir card in Dark mode',

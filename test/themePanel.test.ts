@@ -44,6 +44,8 @@ describe('theme panel', () => {
     // The three masters, drawn in the theme; clicking one edits it.
     const masters = panel.element.querySelectorAll<HTMLButtonElement>('.layouts-section .design-master');
     expect(masters).toHaveLength(3);
+    // The tiles are the way in: no separate "Edit layouts…" button beside them.
+    expect(panel.element.querySelectorAll('.layouts-section button')).toHaveLength(3);
     masters[1].click();
     expect(onEditLayouts).toHaveBeenCalledWith('standard');
 
@@ -216,6 +218,37 @@ describe('theme panel', () => {
     expect((onThemePreview.mock.calls.at(-1)?.[0] as { id: string }).id).toBe(`${light.id}-dark`);
     // Flipping the switch is still browsing: the chooser stays open.
     expect(panel.element.querySelector<HTMLElement>('.theme-chooser')!.hidden).toBe(false);
+  });
+
+  it('offers one Slide colors switch that says it restyles every slide', () => {
+    const store = new EditorStore(emptyDeck('Theme panel'), '/tmp/theme-panel');
+    const panel = createThemePanel({
+      store,
+      cssEditor: { getValue: () => '', setValue: vi.fn() } as unknown as CssEditor,
+      save: vi.fn(),
+      setStatusMessage: vi.fn(),
+      saveThemeCss: vi.fn(),
+    });
+    document.body.appendChild(panel.element);
+    const themeName = panel.currentTheme()!.name;
+
+    // With the chooser open there is still one switch, not a second copy above it.
+    panel.element.querySelector<HTMLButtonElement>('.theme-active-card')!.click();
+    const toggles = panel.element.querySelectorAll<HTMLElement>('.theme-mode-toggle');
+    expect(toggles).toHaveLength(1);
+    const [toggle] = toggles;
+    // Named for what it changes: the slides, not the editor window.
+    expect(toggle.getAttribute('aria-label')).toBe('Slide colors');
+    expect(toggle.closest('.theme-default-row')!.querySelector('.theme-default-label')!.textContent)
+      .toBe('Slide colors');
+    expect(toggle.title).toContain(`Switches every slide to the light or dark version of ${themeName}.`);
+    expect(toggle.title).toContain('Editor appearance');
+
+    // The dark half is still the same theme by name.
+    [...toggle.querySelectorAll<HTMLButtonElement>('.theme-mode-option')]
+      .find((button) => button.textContent === 'Dark')!.click();
+    expect(store.get().deck.themeSelection?.preset).toMatch(/-dark$/);
+    expect(toggle.title).toContain(`light or dark version of ${themeName}.`);
   });
 
   it('ends the central preview whenever the chooser closes', () => {
@@ -433,6 +466,32 @@ describe('theme panel', () => {
   });
 });
 
+describe('the theme editor’s wording', () => {
+  it('names its groups and colors in plain words', () => {
+    const deck = emptyDeck('Wording');
+    deck.themePreset = THEMES[0].id;
+    const store = new EditorStore(deck, '/tmp/theme-panel-wording');
+    const panel = createThemePanel({
+      store,
+      cssEditor: { getValue: () => '', setValue: vi.fn() } as unknown as CssEditor,
+      save: vi.fn(),
+      setStatusMessage: vi.fn(),
+      saveThemeCss: vi.fn(),
+    });
+    document.body.appendChild(panel.element);
+    panel.element.querySelector<HTMLButtonElement>('.theme-edit-button')!.click();
+
+    const editor = panel.element.querySelector<HTMLElement>('.theme-inline-editor')!;
+    expect([...editor.querySelectorAll('.theme-option-title')].map((node) => node.textContent).slice(1))
+      .toEqual(['Fonts', 'Text sizes', 'Main colors', 'Extra colors for shapes']);
+    expect([...editor.querySelectorAll('.font-family-field .field > span')].map((node) => node.textContent))
+      .toEqual(['Title font', 'Body font', 'Caption font']);
+    expect([...editor.querySelectorAll('.field-color > span')].slice(0, 4).map((node) => node.textContent))
+      .toEqual(['Background', 'Text', 'Secondary text', 'Accent']);
+    expect(editor.textContent).not.toMatch(/Typeface|Type scale|Semantic|Swatch|Muted/i);
+  });
+});
+
 describe('the theme editor’s type scale', () => {
   it('edits one role’s size into theme.css on Done, and every slide follows it', () => {
     const deck = emptyDeck('Scale panel');
@@ -544,6 +603,78 @@ describe('the theme editor’s type scale', () => {
       .find((node) => node.textContent === 'Cancel')!.click();
     expect(JSON.stringify(store.get().deck)).toBe(before);
     expect(store.canUndo()).toBe(false);
+  });
+
+  it('never drops a changed draft without asking, and leaves no preview behind', async () => {
+    const deck = emptyDeck('Scale panel');
+    deck.themePreset = THEMES[0].id;
+    deck.themeStyle = structuredClone({
+      fonts: THEMES[0].fonts, palette: THEMES[0].palette, colors: THEMES[0].colors,
+    });
+    const store = new EditorStore(deck, '/tmp/theme-panel-scale');
+    const onPreviewThemeDraft = vi.fn();
+    const panel = createThemePanel({
+      store,
+      cssEditor: { getValue: () => '', setValue: vi.fn() } as unknown as CssEditor,
+      save: vi.fn(),
+      setStatusMessage: vi.fn(),
+      saveThemeCss: vi.fn(),
+      onPreviewThemeDraft,
+    });
+    document.body.appendChild(panel.element);
+    const before = JSON.stringify(store.get().deck);
+    const edit = panel.element.querySelector<HTMLButtonElement>('.theme-edit-button')!;
+    const editor = panel.element.querySelector<HTMLElement>('.theme-inline-editor')!;
+    const titleSize = () => panel.element.querySelector<HTMLElement>('.theme-role-size')!.querySelector('input')!;
+    const dialog = () => document.querySelector<HTMLElement>('.confirm-dialog');
+    const answer = async (label: string): Promise<void> => {
+      await vi.waitFor(() => expect(dialog()).not.toBeNull());
+      [...dialog()!.querySelectorAll('button')].find((button) => button.textContent === label)!.click();
+      await vi.waitFor(() => expect(dialog()).toBeNull());
+    };
+
+    edit.click();
+    titleSize().value = '100';
+    titleSize().dispatchEvent(new Event('change', { bubbles: true }));
+
+    // Escape or a slide click asks first; keeping the edit keeps all of it.
+    expect(panel.dismiss()).toBe(true);
+    await vi.waitFor(() => expect(dialog()?.querySelector('h2')?.textContent).toBe('Discard theme changes?'));
+    expect(editor.hidden).toBe(false);
+    // While it asks, Escape is the question's, not another dismissal.
+    expect(panel.dismiss()).toBe(false);
+    expect(document.querySelectorAll('.confirm-dialog')).toHaveLength(1);
+    await answer('Keep editing');
+    expect(editor.hidden).toBe(false);
+    expect(titleSize().value).toBe('100');
+    expect(onPreviewThemeDraft).not.toHaveBeenLastCalledWith(null);
+
+    // Pressing the button again is no way out: it waits for Done or Cancel.
+    expect(edit.textContent).toBe('Edit theme…');
+    expect(edit.disabled).toBe(true);
+    edit.click();
+    expect(editor.hidden).toBe(false);
+    expect(titleSize().value).toBe('100');
+
+    // Another tab waits for the answer, and goes only once the edit is gone.
+    const leave = vi.fn();
+    expect(panel.confirmDiscardDraft(leave)).toBe(true);
+    expect(leave).not.toHaveBeenCalled();
+    await answer('Discard');
+    expect(leave).toHaveBeenCalledTimes(1);
+    expect(editor.hidden).toBe(true);
+    expect(edit.disabled).toBe(false);
+    expect(onPreviewThemeDraft).toHaveBeenLastCalledWith(null);
+    expect(JSON.stringify(store.get().deck)).toBe(before);
+
+    // An edit that changed nothing has nothing to lose: it ends at once.
+    edit.click();
+    const quiet = vi.fn();
+    expect(panel.confirmDiscardDraft(quiet)).toBe(false);
+    expect(quiet).not.toHaveBeenCalled();
+    expect(editor.hidden).toBe(true);
+    expect(onPreviewThemeDraft).toHaveBeenLastCalledWith(null);
+    expect(dialog()).toBeNull();
   });
 
 });
