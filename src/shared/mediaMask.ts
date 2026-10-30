@@ -184,6 +184,40 @@ export function cropWindow(
 }
 
 /**
+ * Undo a crop: the frame becomes the whole picture again, exactly where the
+ * crop painted it, so no `fit` has to squeeze, stretch or re-cover it into
+ * the cropped window. A circle has no corners to fill, so dropping its crop
+ * would leave slide showing through; the picture is re-centred in the circle
+ * instead -- that is what "the whole frame" means there.
+ */
+export function resetCrop(el: MediaElement, natural: Size | null): boolean {
+  const crop = el.sourceBox;
+  el.sourceBox = null;
+  if (editableCircularMask(el)) {
+    if (setCircularMask(el, true, natural)) return true;
+    el.sourceBox = crop;
+    return false;
+  }
+  if (!crop) return true;
+  // As in `cropWindow`: the rotation centre moves with the frame, so turn its
+  // shift back into slide space and the picture stays put.
+  const w = Math.max(1, Math.round(crop.w));
+  const h = Math.max(1, Math.round(crop.h));
+  const cx = crop.x + (crop.w - el.w) / 2;
+  const cy = crop.y + (crop.h - el.h) / 2;
+  const radians = el.rot * Math.PI / 180;
+  el.x = Math.round(el.x + (el.w - w) / 2 + cx * Math.cos(radians) - cy * Math.sin(radians));
+  el.y = Math.round(el.y + (el.h - h) / 2 + cx * Math.sin(radians) + cy * Math.cos(radians));
+  el.w = w;
+  el.h = h;
+  // The crop already placed the picture; a stale offset would now shift it.
+  const style = { ...el.style };
+  delete style['object-position'];
+  el.style = style;
+  return true;
+}
+
+/**
  * `sourceBox` for a crop panned by (`dx`, `dy`) from `base`: a picture that
  * covers its window keeps covering it, and one smaller than its window stays
  * inside it. A pan never starts by jumping, wherever the picture began.
