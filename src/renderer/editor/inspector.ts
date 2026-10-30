@@ -1689,7 +1689,7 @@ export class Inspector {
       mixedCheckboxField(
         'Circular mask',
         commonValue(media.map(editableCircularMask)),
-        (on) => this.updateMediaMasks((element) => setMediaMask(element, on)),
+        (on) => this.updateMediaMasks((element) => setMediaMask(element, on), on ? 'Circular mask' : 'Rectangular mask'),
       ),
     );
     masking.content.appendChild(maskSettings);
