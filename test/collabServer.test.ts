@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mkdir, mkdtemp, readdir, readFile, rm, stat, utimes, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { networkInterfaces, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import WebSocket from 'ws';
 import { connect as connect_ } from 'node:net';
@@ -542,6 +542,37 @@ describe('collab server', () => {
       });
     }
   });
+  it('keeps a desktop Agent session off the local network, unlike Collaborate', async () => {
+    // The desktop app starts both sessions like this, with no host: only
+    // Collaborate is meant to be reachable from other machines.
+    const lanAddresses = Object.values(networkInterfaces())
+      .flatMap((list) => list ?? [])
+      .filter((iface) => iface.family === 'IPv4' && !iface.internal)
+      .map((iface) => iface.address);
+    const reachable = (host: string, port: number) => new Promise<boolean>((resolve) => {
+      const socket = connect_({ host, port, timeout: 2_000 });
+      socket.once('connect', () => { socket.destroy(); resolve(true); });
+      socket.once('error', () => resolve(false));
+      socket.once('timeout', () => { socket.destroy(); resolve(false); });
+    });
+
+    await server.close();
+    server = await startCollabServer({ rootDir, port: 0, hostedDeckId: DECK_ID });
+    // Soundness: this machine reaches a session on its own LAN address, so a
+    // refusal below is the server's doing, not the test environment's.
+    for (const address of lanAddresses) {
+      expect(await reachable(address, server.port), `Collaborate on ${address}`).toBe(true);
+    }
+    await server.close();
+
+    server = await startCollabServer({ rootDir, port: 0, hostedDeckId: DECK_ID, agentMode: true });
+    expect(server.urls).toEqual([`http://127.0.0.1:${server.port}/`]);
+    expect(await reachable('127.0.0.1', server.port)).toBe(true);
+    for (const address of lanAddresses) {
+      expect(await reachable(address, server.port), `Agent session on ${address}`).toBe(false);
+    }
+  });
+
   it('ends the session even while a client is holding a stalled response open', async () => {
     await server.close();
     let ended = 0;
