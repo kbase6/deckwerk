@@ -276,6 +276,26 @@ for (const kind of BACKENDS) describe.skipIf(!electronBinary)(`an agent working 
     expect(after.morphFromPrevious).toBe(false);
   });
 
+  // CSS reads a lone `top` as `center top`. The compile's own keyword reader
+  // read it as the left edge and the middle; Chromium happened to rewrite the
+  // attribute to `center top` before it looked, so this guards that the crop
+  // frozen from an agent's framing still shows the top of the picture.
+  it('freezes a picture framed with one object-position keyword where CSS puts it', async () => {
+    const workspace = await open(kind);
+    const page = (await exportPage(workspace, 'details')).replace(
+      /(<img[^>]*data-element-id="details-framed"[^>]*?)object-fit:cover;/,
+      '$1object-fit:cover; object-position:top;');
+    expect(page).toContain('object-position:top;');
+    await workspace.write('work.html', page);
+    expect(landed(await apply(workspace, 'work.html'), workspace).changes.replaced).toEqual(['details']);
+    const framed = slideById(await workspace.deck(), 'details').elements
+      .find((candidate) => candidate.id === 'details-framed');
+    // The 1×1 fixture covering the 400×300 box is drawn 400×400; `top` keeps
+    // its top 300 rows, so nothing of it sits above the window.
+    expect(framed, JSON.stringify(framed)).toMatchObject({ sourceBox: { x: 0, y: 0, w: 400, h: 400 } });
+    expect(framed?.style['object-position']).toBeUndefined();
+  });
+
   // Props → Style → Ends: a line's ends are its `stroke-linecap`, carried on
   // the shape's inline style. A compile that dropped it reset a round rule to
   // flat, and a flat curve back to round, on every save of the slide.
