@@ -756,19 +756,23 @@ function renderBody(el: SlideElement, opts: RenderOptions): HTMLElement | SVGEle
 
     case 'image': {
       if (isPendingSrc(el.src)) return renderPendingPlaceholder(el.src);
+      // A PDF figure is an <embed>, but it is cropped and fitted exactly like
+      // a picture: returning it before the crop branch left the crop applied
+      // only by the editor's patch path, unclipped, and lost on any rebuild.
+      let img: HTMLElement;
       if (/\.pdf(?:$|[?#])/i.test(el.src)) {
         const pdf = document.createElement('embed');
         pdf.src = `${opts.resolveSrc(el.src)}#page=1&toolbar=0&navpanes=0`;
         pdf.type = 'application/pdf';
-        pdf.style.width = '100%';
-        pdf.style.height = '100%';
         pdf.style.pointerEvents = 'none';
-        return pdf;
+        img = pdf;
+      } else {
+        const picture = document.createElement('img');
+        picture.src = opts.resolveSrc(el.src);
+        picture.alt = el.alt;
+        picture.draggable = false;
+        img = picture;
       }
-      const img = document.createElement('img');
-      img.src = opts.resolveSrc(el.src);
-      img.alt = el.alt;
-      img.draggable = false;
 
       if (el.sourceBox) {
         // Cropped: the element box is a window onto a larger image, so the

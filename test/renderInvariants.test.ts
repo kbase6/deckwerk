@@ -4,6 +4,7 @@ import { emptyDeck, type Slide, type SlideElement } from '../src/shared/deck.js'
 import { EditorCanvas } from '../src/renderer/editor/canvas.js';
 import { EditorStore } from '../src/renderer/editor/store.js';
 import { findRenderDivergences, formatDivergence } from '../src/renderer/editor/renderInvariants.js';
+import { renderElement } from '../src/renderer/player/render.js';
 import { installCanvasDomShims } from './support/canvasHarness.js';
 
 /**
@@ -237,6 +238,45 @@ describe('canvas render invariant', () => {
     expect(divergencesAfter([imageElement()], (slide) => {
       firstOf(slide, 'image').sourceBox = { x: -20, y: -10, w: 400, h: 260 };
     })).toEqual([]);
+  });
+
+  it('holds after a crop change on a PDF figure', () => {
+    const pdf = imageElement();
+    if (pdf.type === 'image') {
+      pdf.src = 'assets/figure.pdf';
+      pdf.sourceBox = { x: -20, y: -10, w: 400, h: 260 };
+    }
+    expect(divergencesAfter([pdf], (slide) => {
+      firstOf(slide, 'image').sourceBox = { x: -60, y: -30, w: 480, h: 320 };
+    })).toEqual([]);
+  });
+
+  it('holds after a fit change on a PDF figure', () => {
+    const pdf = imageElement();
+    if (pdf.type === 'image') pdf.src = 'assets/figure.pdf';
+    expect(divergencesAfter([pdf], (slide) => {
+      firstOf(slide, 'image').fit = 'contain';
+    })).toEqual([]);
+  });
+
+  it('renders a cropped PDF figure inside a clipping window, as it does a picture', () => {
+    const pdf = imageElement();
+    if (pdf.type === 'image') {
+      pdf.src = 'assets/figure.pdf';
+      pdf.sourceBox = { x: -20, y: -10, w: 400, h: 260 };
+    }
+    const node = renderElement(pdf, { resolveSrc: (src) => src });
+    const embed = node.querySelector<HTMLElement>('embed');
+    expect(embed).not.toBeNull();
+    expect(embed!.parentElement).not.toBe(node);
+    expect(embed!.parentElement!.style.overflow).toBe('hidden');
+    expect({
+      position: embed!.style.position,
+      left: embed!.style.left,
+      top: embed!.style.top,
+      width: embed!.style.width,
+      height: embed!.style.height,
+    }).toEqual({ position: 'absolute', left: '-20px', top: '-10px', width: '400px', height: '260px' });
   });
 
   it('holds after a visual effect change', () => {
