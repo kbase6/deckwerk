@@ -74,7 +74,7 @@ are intentionally omitted.
 ## Already at parity
 
 Both clients already share slide and element editing, text/shape/table
-insertion, Props, Theme, Build, History, comments, undo/redo, live presence,
+insertion, Format, Design, Animations, History, comments, undo/redo, live presence,
 asset upload/drop, Keynote import, deck archive export, PDF-by-print, web
 export, fullscreen audience presentation, Speaker View, and range presenting.
 These should stay on shared components so new controls do not create a second

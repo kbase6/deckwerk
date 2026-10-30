@@ -53,6 +53,7 @@ import { installWindowApiPosterProvider } from '../player/previewPosterProvider.
 import { EditorStore } from './store.js';
 import { statusBarText } from './statusBar.js';
 import { TimelinePanel } from './timelinePanel.js';
+import { SIDE_PANELS, buildSidePanelTabs } from './sidePanels.js';
 import { WelcomeScreen } from './welcomeScreen.js';
 import { CollabBridge } from '../collab/collabBridge.js';
 import { PresenceOverlay } from '../collab/presenceOverlay.js';
@@ -983,23 +984,8 @@ inspector.onEditLayouts = (layout) => designWorkspace.openLayoutEditor(layout);
 inspector.onPreviewSlide = (slide, label) => designWorkspace.previewSlideOnCanvas(slide, label);
 /* --- side panel tabs --- */
 
-const PANELS = [
-  { id: 'inspector', label: 'Props' },
-  { id: 'themePanel', label: 'Design' },
-  { id: 'timeline', label: 'Build' },
-  { id: 'history', label: 'History' },
-] as const;
-
 function buildTabs(): void {
-  const tabs = el('side-tabs');
-  tabs.replaceChildren();
-  for (const panel of PANELS) {
-    const b = document.createElement('button');
-    b.textContent = panel.label;
-    b.dataset.panel = panel.id;
-    b.addEventListener('click', () => showPanel(panel.id));
-    tabs.appendChild(b);
-  }
+  buildSidePanelTabs(el('side-tabs'), SIDE_PANELS, showPanel);
   showPanel('inspector');
 }
 
@@ -1008,7 +994,7 @@ let activePanelId = 'inspector';
 function showPanel(id: string): void {
   if (store.get().slideSelection.size > 1 && id !== 'themePanel' && id !== 'inspector') return;
   activePanelId = id;
-  for (const panel of PANELS) {
+  for (const panel of SIDE_PANELS) {
     el(panel.id).hidden = panel.id !== id;
   }
   for (const b of el('side-tabs').querySelectorAll('button')) {
@@ -1021,7 +1007,7 @@ function showPanel(id: string): void {
   canvas.setBuildBadgesVisible(id === 'timeline');
 }
 
-/** Multi-slide selection is a deck-level editing context: Theme and Props (Morph) apply. */
+/** Multi-slide selection is a deck-level editing context: Design and Format (Morph) apply. */
 function syncSlideSelectionContext(): void {
   const count = store.get().slideSelection.size;
   const multiple = count > 1;

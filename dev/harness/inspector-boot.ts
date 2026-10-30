@@ -6,6 +6,7 @@ import { EditorStore } from '../../src/renderer/editor/store.js';
 import { Inspector } from '../../src/renderer/editor/inspector.js';
 import { TimelinePanel } from '../../src/renderer/editor/timelinePanel.js';
 import { wireCanvasInspector } from '../../src/renderer/editor/shellWiring.js';
+import { SIDE_PANELS, buildSidePanelTabs } from '../../src/renderer/editor/sidePanels.js';
 
 /**
  * Mounts the real Inspector and Build panel next to the canvas, with one
@@ -62,21 +63,15 @@ const inspector = new Inspector(document.getElementById('inspector')!, store);
 new TimelinePanel(document.getElementById('timeline')!, store);
 wireCanvasInspector(canvas, inspector);
 
-const PANELS = [['inspector', 'Props'], ['timeline', 'Build']] as const;
+const PANELS = SIDE_PANELS.filter((panel) => panel.id === 'inspector' || panel.id === 'timeline');
 const tabs = document.getElementById('side-tabs')!;
 function tab(id: string): void {
-  for (const [panel] of PANELS) document.getElementById(panel)!.hidden = panel !== id;
+  for (const panel of PANELS) document.getElementById(panel.id)!.hidden = panel.id !== id;
   for (const b of tabs.querySelectorAll('button')) b.classList.toggle('active', b.dataset.panel === id);
   if (id === 'inspector') inspector.render();
   canvas.setBuildBadgesVisible(id === 'timeline');
 }
-for (const [id, label] of PANELS) {
-  const b = document.createElement('button');
-  b.textContent = label;
-  b.dataset.panel = id;
-  b.addEventListener('click', () => tab(id));
-  tabs.appendChild(b);
-}
+buildSidePanelTabs(tabs, PANELS, tab);
 tab('inspector');
 
 const pick = (ids: string[]) => store.select(ids);
