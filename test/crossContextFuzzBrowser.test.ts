@@ -338,6 +338,29 @@ describe.skipIf(!electronBinary)('directed repros minimised from the fuzz walk',
     await session.doubleClick(IMAGE);
     expect(await masking(), 'back on the slide, double-click enters crop mode again').toBe(IMAGE);
   });
+
+  // Fixed: crop mode outlived the selection. Escape deselected the picture
+  // and Cmd+A selected everything, but crop mode stayed on with its Props
+  // button gone, so the next drag on the picture panned it inside its crop
+  // instead of moving the object.
+  for (const [how, press] of [
+    ['Escape', () => session.key('Escape', 27)],
+    ['Cmd+A', () => session.chord('a', 'KeyA', 65, MOD)],
+  ] as const) {
+    it(`ends crop mode when ${how} moves the selection off the picture`, {
+      timeout: 120_000,
+    }, async () => {
+      await session.reset();
+      const masking = () => session.cdp.evaluate<string | null>('window.canvas.maskingElement()');
+      await session.doubleClick(IMAGE);
+      expect(await masking(), 'double-click enters crop mode').toBe(IMAGE);
+      await press();
+      await wait(150);
+      expect((await session.state()).selection, `${how} moved the selection`).not.toEqual([IMAGE]);
+      expect(await masking(), `crop mode after ${how}`).toBeNull();
+      expect(await session.problems(), 'the invariant set').toEqual([]);
+    });
+  }
 });
 
 describe.skipIf(!electronBinary)('directed repro: stale slide identity across a rail hop', () => {

@@ -313,6 +313,24 @@ describe.skipIf(!electronBinary)('the crop outline and the first crop of letterb
     expect(await onServer('fit')).toEqual({ ...FIT, sourceBox: null });
   });
 
+  // The click-away test read the empty frame while the pan read the picture,
+  // so a press in the letterbox bars neither ended the crop nor panned: it
+  // moved the whole object with crop mode still on.
+  it('ends crop mode on a click in the letterbox bars, as anywhere outside the picture', { timeout: 120_000 }, async () => {
+    const before = await edits();
+    const picture = await painted('fit');
+    await enterCrop('fit', FIT);
+    const bar = await screenPoint(FIT.x + FIT.w / 2, (FIT.y + picture.y) / 2);
+    // Soundness: the point is inside the frame and outside the picture.
+    expect(picture.y - FIT.y, 'the fixture has no letterbox bar').toBeGreaterThan(40);
+    await cdp.clickAt(bar.x, bar.y);
+    await wait(600);
+    expect(await cdp.evaluate<string | null>('window.canvas.maskingElement()'), 'crop mode after the click')
+      .toBeNull();
+    expect(await element('fit'), 'the click edited the picture').toEqual({ ...FIT, sourceBox: null });
+    expect(await edits(), 'the click left an edit behind').toEqual(before);
+  });
+
   it('crops a fitted picture from the picture, moving only the dragged edge', { timeout: 120_000 }, async () => {
     const before = await edits();
     const picture = await painted('fit');
