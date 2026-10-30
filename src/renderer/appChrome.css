@@ -7,90 +7,91 @@
 }
 
 /* Shared DeckWerk chrome. Slide content keeps using the deck's theme. Text and
-   muted stay at least 4.5:1 on bg, panel and panel-2 (test/appChrome.test.ts). */
+   muted stay at least 4.5:1 on bg, panel and panel-2 (test/appChrome.test.ts).
+   Every token is --dw-*: a deck theme.css shares this document and its :root. */
 :root {
   color-scheme: dark;
-  --bg: #16161e;
-  --panel: #1a1b26;
-  --panel-2: #242536;
-  --line: #3b3f55;
-  --text: #c8d0f5;
-  --muted: #878fb8;
-  --accent: #7aa2f7;
-  --accent-soft: rgb(122 162 247 / 12%);
-  --green: #9ece6a;
-  --yellow: #e0af68;
-  --danger: #f7768e;
-  --canvas-bg: #101017;
-  --scrim: rgb(4 5 8 / 82%);
-  --radius: 0;
-  --mono: "Monaspace Krypton", monospace;
-  --shadow: 0 1px 2px rgb(0 0 0 / 40%);
+  --dw-bg: #16161e;
+  --dw-panel: #1a1b26;
+  --dw-panel-2: #242536;
+  --dw-line: #3b3f55;
+  --dw-text: #c8d0f5;
+  --dw-muted: #878fb8;
+  --dw-accent: #7aa2f7;
+  --dw-accent-soft: rgb(122 162 247 / 12%);
+  --dw-green: #9ece6a;
+  --dw-yellow: #e0af68;
+  --dw-danger: #f7768e;
+  --dw-canvas-bg: #101017;
+  --dw-scrim: rgb(4 5 8 / 82%);
+  --dw-radius: 0;
+  --dw-mono: "Monaspace Krypton", monospace;
+  --dw-shadow: 0 1px 2px rgb(0 0 0 / 40%);
 }
 
 * { box-sizing: border-box; }
 
 html, body {
   margin: 0;
-  background: var(--bg);
-  color: var(--text);
-  font: 12px/1.5 var(--mono);
+  background: var(--dw-bg);
+  color: var(--dw-text);
+  font: 12px/1.5 var(--dw-mono);
 }
 
 button {
   padding: 4px 10px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--panel);
-  color: var(--text);
-  font: 11.5px var(--mono);
+  border: 1px solid var(--dw-line);
+  border-radius: var(--dw-radius);
+  background: var(--dw-panel);
+  color: var(--dw-text);
+  font: 11.5px var(--dw-mono);
   letter-spacing: .02em;
   cursor: pointer;
   transition: none;
 }
 
 button:hover:not(:disabled) {
-  border-color: var(--muted);
-  background: var(--panel-2);
+  border-color: var(--dw-muted);
+  background: var(--dw-panel-2);
 }
 
-button:active:not(:disabled) { background: var(--panel-2); }
+button:active:not(:disabled) { background: var(--dw-panel-2); }
 button:disabled { opacity: .4; cursor: default; }
 
 button.primary,
 button.ui-button-primary {
-  border-color: var(--accent);
-  background: var(--accent-soft);
-  color: var(--accent);
+  border-color: var(--dw-accent);
+  background: var(--dw-accent-soft);
+  color: var(--dw-accent);
   font-weight: 600;
 }
 
 button.primary:hover:not(:disabled),
 button.ui-button-primary:hover:not(:disabled) {
-  border-color: var(--accent);
+  border-color: var(--dw-accent);
   background: rgb(122 162 247 / 22%);
 }
 
 button.danger,
 button.ui-button-danger {
-  border-color: var(--danger);
-  color: var(--danger);
+  border-color: var(--dw-danger);
+  color: var(--dw-danger);
 }
 
 button.danger:hover:not(:disabled),
 button.ui-button-danger:hover:not(:disabled) {
-  border-color: var(--danger);
-  background: var(--danger);
-  color: var(--bg);
+  border-color: var(--dw-danger);
+  background: var(--dw-danger);
+  color: var(--dw-bg);
 }
 
 select,
 textarea,
 input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]) {
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background-color: var(--panel-2);
-  color: var(--text);
+  border: 1px solid var(--dw-line);
+  border-radius: var(--dw-radius);
+  background-color: var(--dw-panel-2);
+  color: var(--dw-text);
   font: inherit;
 }
 
@@ -115,7 +116,7 @@ button:focus-visible,
 select:focus-visible,
 textarea:focus-visible,
 input:focus-visible {
-  outline: 1px solid var(--accent);
+  outline: 1px solid var(--dw-accent);
   outline-offset: 1px;
 }
 
@@ -126,7 +127,7 @@ input:focus-visible {
   inset: 0;
   display: grid;
   padding: 28px;
-  background: var(--scrim);
+  background: var(--dw-scrim);
   backdrop-filter: blur(8px);
   place-items: center;
 }
@@ -140,18 +141,18 @@ input:focus-visible {
   flex-direction: column;
   gap: 12px;
   padding: 18px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--panel);
-  color: var(--text);
+  border: 1px solid var(--dw-line);
+  border-radius: var(--dw-radius);
+  background: var(--dw-panel);
+  color: var(--dw-text);
   box-shadow: 0 24px 90px rgb(0 0 0 / 65%);
 }
 
 .workflow-dialog h2,
 .app-dialog h2 {
   margin: 0;
-  color: var(--accent);
-  font: 600 14px var(--mono);
+  color: var(--dw-accent);
+  font: 600 14px var(--dw-mono);
   letter-spacing: .08em;
   text-transform: uppercase;
 }

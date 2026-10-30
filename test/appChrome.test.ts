@@ -64,7 +64,22 @@ describe('shared application chrome', () => {
       'src/renderer/collab/collab.css',
       'src/renderer/collab/mobile.css',
     ]) {
-      expect(source(stylesheet)).not.toMatch(/--(?:bg|panel|panel-2|line|text|muted|accent|accent-soft|green|yellow|danger)\s*:/);
+      expect(source(stylesheet)).not.toMatch(/--dw-(?:bg|panel|panel-2|line|text|muted|accent|accent-soft|green|yellow|danger)\s*:/);
+    }
+  });
+
+  it('keeps its palette in a namespace a deck theme.css does not use', () => {
+    // A deck's theme.css loads into the chrome's own document, so a token both
+    // declare on :root is one value: the deck's --accent recoloured the chrome,
+    // or the chrome's replaced the deck's on its slides.
+    for (const stylesheet of ['src/renderer/appChrome.css', 'src/renderer/lightTheme.css', 'src/renderer/editor/editor.css']) {
+      for (const [, block] of source(stylesheet).matchAll(/:root(?:\[[^\]]*\])?\s*\{([^}]*)\}/g)) {
+        for (const [, name] of block.matchAll(/(--[\w-]+)\s*:/g)) expect(name, stylesheet).toMatch(/^--dw-/);
+      }
+    }
+    // The slide's own styles never lean on the chrome's palette.
+    for (const stylesheet of ['src/renderer/player/player.css', 'src/renderer/player/type.css']) {
+      expect(source(stylesheet)).not.toMatch(/var\(--dw-/);
     }
   });
 
@@ -116,8 +131,8 @@ describe('shared application chrome', () => {
     const dark = tokens(source('src/renderer/appChrome.css'), ':root');
     const light = { ...dark, ...tokens(source('src/renderer/lightTheme.css'), ':root[data-ui-theme="light"]') };
     for (const [theme, palette] of Object.entries({ dark, light })) {
-      for (const text of ['--text', '--muted']) {
-        for (const surface of ['--bg', '--panel', '--panel-2']) {
+      for (const text of ['--dw-text', '--dw-muted']) {
+        for (const surface of ['--dw-bg', '--dw-panel', '--dw-panel-2']) {
           expect(contrast(palette[text], palette[surface]), `${theme} ${text} on ${surface}`)
             .toBeGreaterThanOrEqual(4.5);
         }

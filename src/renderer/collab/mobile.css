@@ -20,7 +20,7 @@ body {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left);
-  background: var(--bg);
+  background: var(--dw-bg);
 }
 
 #m-app:has(#collab-name-prompt) { grid-template-rows: auto auto minmax(0, 1fr); }
@@ -35,23 +35,23 @@ body {
   gap: 6px;
   min-height: 46px;
   padding: 6px 8px;
-  border-bottom: 1px solid var(--line);
-  background: var(--panel);
+  border-bottom: 1px solid var(--dw-line);
+  background: var(--dw-panel);
 }
 
 .m-title {
   flex: 1;
   min-width: 0;
   overflow: hidden;
-  color: var(--text);
+  color: var(--dw-text);
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-#m-bar button.active { border-color: var(--accent); color: var(--accent); }
-#m-bar button.has-open:not(.active) { border-color: var(--comment, var(--yellow)); color: var(--comment, var(--yellow)); }
-#m-bar button.m-agent-connected { border-color: var(--green); color: var(--green); }
+#m-bar button.active { border-color: var(--dw-accent); color: var(--dw-accent); }
+#m-bar button.has-open:not(.active) { border-color: var(--dw-comment, var(--dw-yellow)); color: var(--dw-comment, var(--dw-yellow)); }
+#m-bar button.m-agent-connected { border-color: var(--dw-green); color: var(--dw-green); }
 #m-bar .m-more .shape-menu-trigger { min-width: 40px; }
 
 /* --- the body: on its side ------------------------------------------------------- */
@@ -70,8 +70,8 @@ body {
   overflow-y: auto;
   flex-direction: column;
   padding: 6px 0 calc(6px + env(safe-area-inset-bottom));
-  border-right: 1px solid var(--line);
-  background: var(--panel);
+  border-right: 1px solid var(--dw-line);
+  background: var(--dw-panel);
   -webkit-overflow-scrolling: touch;
 }
 
@@ -101,7 +101,7 @@ body {
 }
 
 #m-nav button { min-width: 52px; font-size: 18px; line-height: 1; }
-.m-position { min-width: 64px; color: var(--muted); text-align: center; font-variant-numeric: tabular-nums; }
+.m-position { min-width: 64px; color: var(--dw-muted); text-align: center; font-variant-numeric: tabular-nums; }
 
 /* --- notes and comments ------------------------------------------------------------ */
 
@@ -110,14 +110,14 @@ body {
   flex-direction: column;
   min-width: 0;
   min-height: 0;
-  border-left: 1px solid var(--line);
-  background: var(--panel);
+  border-left: 1px solid var(--dw-line);
+  background: var(--dw-panel);
 }
 
 /* On its side the bar's Notes and Comments buttons are the tabs. */
 #m-tabs { display: none; }
 #m-tabs button { flex: 1; border: 0; border-bottom: 2px solid transparent; background: transparent; }
-#m-tabs button.active { border-bottom-color: var(--accent); color: var(--accent); }
+#m-tabs button.active { border-bottom-color: var(--dw-accent); color: var(--dw-accent); }
 
 #m-notes,
 #m-comments {
@@ -138,7 +138,7 @@ body {
   height: auto;
   min-height: 0;
   border: 0;
-  background: var(--panel);
+  background: var(--dw-panel);
   box-shadow: none;
 }
 
@@ -158,11 +158,11 @@ body {
   display: flex;
   gap: 6px;
   padding: 8px;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid var(--dw-line);
 }
 
 .m-comments-head button { flex: 1; }
-.m-comments-head button.active { border-color: var(--accent); color: var(--accent); }
+.m-comments-head button.active { border-color: var(--dw-accent); color: var(--dw-accent); }
 
 .m-comments-body {
   flex: 1;
@@ -176,7 +176,7 @@ body {
   display: flex;
   flex-direction: column;
   min-height: 100%;
-  border-top: 2px solid var(--comment, var(--yellow));
+  border-top: 2px solid var(--dw-comment, var(--dw-yellow));
 }
 
 .m-comments-body .comments-docked .comments-list { flex: 1; max-height: none; }
@@ -188,7 +188,7 @@ body {
 .m-overview-slide h3 {
   margin: 4px 0 6px;
   overflow: hidden;
-  color: var(--muted);
+  color: var(--dw-muted);
   font-size: 11px;
   font-weight: 600;
   letter-spacing: .06em;
@@ -202,17 +202,17 @@ body {
   width: 100%;
   margin-bottom: 6px;
   padding: 8px 10px;
-  border-left: 2px solid var(--comment, var(--yellow));
+  border-left: 2px solid var(--dw-comment, var(--dw-yellow));
   text-align: left;
 }
 
 #m-app .m-overview-thread { padding: 8px 10px; }
-.m-overview-thread.resolved { border-left-color: var(--line); opacity: .7; }
-.m-overview-meta { color: var(--muted); font-size: 11px; }
+.m-overview-thread.resolved { border-left-color: var(--dw-line); opacity: .7; }
+.m-overview-meta { color: var(--dw-muted); font-size: 11px; }
 .m-overview-text {
   display: -webkit-box;
   overflow: hidden;
-  color: var(--text);
+  color: var(--dw-text);
   white-space: pre-wrap;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 3;
@@ -232,7 +232,7 @@ body {
 
   #m-app[data-panel="none"] #m-panel { display: flex; }
   #m-bar [data-toggles-panel] { display: none; }
-  #m-tabs { display: flex; flex: none; border-bottom: 1px solid var(--line); }
+  #m-tabs { display: flex; flex: none; border-bottom: 1px solid var(--dw-line); }
 
   #m-main { order: 1; grid-template-rows: auto auto; }
   #m-slide { aspect-ratio: 16 / 9; }
@@ -246,9 +246,9 @@ body {
     overflow-x: auto;
     overflow-y: hidden;
     padding: 6px 6px;
-    border-top: 1px solid var(--line);
+    border-top: 1px solid var(--dw-line);
     border-right: 0;
-    border-bottom: 1px solid var(--line);
+    border-bottom: 1px solid var(--dw-line);
   }
 
   #m-rail .rail-item {
@@ -277,9 +277,9 @@ body {
   max-width: min(520px, calc(100vw - 32px));
   padding: 8px 14px;
   transform: translateX(-50%);
-  border: 1px solid var(--line);
-  background: var(--panel-2);
-  color: var(--text);
+  border: 1px solid var(--dw-line);
+  background: var(--dw-panel-2);
+  color: var(--dw-text);
   box-shadow: 0 8px 30px rgb(0 0 0 / 45%);
   text-align: center;
 }
