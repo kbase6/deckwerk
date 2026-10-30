@@ -34,7 +34,7 @@ import type { SlideElement } from '../src/shared/deck.js';
  * panning and zooming the view with a plain mouse and the keyboard, the
  * Props tab's line Ends control on one or both lines, its Show slide numbers
  * box, the zoom bar's Gridlines toggle, edge crops, crop pans, Shift-resizes,
- * Text fit, crop resets, typed picture sizes, crop controls, and abandoned gestures.
+ * Text fit, crop resets, typed picture sizes, crop controls, abandoned gestures, and Slide colors.
  *
  * After EVERY step five oracles run: the whole-editor invariant set from
  * selectionSession, keystroke routing via per-step nonce strings, an element
@@ -161,7 +161,7 @@ type OpName =
   | 'cmd+a' | 'click with stray hover' | 'rail multi-delete' | 'stack key' | 'spelling fix'
   | 'size from sidebar' | 'viewport gesture' | 'line ends' | 'slide numbers' | 'gridlines'
   | 'crop edge drag' | 'shift resize image' | 'reset crop' | 'theme pick' | 'geometry from sidebar'
-  | 'crop pan' | 'crop toggle from panel' | 'escape during crop' | 'circle toggle' | 'abandon gesture' | 'text fit';
+  | 'crop pan' | 'crop toggle from panel' | 'escape during crop' | 'circle toggle' | 'abandon gesture' | 'text fit' | 'slide colors light/dark';
 
 interface Violation { seed: number; step: number; op: OpName; oracle: string; detail: string }
 
@@ -507,6 +507,7 @@ function chooseOp(next: () => number, pre: CrossState): OpName {
   }
   add('abandon gesture', 2);
   if (targets.some((id) => id !== IMAGE)) add('text fit', 2);
+  add('slide colors light/dark', 1);
   return pick(next, ops);
 }
 
@@ -738,6 +739,9 @@ async function performOp(
       return 'same';
     case 'theme pick':
       await themePick(next, flag);
+      return 'same';
+    case 'slide colors light/dark':
+      await slideColors(next, flag);
       return 'same';
     case 'crop edge drag':
       await cropEdgeDrag(next, flag);
@@ -1285,6 +1289,56 @@ async function themePick(
     if (after.copies.length > 0) flag('census', `after choosing ${id}, boxes still carry type: ${after.copies.join(', ')}`);
     if (!after.reported) flag('routing', `choosing ${id} reported nothing in the Design tab`);
   } finally {
+    await cdp.click('#side-tabs button[data-panel="inspector"]', 'the Props tab');
+    await wait(80);
+  }
+}
+
+/**
+ * Flip the Design tab's Slide colors switch, with the theme chooser open or
+ * not. It is the only Light/Dark switch there, and it puts the other half of
+ * the same theme on every slide at once: the deck wears that variant, the
+ * pressed button follows, and no object comes or goes. The chooser is closed
+ * and the Props tab comes back after, as the other ops expect.
+ */
+async function slideColors(
+  next: () => number,
+  flag: (oracle: 'routing' | 'census', detail: string) => void,
+): Promise<void> {
+  const { cdp } = session;
+  const base = (id: string | null) => (id ?? '').replace(/-(dark|light)$/, '');
+  await cdp.click('#side-tabs button[data-panel="themePanel"]', 'the Design tab');
+  await wait(80);
+  const withChooser = next() < 0.5;
+  try {
+    if (withChooser) {
+      await cdp.click('#themePanel .theme-active-card', 'the current theme card');
+      await wait(80);
+    }
+    const before = await cdp.evaluate<{ theme: string | null; pressed: string | null; switches: number }>(`({
+      theme: document.querySelector('#themePanel .theme-active-card')?.dataset.themeId ?? null,
+      pressed: document.querySelector('#themePanel .theme-default-mode [aria-pressed="true"]')?.textContent ?? null,
+      switches: document.querySelectorAll('#themePanel .theme-mode-toggle').length,
+    })`);
+    if (before.switches !== 1) {
+      flag('routing', `the Design tab shows ${before.switches} Light/Dark switches${withChooser ? ' with the chooser open' : ''}`);
+    }
+    const target = before.pressed === 'Dark' ? 'Light' : 'Dark';
+    await cdp.clickByText('#themePanel .theme-default-mode .theme-mode-option', target, `Slide colors: ${target}`);
+    await wait(150);
+    const after = await cdp.evaluate<{ preset: string | null; pressed: string | null }>(`({
+      preset: window.store.get().deck.themePreset ?? null,
+      pressed: document.querySelector('#themePanel .theme-default-mode [aria-pressed="true"]')?.textContent ?? null,
+    })`);
+    if (after.pressed !== target) flag('routing', `Slide colors ${target} left ${after.pressed} pressed`);
+    if (after.preset === before.theme || base(after.preset) !== base(before.theme)) {
+      flag('routing', `Slide colors ${target} on ${before.theme} left the deck wearing ${after.preset}`);
+    }
+  } finally {
+    if (withChooser) {
+      await cdp.clickByText('#themePanel .theme-chooser-header button', 'Close', 'close the theme chooser');
+      await wait(80);
+    }
     await cdp.click('#side-tabs button[data-panel="inspector"]', 'the Props tab');
     await wait(80);
   }

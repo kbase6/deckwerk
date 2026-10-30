@@ -128,7 +128,7 @@ describe.skipIf(!electronBinary)('new slide from Return in the slide picker (des
       'theme chooser did not open',
       (display) => display !== 'none',
     );
-    await editor.clickByText(`${CHOOSER} .theme-mode-option`, 'Dark', 'Dark appearance');
+    await editor.clickByText('#themePanel .theme-default-mode .theme-mode-option', 'Dark', 'Slide colors: Dark');
     await eventually(
       () => editor!.evaluate<boolean>(`Boolean(document.querySelector(${JSON.stringify(NOIR_CARD)}))`),
       'gallery did not offer the Noir card in Dark mode',
