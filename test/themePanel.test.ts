@@ -220,6 +220,37 @@ describe('theme panel', () => {
     expect(panel.element.querySelector<HTMLElement>('.theme-chooser')!.hidden).toBe(false);
   });
 
+  it('offers one Slide colors switch that says it restyles every slide', () => {
+    const store = new EditorStore(emptyDeck('Theme panel'), '/tmp/theme-panel');
+    const panel = createThemePanel({
+      store,
+      cssEditor: { getValue: () => '', setValue: vi.fn() } as unknown as CssEditor,
+      save: vi.fn(),
+      setStatusMessage: vi.fn(),
+      saveThemeCss: vi.fn(),
+    });
+    document.body.appendChild(panel.element);
+    const themeName = panel.currentTheme()!.name;
+
+    // With the chooser open there is still one switch, not a second copy above it.
+    panel.element.querySelector<HTMLButtonElement>('.theme-active-card')!.click();
+    const toggles = panel.element.querySelectorAll<HTMLElement>('.theme-mode-toggle');
+    expect(toggles).toHaveLength(1);
+    const [toggle] = toggles;
+    // Named for what it changes: the slides, not the editor window.
+    expect(toggle.getAttribute('aria-label')).toBe('Slide colors');
+    expect(toggle.closest('.theme-default-row')!.querySelector('.theme-default-label')!.textContent)
+      .toBe('Slide colors');
+    expect(toggle.title).toContain(`Switches every slide to the light or dark version of ${themeName}.`);
+    expect(toggle.title).toContain('Editor appearance');
+
+    // The dark half is still the same theme by name.
+    [...toggle.querySelectorAll<HTMLButtonElement>('.theme-mode-option')]
+      .find((button) => button.textContent === 'Dark')!.click();
+    expect(store.get().deck.themeSelection?.preset).toMatch(/-dark$/);
+    expect(toggle.title).toContain(`light or dark version of ${themeName}.`);
+  });
+
   it('ends the central preview whenever the chooser closes', () => {
     const store = new EditorStore(emptyDeck('Theme panel'), '/tmp/theme-panel');
     const onThemePreview = vi.fn();

@@ -106,8 +106,9 @@ export function createThemePreviewCard(
 
 /**
  * A visual, keyboard-accessible theme list. Selecting a card hands the theme
- * to `onSelect`; the Design panel then applies it to every slide as one undo
- * step. A global Light/Dark switch shows every theme's counterpart in that mode
+ * to `onSelect`; the Design panel applies it to every slide as one undo step.
+ * `setMode`, driven by the Design tab's Slide colors switch, shows every
+ * theme's counterpart in that mode
  * — the two native dark presets become light themes and vice versa — and a
  * card selected under it carries the variant id (`noir-light`), which
  * `themeById` resolves everywhere a preset id is looked up.
@@ -127,23 +128,9 @@ export function createThemeGallery(
   const initialTheme = themeById(selected, themes);
   let mode: ThemeMode = initialTheme ? themeMode(initialTheme) : 'light';
 
-  const toggle = document.createElement('div');
-  toggle.className = 'theme-mode-toggle';
-  toggle.setAttribute('role', 'group');
-  toggle.setAttribute('aria-label', 'Theme appearance');
-  const modeButtons = new Map<ThemeMode, HTMLButtonElement>();
-  for (const [value, label] of [['light', 'Light'], ['dark', 'Dark']] as const) {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'theme-mode-option';
-    button.textContent = label;
-    button.addEventListener('click', () => setMode(value));
-    modeButtons.set(value, button);
-    toggle.appendChild(button);
-  }
   const grid = document.createElement('div');
   grid.className = 'theme-gallery-grid';
-  element.append(toggle, grid);
+  element.append(grid);
 
   const cards = new Map<string, HTMLButtonElement>();
   const badges = new Map<string, {
@@ -153,10 +140,6 @@ export function createThemeGallery(
   }>();
 
   function refresh(): void {
-    for (const [value, button] of modeButtons) {
-      button.classList.toggle('selected', value === mode);
-      button.setAttribute('aria-pressed', String(value === mode));
-    }
     for (const [baseId, card] of cards) {
       const active = baseId === baseThemeId(selected, themes);
       card.classList.toggle('selected', active);
