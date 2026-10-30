@@ -62,7 +62,7 @@ export interface CrossState {
   outlines: number;
 }
 
-/** The selectionSession invariant set (verbatim), plus nothing new. */
+/** The selectionSession invariant set (verbatim), plus: crop mode means that picture is the selection. */
 const INVARIANTS = `() => {
   const problems = [];
   const store = window.store;
@@ -83,6 +83,11 @@ const INVARIANTS = `() => {
   }
   if (new Set(selection).size !== selection.length) {
     problems.push('the selection lists an object twice: ' + show(selection));
+  }
+
+  const masking = canvas.maskingElement();
+  if (masking !== null && (selection.length !== 1 || selection[0] !== masking)) {
+    problems.push('cropping ' + masking + ' while the selection is ' + show(selection));
   }
 
   if (editing !== null) {
