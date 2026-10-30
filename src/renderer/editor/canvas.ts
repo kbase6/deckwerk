@@ -850,6 +850,8 @@ export class EditorCanvas {
   private slideLayer: HTMLElement;
   private overlay: HTMLElement;
   private zoomInput: HTMLInputElement;
+  /** Says crop mode is on and how to leave it; the green outline alone did not. */
+  private cropBanner: HTMLElement;
   private tableHeightSyncPending = false;
   /** Content-size passes run since the last frame; see scheduleTableHeightSync. */
   private tableHeightSyncPassesThisFrame = 0;
@@ -1100,7 +1102,12 @@ export class EditorCanvas {
     this.stage.append(this.slideLayer, this.overlay);
     const zoomControls = this.createZoomControls();
     this.zoomInput = zoomControls.querySelector<HTMLInputElement>('.zoom-value')!;
-    this.host.replaceChildren(this.stage, zoomControls);
+    this.cropBanner = document.createElement('div');
+    this.cropBanner.className = 'crop-mode-banner';
+    this.cropBanner.textContent =
+      'Cropping. Drag edges to crop, drag the picture to reposition, click outside or press Esc to finish.';
+    this.cropBanner.hidden = true;
+    this.host.replaceChildren(this.stage, zoomControls, this.cropBanner);
 
     new ResizeObserver(() => this.rescale()).observe(this.host);
     this.bindPointer();
@@ -1166,6 +1173,7 @@ export class EditorCanvas {
       this.maskingId = null;
       this.onMaskModeChange?.(null);
     }
+    this.cropBanner.hidden = !this.maskingId;
     if (!slide) {
       this.slideLayer.replaceChildren();
       this.overlay.replaceChildren();

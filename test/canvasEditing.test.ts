@@ -2027,11 +2027,19 @@ describe('inline text editing', () => {
       new MouseEvent('dblclick', { clientX: 1300, clientY: 400, bubbles: true }),
     );
 
+    // The banner is what says why a drag now moves the picture in its frame.
+    const banner = () => host.querySelector<HTMLElement>('.crop-mode-banner');
+    expect(banner()?.hidden).not.toBe(false);
     dblclick();
     expect(canvas.maskingElement()).toBe('image-1');
     expect([...store.get().selection]).toEqual(['image-1']);
+    expect(banner()?.hidden).toBe(false);
+    expect(banner()?.textContent).toBe(
+      'Cropping. Drag edges to crop, drag the picture to reposition, click outside or press Esc to finish.',
+    );
     dblclick();
     expect(canvas.maskingElement()).toBeNull();
+    expect(banner()?.hidden).toBe(true);
   });
 
   it('crops a picture on a pointer double-click without a native dblclick (Safari)', () => {
