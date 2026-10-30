@@ -74,7 +74,8 @@ export class DesignWorkspace {
   }
 
   hide(): void {
-    if (this.editingOverlay) return;
+    // Nothing shown is nothing to hide: the stylesheet may be a theme draft's.
+    if (this.editingOverlay || this.preview.hidden) return;
     this.preview.hidden = true;
     this.deps.canvasHost.classList.remove('design-preview-active');
     this.previewStyle.textContent = '';

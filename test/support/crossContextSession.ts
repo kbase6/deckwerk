@@ -53,6 +53,8 @@ const PNG_BASE64 =
 /** What the editor believes about selection and focus at one moment. */
 export interface CrossState {
   slideIndex: number;
+  /** Slides in the deck: a redone whole-deck delete leaves one. */
+  slides: number;
   slideSelection: string[];
   selection: string[];
   editing: string | null;
@@ -192,6 +194,7 @@ const STATE = `() => {
     : null;
   return {
     slideIndex: state.slideIndex,
+    slides: state.deck.slides.length,
     slideSelection: [...state.slideSelection],
     selection: [...state.selection],
     editing: canvas.editingElementId(),
