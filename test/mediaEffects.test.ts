@@ -156,7 +156,7 @@ describe('stackable media effects', () => {
     new Inspector(host, store);
     store.select(['photo']);
 
-    expect(host.querySelector('.insp-title')?.textContent).toBe('image');
+    expect(host.querySelector('.insp-title')?.textContent).toBe('Image');
     expect([...host.querySelectorAll<HTMLElement>('.insp-group')]
       .some((section) => section.querySelector('h3')?.textContent === 'Image')).toBe(false);
     const sections = [...host.querySelectorAll<HTMLElement>('.insp-type-sections .insp-option-section')];

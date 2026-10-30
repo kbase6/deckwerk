@@ -1218,13 +1218,16 @@ describe('inline text editing', () => {
       .toBe('Geometry');
     const headings = [...inspectorHost.querySelectorAll<HTMLElement>('.insp-group > h3')]
       .map((heading) => heading.textContent);
-    expect(inspectorHost.querySelector('.insp-title')?.textContent).toBe('text');
+    expect(inspectorHost.querySelector('.insp-title')?.textContent).toBe('Text');
     expect([...inspectorHost.querySelectorAll('.insp-type-sections .insp-subtitle')]
       .map((heading) => heading.textContent))
       .toEqual(['Typography', 'Paragraph', 'Box', 'Text shadow']);
     expect(headings).not.toContain('Style');
     expect(inspectorHost.textContent).not.toContain('CSS classes');
     expect(inspectorHost.textContent).not.toContain('Inline style');
+
+    store.select(['text-1', 'video-1']);
+    expect(inspectorHost.querySelector('.insp-title')?.textContent).toBe('2 objects');
   });
 
   it('aligns text on the canvas from the inspector alignment buttons', () => {

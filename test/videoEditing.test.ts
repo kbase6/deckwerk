@@ -158,7 +158,7 @@ describe('compact video inspector', () => {
     const { inspectorHost, store } = setup();
     store.select(['video-1']);
 
-    expect(inspectorHost.querySelector('.insp-title')?.textContent).toBe('video');
+    expect(inspectorHost.querySelector('.insp-title')?.textContent).toBe('Video');
     expect([...inspectorHost.querySelectorAll<HTMLElement>('.insp-group')]
       .some((section) => section.querySelector('h3')?.textContent === 'Video')).toBe(false);
 
