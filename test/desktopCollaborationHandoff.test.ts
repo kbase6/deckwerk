@@ -194,12 +194,14 @@ describe.skipIf(!electronBinary || noWindowManager)('desktop collaboration hando
     // Reproduce the broken state without requiring a signed-in Codex account:
     // the IPC call establishes the same hidden authoritative server used by
     // the Agent panel.
-    await editor.evaluate(`window.api.startAgentSession({
+    const agentWsUrl = await editor.evaluate<string>(`window.api.startAgentSession({
       agent: true,
       activeSlideId: ${JSON.stringify(deck.slides[0]!.id)},
       selectedSlideIds: [],
       selectedElementIds: []
-    }).then((session) => session.active)`);
+    }).then((session) => session.wsUrl)`);
+    // An agent session takes a free port instead of shadowing a local server.
+    expect(new URL(agentWsUrl).port).not.toBe('5800');
     const collaborationStartedAt = Date.now();
     await editor.click('#collaborate-trigger', 'Collaborate');
 
