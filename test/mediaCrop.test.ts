@@ -241,6 +241,19 @@ describe('cropping media in mask mode', () => {
       }
     });
 
+    it(`${type}: dragging an edge out past the picture changes nothing and records no crop`, () => {
+      // Like a pan that moved nothing: the window already shows the whole
+      // picture, so there is no crop to write, no History entry, no Reset.
+      const t = setup(media(type, 'contain'));
+      const before = structuredClone(t.current());
+      t.toggleMask();
+      for (const [handle, dx, dy] of [['se', 120, 90], ['nw', -60, -40], ['e', 200, 0]] as const) {
+        expect(t.drag(handle, dx, dy), handle).toEqual(before);
+      }
+      expect(t.store.history()).toEqual([]);
+      expect(t.store.canUndo()).toBe(false);
+    });
+
     it(`${type}: one undo step puts the uncropped media back`, () => {
       const t = setup(media(type, 'fill'));
       t.toggleMask();
@@ -252,6 +265,25 @@ describe('cropping media in mask mode', () => {
       expect(t.current()).toMatchObject({ x: 400, y: 200, w: 640, h: 360, sourceBox: null, fit: 'fill' });
     });
   }
+
+  it('image: a letterboxed picture dragged out past its edges is left as authored', () => {
+    // A square picture in a 16:9 `contain` frame: the editor fits the frame
+    // to the painted picture for the drag, and a crop that moved nothing
+    // must not write that fitted frame, or a crop, back into the deck.
+    const spies = (['naturalWidth', 'naturalHeight'] as const).map((name) =>
+      vi.spyOn(HTMLImageElement.prototype, name, 'get').mockReturnValue(400));
+    try {
+      const t = setup(media('image', 'contain'));
+      const before = structuredClone(t.current());
+      t.toggleMask();
+      expect(t.drag('se', 80, 60)).toEqual(before);
+      expect(t.store.history()).toEqual([]);
+      // An edge that does move still crops.
+      expect(t.drag('e', -60, 0).sourceBox).not.toBeNull();
+    } finally {
+      for (const spy of spies) spy.mockRestore();
+    }
+  });
 
   it('crops the slide 5 Minecraft video of 2610_TRI_site_visit freely', () => {
     // The element exactly as it is saved in that deck: box unticked, already cropped.
