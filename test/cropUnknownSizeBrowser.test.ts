@@ -117,7 +117,7 @@ describe.skipIf(!electronBinary)('cropping a picture whose size is not known yet
         return selection.length === 1 && selection[0] === 'slow'
           && !!document.querySelector('.mask-action-row .panel-action');
       })()`), 'the picture never became the selection');
-      await clickControl('.mask-action-row .panel-action', 'Edit mask');
+      await clickControl('.mask-action-row .panel-action', 'Crop…');
       await eventually(() => cdp.evaluate<boolean>(`!!document.querySelector('#canvas .sel-box.masking')`), 'crop mode never began');
     };
     /** Clear the status bar, so the next message shows up as new. */
@@ -157,11 +157,11 @@ describe.skipIf(!electronBinary)('cropping a picture whose size is not known yet
 
     // And the inspector's circle, whose box goes back to unticked.
     await clearStatus();
-    await clickControl('label.field-check', 'Circular mask');
+    await clickControl('label.field-check', 'Crop to circle');
     expect(await local(), 'a circle of a picture still loading').toEqual(untouched);
     await eventually(async () => (await status()).includes('Picture still loading'), 'the circle never said why it did nothing');
     expect(await cdp.evaluate<boolean>(`[...document.querySelectorAll('label.field-check')]
-      .find((n) => n.textContent.trim() === 'Circular mask')?.querySelector('input').checked`)).toBe(false);
+      .find((n) => n.textContent.trim() === 'Crop to circle')?.querySelector('input').checked`)).toBe(false);
 
     // Soundness: once the picture has arrived, the very same drag crops, at
     // the picture's own proportions rather than the square frame's.

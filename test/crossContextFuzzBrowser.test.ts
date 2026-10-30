@@ -363,7 +363,7 @@ describe.skipIf(!electronBinary)('directed repros minimised from the fuzz walk',
       expect(await session.problems(), 'the invariant set').toEqual([]);
     });
   }
-  // Fixed: Reset mask only dropped the crop, leaving the frame at the cropped
+  // Fixed: Reset crop only dropped the crop, leaving the frame at the cropped
   // window's size, so `contain` shrank the whole picture into that window.
   it('restores the whole picture when a crop is reset', {
     timeout: 120_000,
@@ -1363,7 +1363,7 @@ async function shiftResizeImage(
 }
 
 /**
- * Reset the image's crop with the × beside Edit mask in the Props tab,
+ * Reset the image's crop with the × beside Crop… in the Props tab,
  * cropping it first by an edge drag when it is not cropped. The frame becomes
  * the whole picture where the crop showed it: the picture neither moves nor
  * changes size, as it did when the reset squeezed it into the cropped window.
@@ -1394,33 +1394,33 @@ async function resetCrop(
   const masking = () => cdp.evaluate<string | null>('window.canvas.maskingElement()');
   if (await masking() === IMAGE) {
     await clickFound(`() => [...document.querySelectorAll('.editor-inspector .mask-action-row .panel-action')]
-      .find((node) => node.textContent === 'Done editing mask' && node.getClientRects().length > 0)`, 'Done editing mask');
+      .find((node) => node.textContent === 'Done cropping' && node.getClientRects().length > 0)`, 'Done cropping');
     await wait(120);
   } else if ((await session.state()).selection.join() !== IMAGE) {
     await session.click(IMAGE);
   }
-  const reset = `() => [...document.querySelectorAll('.editor-inspector .mask-reset-segment')]
-    .find((node) => node.getClientRects().length > 0)`;
-  if (!await clickFound(reset, 'Reset mask')) {
-    flag('routing', `the Props tab offers no Reset mask for the cropped ${IMAGE}`
+  const reset = `() => [...document.querySelectorAll('.editor-inspector .mask-action-row button')]
+    .find((node) => node.textContent === 'Reset crop' && node.getClientRects().length > 0)`;
+  if (!await clickFound(reset, 'Reset crop')) {
+    flag('routing', `the Props tab offers no Reset crop for the cropped ${IMAGE}`
       + ` (cropping ${await masking()}, selection [${(await session.state()).selection.join(', ')}])`);
     return;
   }
   await wait(150);
   const after = await read();
   if (!after) {
-    flag('census', `Reset mask lost ${IMAGE}`);
+    flag('census', `Reset crop lost ${IMAGE}`);
     return;
   }
-  if (after.el.sourceBox) flag('census', `Reset mask left the crop ${JSON.stringify(after.el.sourceBox)}`);
+  if (after.el.sourceBox) flag('census', `Reset crop left the crop ${JSON.stringify(after.el.sourceBox)}`);
   const was = onSlide(before);
   const is = onSlide(after);
   const near = (a: number, b: number) => Math.abs(a - b) <= 1;
   if (!near(was.x, is.x) || !near(was.y, is.y) || !near(was.w, is.w) || !near(was.h, is.h)) {
-    flag('census', `Reset mask moved the picture from ${JSON.stringify(was)} to ${JSON.stringify(is)}`);
+    flag('census', `Reset crop moved the picture from ${JSON.stringify(was)} to ${JSON.stringify(is)}`);
   }
   if ((await session.state()).selection.join() !== IMAGE) {
-    flag('routing', `Reset mask changed the selection to [${(await session.state()).selection.join(', ')}]`);
+    flag('routing', `Reset crop changed the selection to [${(await session.state()).selection.join(', ')}]`);
   }
 }
 

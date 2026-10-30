@@ -150,7 +150,7 @@ button.primary {
 }
 
 /* The one style for a side-panel's block action ("Open Morph editor…",
-   "Add animation", "Edit mask", "Reset trim", …): a standard button laid out
+   "Add animation", "Crop…", "Reset trim", …): a standard button laid out
    as a full-width block. Panel actions never take the accent — `primary` is
    kept for the toolbar's Present and a dialog's confirming action. */
 button.panel-action {
@@ -1719,21 +1719,8 @@ input[type="range"] { accent-color: var(--accent); padding: 0; background: trans
   gap: 0;
   margin-top: 6px;
 }
-.mask-action-row.has-reset { grid-template-columns: minmax(0, 1fr) 38px; }
+.mask-action-row.has-reset { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
 .mask-action-row .panel-action { margin: 0; }
-.mask-action-row .mask-reset-segment {
-  padding: 0 8px;
-  border: 0;
-  border-left: 1px solid rgb(255 255 255 / 35%);
-  background: var(--accent);
-  color: #fff;
-  font-size: 20px;
-  font-weight: 400;
-  line-height: 1;
-}
-.mask-action-row .mask-reset-segment:hover:not(:disabled) {
-  border-left-color: rgb(255 255 255 / 50%);
-}
 
 .z-order-row {
   display: grid;
@@ -4444,14 +4431,6 @@ button.cthread-where:disabled { cursor: default; opacity: 1; }
 .media-masking-options > .field-check { margin: 4px 0 0; }
 .mask-action-row { margin-top: 8px; }
 .mask-action-row .panel-action { margin: 0; }
-.mask-action-row .mask-reset-segment {
-  border: 1px solid var(--line);
-  border-left: 0;
-  background: var(--panel-2);
-  color: var(--muted);
-  font-size: 16px;
-}
-.mask-action-row .mask-reset-segment:hover:not(:disabled) { background: var(--panel-2); color: var(--danger); border-left-color: var(--line); }
 
 .media-border-options { align-items: end; }
 .media-border-options .field-number { flex-direction: column; align-items: stretch; gap: 3px; }

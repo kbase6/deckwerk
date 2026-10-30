@@ -527,7 +527,7 @@ export function makeContextActions(
       }
       if (el.type === 'image' || el.type === 'video') {
         items.push('separator', {
-          label: canvas.maskingElement() === el.id ? 'Done editing mask' : 'Edit mask (crop)',
+          label: canvas.maskingElement() === el.id ? 'Done cropping' : 'Crop',
           action: () => canvas.toggleMaskMode(el.id),
         });
       }
@@ -535,7 +535,7 @@ export function makeContextActions(
         // The same test and the same History labels as the Props checkbox, so a
         // picture rounded by CSS reads as circular here too.
         const circular = !editableCircularMask(el);
-        const label = circular ? 'Circular mask' : 'Rectangular mask';
+        const label = circular ? 'Crop to circle' : 'Crop to rectangle';
         items.push({
           label,
           action: () => {
