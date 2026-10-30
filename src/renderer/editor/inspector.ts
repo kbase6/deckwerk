@@ -114,6 +114,13 @@ const VIDEO_FLAG_LABELS = {
   controls: 'Player bar',
 } as const;
 
+/** How a picture or video sits in its box, as the Fit strip names it. */
+const MEDIA_FIT_CHOICES = [
+  { value: 'contain', title: 'Fit inside', text: 'Fit inside' },
+  { value: 'cover', title: 'Fill frame', text: 'Fill frame' },
+  { value: 'fill', title: 'Stretch', text: 'Stretch' },
+];
+
 /** What the no-wrap compression modes are called; the stored values stay. */
 const NO_WRAP_MODE_LABELS: Record<string, string> = { shrink: 'Shrink text', condense: 'Narrow letters' };
 
@@ -681,20 +688,41 @@ export class Inspector {
         this.updateMediaMasks((target) => setMediaMask(target, on), on ? 'Crop to circle' : 'Crop to rectangle')),
     );
     masking.content.appendChild(settings);
-    // 'contain' letterboxes inside the box (aspect ratio fixed); 'fill'
-    // stretches with it, which is what resizing feels like it should do
-    // when this is off. It clips like the mask does, so it lives here.
-    masking.content.appendChild(
-      checkboxField('Keep aspect ratio', el.fit !== 'fill', (on) =>
-        this.store.updateSelected((target) => {
-          if (target.type === 'image' || target.type === 'video') {
-            target.fit = on ? 'contain' : 'fill';
-          }
-        }),
-      ),
-    );
     masking.content.appendChild(this.maskButton(elementId));
     return masking.section;
+  }
+
+  /**
+   * How the picture sits in its box. Three values, so a strip: an on/off box
+   * could write only two, and turning it off and on again letterboxed a
+   * picture that had filled its frame. A crop always fills its own window,
+   * so the strip is off for cropped media and never writes to it.
+   */
+  private mediaFitSection(media: Array<Extract<SlideElement, { type: 'image' | 'video' }>>): HTMLElement {
+    const fit = optionSection('Fit', 'media-fit-options');
+    const uncropped = media.filter((el) => !el.sourceBox);
+    const field = segmentedSelectField(
+      'Fit',
+      MEDIA_FIT_CHOICES,
+      commonValue(uncropped.map((el) => el.fit)) ?? '',
+      (value) => this.store.updateSelected((el) => {
+        if ((el.type === 'image' || el.type === 'video') && !el.sourceBox) {
+          el.fit = value as typeof el.fit;
+        }
+      }, { label: 'Change fit' }),
+    );
+    // The section heading already says "Fit"; the select keeps it as its name.
+    field.querySelector('span')!.hidden = true;
+    if (uncropped.length === 0) {
+      field.title = 'Fit does not apply to a cropped picture or video';
+      field.querySelector('select')!.disabled = true;
+      for (const choice of field.querySelectorAll('button')) {
+        choice.disabled = true;
+        choice.title = field.title;
+      }
+    }
+    fit.content.appendChild(field);
+    return fit.section;
   }
 
   /**
@@ -889,7 +917,7 @@ export class Inspector {
             if (this.editingFrame) Object.assign(el, this.editingFrame(el));
             if ((key === 'w' || key === 'h') && (el.type === 'image' || el.type === 'video')) {
               // As a handle drag sizes media: the crop scales with its window,
-              // and unless "Keep aspect ratio" is off the other side follows;
+              // and unless Fit is set to Stretch the other side follows;
               // a circle always stays round.
               const size = Math.max(8, v);
               const keep = editableCircularMask(el) || el.fit !== 'fill';
@@ -1696,15 +1724,7 @@ export class Inspector {
       ),
     );
     masking.content.appendChild(maskSettings);
-    masking.content.appendChild(mixedCheckboxField(
-      'Keep aspect ratio',
-      commonValue(media.map((element) => element.fit !== 'fill')),
-      (value) => this.store.updateSelected((element) => {
-        if (element.type === 'image' || element.type === 'video') {
-          element.fit = value ? 'contain' : 'fill';
-        }
-      }),
-    ));
+    wrap.appendChild(this.mediaFitSection(media));
     wrap.appendChild(masking.section);
 
     const editableBorders = media.map(editableMediaBorder);
@@ -1785,6 +1805,7 @@ export class Inspector {
         // Trim is about time, like playback, so it sits beside it rather than
         // after the mask and border sections.
         wrap.appendChild(this.trimSection(el));
+        wrap.appendChild(this.mediaFitSection([el]));
         wrap.appendChild(this.mediaMaskControls(el.id));
         wrap.appendChild(this.mediaBorderControls());
         wrap.appendChild(this.mediaEffectsControls());
@@ -1805,6 +1826,7 @@ export class Inspector {
 
       case 'image': {
         const wrap = typeSections();
+        wrap.appendChild(this.mediaFitSection([el]));
         wrap.appendChild(this.mediaMaskControls(el.id));
         wrap.appendChild(this.mediaBorderControls());
         wrap.appendChild(this.mediaEffectsControls());

@@ -34,7 +34,7 @@ import type { SlideElement } from '../src/shared/deck.js';
  * panning and zooming the view with a plain mouse and the keyboard, the
  * Props tab's line Ends control on one or both lines, its Show slide numbers
  * box, the zoom bar's Gridlines toggle, edge crops, crop pans, Shift-resizes,
- * Text fit, crop resets, typed picture sizes, crop controls, abandoned gestures, Slide colors, and theme drafts.
+ * Text fit, crop resets, typed picture sizes, crop controls, abandoned gestures, Slide colors, theme drafts, and the image Fit strip.
  *
  * After EVERY step five oracles run: the whole-editor invariant set from
  * selectionSession, keystroke routing via per-step nonce strings, an element
@@ -161,7 +161,7 @@ type OpName =
   | 'cmd+a' | 'click with stray hover' | 'rail multi-delete' | 'stack key' | 'spelling fix'
   | 'size from sidebar' | 'viewport gesture' | 'line ends' | 'slide numbers' | 'gridlines'
   | 'crop edge drag' | 'shift resize image' | 'reset crop' | 'theme pick' | 'geometry from sidebar'
-  | 'crop pan' | 'crop toggle from panel' | 'escape during crop' | 'circle toggle' | 'abandon gesture' | 'text fit' | 'slide colors light/dark' | 'theme draft';
+  | 'crop pan' | 'crop toggle from panel' | 'escape during crop' | 'circle toggle' | 'abandon gesture' | 'text fit' | 'slide colors light/dark' | 'theme draft' | 'set fit';
 
 interface Violation { seed: number; step: number; op: OpName; oracle: string; detail: string }
 
@@ -497,6 +497,7 @@ function chooseOp(next: () => number, pre: CrossState): OpName {
   add('gridlines', 1);
   add('theme pick', 1);
   if (pre.elements.includes(IMAGE)) {
+    add('set fit', 1);
     add('crop edge drag', 2);
     add('shift resize image', 1);
     add('reset crop', 1);
@@ -747,6 +748,9 @@ async function performOp(
       return 'same';
     case 'theme draft':
       await themeDraft(next, pre, flag);
+      return 'same';
+    case 'set fit':
+      await setFit(next, flag);
       return 'same';
     case 'crop edge drag':
       await cropEdgeDrag(next, flag);
@@ -1628,13 +1632,13 @@ async function resetCrop(
     before = await read();
     if (!before?.el.sourceBox) return;
   }
+  if ((await session.state()).selection.join() !== IMAGE) await session.click(IMAGE);
+  // Selecting it can complete a double-click and enter crop mode.
   const masking = () => cdp.evaluate<string | null>('window.canvas.maskingElement()');
   if (await masking() === IMAGE) {
     await clickFound(`() => [...document.querySelectorAll('.editor-inspector .mask-action-row .panel-action')]
       .find((node) => node.textContent === 'Done cropping' && node.getClientRects().length > 0)`, 'Done cropping');
     await wait(120);
-  } else if ((await session.state()).selection.join() !== IMAGE) {
-    await session.click(IMAGE);
   }
   const reset = `() => [...document.querySelectorAll('.editor-inspector .mask-action-row button')]
     .find((node) => node.textContent === 'Reset crop' && node.getClientRects().length > 0)`;
@@ -2204,6 +2208,70 @@ async function abandonGesture(
     flag('undoRoundTrip', `one undo after ${label} did not put the deck back; diff: ${firstDiff(before, undone)}`);
   }
   return 'resync';
+}
+
+/**
+ * Select the image with real clicks and choose a fit from the Props tab's Fit
+ * strip. An uncropped image takes the choice, draws it, and the strip shows
+ * it; a cropped one has the strip off and keeps its fit. Either way the
+ * selection and every other object stay as they were.
+ */
+async function setFit(
+  next: () => number,
+  flag: (oracle: 'routing' | 'census', detail: string) => void,
+): Promise<void> {
+  const { cdp } = session;
+  const value = pick(next, ['contain', 'cover', 'fill']);
+  await session.clickEmpty();
+  await session.click(IMAGE);
+  const selected = (await session.state()).selection;
+  if (selected.join() !== IMAGE) {
+    flag('routing', `clicking ${IMAGE} selected [${selected.join(', ')}]`);
+    return;
+  }
+  const read = () => cdp.evaluate<{ fit: string | null; cropped: boolean; drawn: string | null; others: string }>(`(() => {
+    const elements = window.store.slide.elements;
+    const el = elements.find((e) => e.id === ${JSON.stringify(IMAGE)});
+    const img = document.querySelector('.slide-layer [data-element-id="${IMAGE}"] img');
+    return {
+      fit: el ? el.fit : null,
+      cropped: Boolean(el && el.sourceBox),
+      drawn: img ? img.style.objectFit : null,
+      others: JSON.stringify(elements.filter((e) => e.id !== ${JSON.stringify(IMAGE)})),
+    };
+  })()`);
+  const field = `[...document.querySelectorAll('.editor-inspector select[aria-label="Fit"]')]
+    .map((select) => select.closest('.field-segmented'))
+    .find((node) => node && node.getClientRects().length > 0)`;
+  const before = await read();
+  const clicked = await clickFound(`() => (${field})?.querySelector('.segment-button[data-value="${value}"]')`, `Fit: ${value}`);
+  if (!clicked) {
+    flag('routing', `the Props tab shows no Fit control for ${IMAGE}`);
+    return;
+  }
+  await wait(120);
+  if (TRACE) console.log(`  Fit: ${value} on ${IMAGE}, ${before.cropped ? 'cropped' : 'uncropped'} at ${before.fit}`);
+  const after = await read();
+  const control = await cdp.evaluate<{ pressed: string | null; disabled: boolean }>(`(() => {
+    const field = ${field};
+    return {
+      pressed: field?.querySelector('.segment-button[aria-pressed="true"]')?.dataset.value ?? null,
+      disabled: field?.querySelector('select')?.disabled === true,
+    };
+  })()`);
+  if (before.cropped) {
+    if (!control.disabled) flag('routing', `the Fit control is on for cropped ${IMAGE}`);
+    if (after.fit !== before.fit) flag('census', `Fit: ${value} rewrote cropped ${IMAGE} from ${before.fit} to ${after.fit}`);
+  } else {
+    if (after.fit !== value) flag('census', `Fit: ${value} stored ${after.fit} on ${IMAGE}`);
+    if (after.drawn !== value) flag('census', `Fit: ${value} on ${IMAGE} draws object-fit ${after.drawn}`);
+    if (control.pressed !== value) flag('routing', `after Fit: ${value} the control shows ${control.pressed}`);
+  }
+  const selection = (await session.state()).selection;
+  if (selection.join() !== IMAGE) flag('routing', `Fit: ${value} changed the selection to [${selection.join(', ')}]`);
+  if (after.others !== before.others) {
+    flag('census', `Fit: ${value} changed another object; diff: ${firstDiff(before.others, after.others)}`);
+  }
 }
 
 function firstDiff(a: string, b: string): string {

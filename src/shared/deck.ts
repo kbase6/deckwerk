@@ -203,8 +203,8 @@ const TextElement = BaseElement.extend({
 });
 
 /**
- * The fit media gets when it is put on a slide: 'contain', i.e. "Keep aspect
- * ratio" on, so a resize keeps the picture's proportions and Shift frees
+ * The fit media gets when it is put on a slide: 'contain', i.e. Fit: "Fit
+ * inside", so a resize keeps the picture's proportions and Shift frees
  * them. Cropping is free whatever this says (Shift locks it), since a crop
  * reshapes the window, never the picture.
  */

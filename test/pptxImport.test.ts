@@ -163,6 +163,51 @@ describe.skipIf(!existsSync(REFERENCE))('powerpoint importer', () => {
     expect(cropped.sourceBox).toEqual({ x: -IN, y: -0, w: 4 * IN, h: 2 * IN });
   });
 
+  it('imports a picture at its own proportions as "Fit inside", and a stretched one as "Stretch"', async () => {
+    // Both reference pictures are 400x200 pixels in a 2:1 frame (the cropped
+    // one's whole frame, not its window), so 'contain' draws them as 'fill'
+    // did, and a resize in the editor then keeps their proportions.
+    const out = await mkdtemp(join(tmpdir(), 'pptx-fit-'));
+    try {
+      const stdout = execFileSync(PYTHON, ['-c', [
+        'import json, sys',
+        'from pathlib import Path',
+        'from PIL import Image',
+        'sys.path.insert(0, "importers/pptx")',
+        'from import_pptx import import_pptx, _media_fit',
+        'out = Path(sys.argv[2])',
+        'deck, report = import_pptx(Path(sys.argv[1]), out, True)',
+        'fits = [el["fit"] for el in deck["slides"][2]["elements"] if el["type"] == "image"]',
+        'wide = out / "wide.png"',
+        'Image.new("RGB", (400, 200)).save(wide)',
+        'exif = Image.Exif(); exif[0x0112] = 6',
+        'rotated = out / "rotated.jpg"',
+        'Image.new("RGB", (400, 200)).save(rotated, exif=exif)',
+        'probe = {',
+        '    "within 1%": _media_fit(wide, 576, 290),',
+        '    "stretched": _media_fit(wide, 576, 300),',
+        '    "lower boundary": _media_fit(wide, 198, 100),',
+        '    "upper boundary": _media_fit(wide, 202, 100),',
+        '    "below boundary": _media_fit(wide, 197.99, 100),',
+        '    "above boundary": _media_fit(wide, 202.01, 100),',
+        '    "rotated": _media_fit(rotated, 100, 200),',
+        '    "empty frame": _media_fit(wide, 0, 100),',
+        '    "unreadable": _media_fit(out / "missing.png", 576, 288),',
+        '}',
+        'print(json.dumps({"fits": fits, "probe": probe}))',
+      ].join('\n'), REFERENCE, out], { encoding: 'utf8', cwd: process.cwd(), maxBuffer: 64 * 1024 * 1024 });
+      const result = JSON.parse(stdout) as { fits: string[]; probe: Record<string, string> };
+      expect(result.fits).toEqual(['contain', 'contain']);
+      expect(result.probe).toEqual({
+        'within 1%': 'contain', stretched: 'fill', unreadable: 'fill',
+        'lower boundary': 'contain', 'upper boundary': 'contain',
+        'below boundary': 'fill', 'above boundary': 'fill', rotated: 'contain', 'empty frame': 'fill',
+      });
+    } finally {
+      await rm(out, { recursive: true, force: true });
+    }
+  }, 60_000);
+
   it('flattens groups through their child coordinate space', () => {
     const { deck } = reference();
     const cyan = shape(deck, 2, (el) => el.type === 'shape' && el.fill === '#00ffff');
