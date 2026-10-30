@@ -240,10 +240,29 @@ describe('Morph matching', () => {
     document.body.appendChild(host);
     new MorphPanel(host, store);
     expect(host.querySelector('.morph-enable .field-check, .morph-enable')!.textContent)
-      .toContain('Enabled');
+      .toContain('Morph into next slide');
     host.querySelector<HTMLButtonElement>('.morph-enable-pair')!.click();
     expect(store.get().deck.slides[1].morphFromPrevious).toBe(true);
     expect(host.textContent).toContain('Enabled Morph');
+    host.remove();
+  });
+
+  it('says which settings reach past the selected slide, with one enable-and-pair wording', () => {
+    const store = new EditorStore(twoSlideDeck(), '/tmp/morph');
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    new Inspector(host, store);
+    const label = (selector: string) => host.querySelector(`${selector} span`)?.textContent;
+    // Slide numbers and the motion curve are deck settings; the switch on
+    // slide 1 turns on the transition that lands on slide 2.
+    expect([...host.querySelectorAll('.field-check span')].map((span) => span.textContent))
+      .toContain('Show slide numbers (all slides)');
+    expect(label('.morph-easing')).toBe('Motion curve (all Morphs)');
+    expect(label('.morph-enable')).toBe('Morph into next slide');
+    const single = host.querySelector('.morph-enable-pair')!.textContent;
+    store.selectSlideRange(0, 1);
+    expect(host.querySelector('.morph-bulk-pair')!.textContent).toBe(single);
+    expect(single).toBe('Enable Morph and auto-pair');
     host.remove();
   });
 
