@@ -22,6 +22,7 @@ import {
 } from '@shared/themes.js';
 import { fitAutoText, renderSlide } from '../player/render.js';
 import { colorField } from './colorPicker.js';
+import { showConfirmDialog } from './confirmDialog.js';
 import type { CssEditor } from './cssEditor.js';
 import { fontFamilyField } from './fontPicker.js';
 import { numberField } from './inspector.js';
@@ -115,8 +116,19 @@ export interface ThemePanel {
   refreshSwatches(): void;
   /** Reflect a freshly opened deck's installed preset in the gallery. */
   noteDeckOpened(deck: Deck): void;
-  /** Close the theme chooser/editor and end its central preview session. */
+  /**
+   * Close the theme chooser/editor and end its central preview session. A
+   * theme edit with changes is asked about first; while that question is
+   * open this returns false, so its Escape reaches the question.
+   */
   dismiss(): boolean;
+  /**
+   * End a theme edit before the author goes elsewhere. One that changed
+   * nothing ends at once and this returns false. One with changes asks
+   * "Discard theme changes?" and returns true: `then` runs if the author
+   * discards them, and never if they keep editing.
+   */
+  confirmDiscardDraft(then: () => void): boolean;
 }
 
 /** Things on slides the last theme change left alone or pushed out of their box. */
@@ -146,6 +158,9 @@ export function createThemePanel(deps: ThemePanelDeps): ThemePanel {
   let themePreviewOpen = false;
   /** A theme edit in progress; nothing lands on the deck until Done. */
   let draft: { style: ThemeStyle; base: ThemePreset } | null = null;
+  let editThemeButton: HTMLButtonElement | null = null;
+  /** "Discard theme changes?" is being asked. */
+  let askingToDiscard = false;
 
   function currentTheme(): ThemePreset | null {
     const deck = store.get().deck;
@@ -160,6 +175,7 @@ export function createThemePanel(deps: ThemePanelDeps): ThemePanel {
 
   function renderActiveTheme(): void {
     if (!activeThemeHost) return;
+    if (editThemeButton) editThemeButton.disabled = Boolean(draft);
     const theme = currentTheme();
     activeThemeHost.replaceChildren();
     if (!theme) return;
@@ -514,9 +530,10 @@ export function createThemePanel(deps: ThemePanelDeps): ThemePanel {
       modeButtons.set(value, button);
       modeToggle.appendChild(button);
     }
-    const editTheme = barButton('Edit…', () => (draft ? cancelDraft() : openDraft()));
-    editTheme.classList.add('theme-edit-button');
-    modeRow.append(modeLabel, modeToggle, editTheme);
+    // Disabled while editing: Done and Cancel are the ways out of an edit.
+    editThemeButton = barButton('Edit theme…', openDraft);
+    editThemeButton.classList.add('theme-edit-button');
+    modeRow.append(modeLabel, modeToggle, editThemeButton);
 
     themeEditor = document.createElement('section');
     themeEditor.className = 'theme-inline-editor';
@@ -573,11 +590,45 @@ export function createThemePanel(deps: ThemePanelDeps): ThemePanel {
     notifyThemePreview();
   }
 
+  /** Whether the draft differs from what the deck wears. */
+  function draftChanged(): boolean {
+    if (!draft) return false;
+    const deck = store.get().deck;
+    return JSON.stringify(draft.style) !== JSON.stringify(deck.themeStyle ?? themeStyleOf(draft.base));
+  }
+
+  function confirmDiscardDraft(then: () => void): boolean {
+    if (askingToDiscard) return true;
+    if (!draft) return false;
+    if (!draftChanged()) {
+      cancelDraft();
+      return false;
+    }
+    askingToDiscard = true;
+    const name = draft.base.name.replace(' · Modified', '');
+    // Asked a task later: a press on a rail row focuses the rail after it
+    // gets here, and the question must hold focus for Return and Escape.
+    setTimeout(() => {
+      void showConfirmDialog({
+        title: 'Discard theme changes?',
+        description: `Your edits to ${name} are not on the slides yet. To keep them, keep editing and press Done.`,
+        confirmLabel: 'Discard',
+        cancelLabel: 'Keep editing',
+        destructive: true,
+      }).then((discard) => {
+        askingToDiscard = false;
+        if (!discard) return;
+        cancelDraft();
+        then();
+      });
+    });
+    return true;
+  }
+
   function finishDraft(): void {
     if (!draft) return;
     const { style, base } = draft;
-    const deck = store.get().deck;
-    const changed = JSON.stringify(style) !== JSON.stringify(deck.themeStyle ?? themeStyleOf(base));
+    const changed = draftChanged();
     draft = null;
     if (themeEditor) themeEditor.hidden = true;
     deps.onPreviewThemeDraft?.(null);
@@ -698,13 +749,15 @@ export function createThemePanel(deps: ThemePanelDeps): ThemePanel {
     currentTheme,
     refreshSwatches,
     dismiss: () => {
+      if (askingToDiscard) return false;
       const wasOpen = themePreviewOpen
         || Boolean(chooser && !chooser.hidden)
         || Boolean(draft);
-      if (draft) cancelDraft();
+      confirmDiscardDraft(() => {});
       endPreview();
       return wasOpen;
     },
+    confirmDiscardDraft,
     noteDeckOpened: (deck) => {
       if (draft) cancelDraft();
       // A deck with presets of its own (or a different current theme, which

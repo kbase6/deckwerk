@@ -2493,7 +2493,7 @@ describe('theming through the panel, the rail and the inspector', () => {
     expect(computed(canvasHost, 'title').fontSize).toBe(`${before}px`);
 
     // Edit the deck's title size in the Design tab: a draft until Done.
-    panelButton(panel.element, 'Edit…').click();
+    panelButton(panel.element, 'Edit theme…').click();
     const titleSize = [...panel.element.querySelectorAll<HTMLElement>('.theme-role-size')]
       .find((node) => node.querySelector('span')?.textContent === 'Title size')!
       .querySelector<HTMLInputElement>('input')!;

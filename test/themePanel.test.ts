@@ -605,4 +605,76 @@ describe('the theme editor’s type scale', () => {
     expect(store.canUndo()).toBe(false);
   });
 
+  it('never drops a changed draft without asking, and leaves no preview behind', async () => {
+    const deck = emptyDeck('Scale panel');
+    deck.themePreset = THEMES[0].id;
+    deck.themeStyle = structuredClone({
+      fonts: THEMES[0].fonts, palette: THEMES[0].palette, colors: THEMES[0].colors,
+    });
+    const store = new EditorStore(deck, '/tmp/theme-panel-scale');
+    const onPreviewThemeDraft = vi.fn();
+    const panel = createThemePanel({
+      store,
+      cssEditor: { getValue: () => '', setValue: vi.fn() } as unknown as CssEditor,
+      save: vi.fn(),
+      setStatusMessage: vi.fn(),
+      saveThemeCss: vi.fn(),
+      onPreviewThemeDraft,
+    });
+    document.body.appendChild(panel.element);
+    const before = JSON.stringify(store.get().deck);
+    const edit = panel.element.querySelector<HTMLButtonElement>('.theme-edit-button')!;
+    const editor = panel.element.querySelector<HTMLElement>('.theme-inline-editor')!;
+    const titleSize = () => panel.element.querySelector<HTMLElement>('.theme-role-size')!.querySelector('input')!;
+    const dialog = () => document.querySelector<HTMLElement>('.confirm-dialog');
+    const answer = async (label: string): Promise<void> => {
+      await vi.waitFor(() => expect(dialog()).not.toBeNull());
+      [...dialog()!.querySelectorAll('button')].find((button) => button.textContent === label)!.click();
+      await vi.waitFor(() => expect(dialog()).toBeNull());
+    };
+
+    edit.click();
+    titleSize().value = '100';
+    titleSize().dispatchEvent(new Event('change', { bubbles: true }));
+
+    // Escape or a slide click asks first; keeping the edit keeps all of it.
+    expect(panel.dismiss()).toBe(true);
+    await vi.waitFor(() => expect(dialog()?.querySelector('h2')?.textContent).toBe('Discard theme changes?'));
+    expect(editor.hidden).toBe(false);
+    // While it asks, Escape is the question's, not another dismissal.
+    expect(panel.dismiss()).toBe(false);
+    expect(document.querySelectorAll('.confirm-dialog')).toHaveLength(1);
+    await answer('Keep editing');
+    expect(editor.hidden).toBe(false);
+    expect(titleSize().value).toBe('100');
+    expect(onPreviewThemeDraft).not.toHaveBeenLastCalledWith(null);
+
+    // Pressing the button again is no way out: it waits for Done or Cancel.
+    expect(edit.textContent).toBe('Edit theme…');
+    expect(edit.disabled).toBe(true);
+    edit.click();
+    expect(editor.hidden).toBe(false);
+    expect(titleSize().value).toBe('100');
+
+    // Another tab waits for the answer, and goes only once the edit is gone.
+    const leave = vi.fn();
+    expect(panel.confirmDiscardDraft(leave)).toBe(true);
+    expect(leave).not.toHaveBeenCalled();
+    await answer('Discard');
+    expect(leave).toHaveBeenCalledTimes(1);
+    expect(editor.hidden).toBe(true);
+    expect(edit.disabled).toBe(false);
+    expect(onPreviewThemeDraft).toHaveBeenLastCalledWith(null);
+    expect(JSON.stringify(store.get().deck)).toBe(before);
+
+    // An edit that changed nothing has nothing to lose: it ends at once.
+    edit.click();
+    const quiet = vi.fn();
+    expect(panel.confirmDiscardDraft(quiet)).toBe(false);
+    expect(quiet).not.toHaveBeenCalled();
+    expect(editor.hidden).toBe(true);
+    expect(onPreviewThemeDraft).toHaveBeenLastCalledWith(null);
+    expect(dialog()).toBeNull();
+  });
+
 });

@@ -34,7 +34,7 @@ import type { SlideElement } from '../src/shared/deck.js';
  * panning and zooming the view with a plain mouse and the keyboard, the
  * Props tab's line Ends control on one or both lines, its Show slide numbers
  * box, the zoom bar's Gridlines toggle, edge crops, crop pans, Shift-resizes,
- * Text fit, crop resets, typed picture sizes, crop controls, abandoned gestures, and Slide colors.
+ * Text fit, crop resets, typed picture sizes, crop controls, abandoned gestures, Slide colors, and theme drafts.
  *
  * After EVERY step five oracles run: the whole-editor invariant set from
  * selectionSession, keystroke routing via per-step nonce strings, an element
@@ -161,7 +161,7 @@ type OpName =
   | 'cmd+a' | 'click with stray hover' | 'rail multi-delete' | 'stack key' | 'spelling fix'
   | 'size from sidebar' | 'viewport gesture' | 'line ends' | 'slide numbers' | 'gridlines'
   | 'crop edge drag' | 'shift resize image' | 'reset crop' | 'theme pick' | 'geometry from sidebar'
-  | 'crop pan' | 'crop toggle from panel' | 'escape during crop' | 'circle toggle' | 'abandon gesture' | 'text fit' | 'slide colors light/dark';
+  | 'crop pan' | 'crop toggle from panel' | 'escape during crop' | 'circle toggle' | 'abandon gesture' | 'text fit' | 'slide colors light/dark' | 'theme draft';
 
 interface Violation { seed: number; step: number; op: OpName; oracle: string; detail: string }
 
@@ -482,13 +482,14 @@ function chooseOp(next: () => number, pre: CrossState): OpName {
   add('escape', 1);
   add('click empty', 1);
   add('marquee', 1);
-  add('rail hop', 2);
+  // A redo of a confirmed whole-deck delete can leave one slide to hop to.
+  if (pre.slides > 1) add('rail hop', 2);
   add('undo', 2);
   add('redo', 1);
   add('undo round-trip', 1);
   if (pre.editing === null && pre.selection.length > 0) add('delete selection', 2);
   add('cmd+a', 1);
-  add('rail multi-delete', 1);
+  if (pre.slides > 1) add('rail multi-delete', 1);
   add('stack key', 1);
   add('viewport gesture', 2);
   if (pre.elements.includes(LINE_A) || pre.elements.includes(LINE_B)) add('line ends', 2);
@@ -508,6 +509,7 @@ function chooseOp(next: () => number, pre: CrossState): OpName {
   add('abandon gesture', 2);
   if (targets.some((id) => id !== IMAGE)) add('text fit', 2);
   add('slide colors light/dark', 1);
+  add('theme draft', 1);
   return pick(next, ops);
 }
 
@@ -742,6 +744,9 @@ async function performOp(
       return 'same';
     case 'slide colors light/dark':
       await slideColors(next, flag);
+      return 'same';
+    case 'theme draft':
+      await themeDraft(next, pre, flag);
       return 'same';
     case 'crop edge drag':
       await cropEdgeDrag(next, flag);
@@ -1339,6 +1344,71 @@ async function slideColors(
       await cdp.clickByText('#themePanel .theme-chooser-header button', 'Close', 'close the theme chooser');
       await wait(80);
     }
+    await cdp.click('#side-tabs button[data-panel="inspector"]', 'the Props tab');
+    await wait(80);
+  }
+}
+
+/**
+ * Edit the theme in the Design tab, maybe change the title size, then leave
+ * by another door: the Props tab, Escape, or a rail click. An edit that
+ * changed nothing ends quietly; a changed one asks "Discard theme changes?",
+ * and is kept (Escape) with its preview, or discarded (Return). Nothing
+ * reaches the deck without Done, and once the edit ends no preview is left
+ * over the slide. The Props tab comes back after, as the other ops expect it.
+ */
+async function themeDraft(
+  next: () => number,
+  pre: CrossState,
+  flag: (oracle: 'routing' | 'census', detail: string) => void,
+): Promise<void> {
+  const { cdp } = session;
+  const look = () => cdp.evaluate<{ editing: boolean; overlay: boolean; asking: boolean; style: string }>(`(() => ({
+    editing: document.querySelector('#themePanel .theme-inline-editor')?.hidden === false,
+    overlay: Boolean(document.querySelector('#canvas .design-slide-preview, #canvas .design-slide-preview-banner')),
+    asking: Boolean(document.querySelector('.confirm-dialog')),
+    style: JSON.stringify(window.store.get().deck.themeStyle ?? null),
+  }))()`);
+  const before = (await look()).style;
+  await cdp.click('#side-tabs button[data-panel="themePanel"]', 'the Design tab');
+  await wait(80);
+  try {
+    await cdp.click('#themePanel .theme-edit-button', 'Edit theme…');
+    const change = next() < 0.7;
+    if (change) {
+      const size = 60 + Math.floor(next() * 80);
+      const current = await cdp.evaluate<number>(`Number(document.querySelector('#themePanel .theme-role-size input').value)`);
+      await cdp.typeInto('#themePanel .theme-role-size input', String(size === current ? size + 1 : size), 'Title size');
+    }
+    await wait(80);
+    const door = pick(next, ['the Props tab', 'Escape', 'a rail click']);
+    if (door === 'the Props tab') await cdp.click('#side-tabs button[data-panel="inspector"]', 'the Props tab');
+    else if (door === 'Escape') await session.key('Escape', 27);
+    else await session.clickRail(pre.slides > 1 && next() < 0.5 ? (pre.slideIndex === 0 ? 1 : 0) : pre.slideIndex);
+    await wait(150);
+    let now = await look();
+    if (!change && now.asking) flag('routing', `${door} asked about a theme edit that changed nothing`);
+    if (change) {
+      if (!now.asking) {
+        flag('census', `${door} ended a changed theme edit without asking`);
+        return;
+      }
+      const keep = next() < 0.5;
+      await session.key(keep ? 'Escape' : 'Enter', keep ? 27 : 13);
+      await wait(150);
+      now = await look();
+      if (now.asking) flag('routing', `${keep ? 'Escape' : 'Return'} left "Discard theme changes?" open`);
+      if (keep) {
+        if (!now.editing || !now.overlay) flag('routing', `keeping the theme edit after ${door} ended it or dropped its preview`);
+        await cdp.clickByText('#themePanel .theme-inline-editor button', 'Cancel');
+        await wait(80);
+        now = await look();
+      }
+    }
+    if (now.editing) flag('routing', `the theme edit is still open after ${door}`);
+    if (now.overlay) flag('routing', `the theme edit ended by ${door} left its preview over the slide`);
+    if (now.style !== before) flag('census', `a theme edit ended by ${door} without Done changed the deck's theme`);
+  } finally {
     await cdp.click('#side-tabs button[data-panel="inspector"]', 'the Props tab');
     await wait(80);
   }

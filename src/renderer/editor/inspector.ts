@@ -3695,7 +3695,7 @@ function trimRangeSlider(
 
 /** In the layout editor the size field only reports what the theme gives. */
 function lockSizeToTheme(sizeField: HTMLElement): void {
-  const reason = 'Sizes are the deck\u2019s, not the layout\u2019s: change them under Design \u203a Edit\u2026';
+  const reason = 'Sizes are the deck\u2019s, not the layout\u2019s: change them under Design \u203a Edit theme\u2026';
   for (const control of sizeField.querySelectorAll<HTMLInputElement | HTMLButtonElement>('input, button')) {
     control.disabled = true;
     control.title = reason;
