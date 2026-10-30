@@ -121,6 +121,33 @@ export function fittedImageBox(
 }
 
 /**
+ * Give media a `w`x`h` box the way dragging a handle does: a crop scales with
+ * its window, so the same part of the picture stays in view rather than the
+ * window showing more or less of it. `from` is the box and crop to scale; a
+ * drag passes where it began, so rounding never builds up over its moves.
+ */
+export function resizeMediaBox(
+  el: MediaElement,
+  w: number,
+  h: number,
+  from: { w: number; h: number; sourceBox?: MaskRect | null } = el,
+): void {
+  const crop = from.sourceBox;
+  if (crop) {
+    const fx = w / from.w;
+    const fy = h / from.h;
+    el.sourceBox = {
+      x: Math.round(crop.x * fx),
+      y: Math.round(crop.y * fy),
+      w: Math.max(1, Math.round(crop.w * fx)),
+      h: Math.max(1, Math.round(crop.h * fy)),
+    };
+  }
+  el.w = w;
+  el.h = h;
+}
+
+/**
  * The element box and `sourceBox` for a crop window dragged to `rect`.
  *
  * `origin` is the element box and `base` the painted picture (box-relative)
