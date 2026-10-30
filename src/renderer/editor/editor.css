@@ -4595,8 +4595,10 @@ button.ghost:hover:not(:disabled) { color: var(--text); background: transparent;
 .design-slide-preview > .slide { position: absolute; inset: 0; }
 .design-slide-preview .text-body,
 .design-slide-preview .text-content { visibility: visible; }
-.canvas-host.design-slide-previewing > .stage > .overlay-layer { visibility: hidden; }
-.design-slide-preview-banner {
+.canvas-host.design-slide-previewing > .stage > .overlay-layer,
+.canvas-host.design-slide-previewing > .crop-mode-banner { visibility: hidden; }
+.design-slide-preview-banner,
+.crop-mode-banner {
   position: absolute;
   top: 10px;
   left: 50%;
