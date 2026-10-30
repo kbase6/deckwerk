@@ -1,6 +1,7 @@
 import { AGENT_PROTOCOL_VERSION, type AgentTransaction } from '@shared/agent.js';
 import type { Deck, Slide } from '@shared/deck.js';
 import type { AuthoredHtmlFile } from '@shared/ipc.js';
+import { diffDecks } from '@shared/deckDiff.js';
 import renderMathInElement from 'katex/contrib/auto-render';
 import { authoringPageHtml, measureSlides } from '@shared/htmlMeasure.js';
 import {
@@ -185,6 +186,20 @@ export async function authoredHtmlSync(
     slides,
     warnings,
   };
+}
+
+/**
+ * Whether a compile made against `compiled` still holds for `now`, the deck as
+ * it stands once the compile is done. Typing elsewhere — speaker notes, another
+ * slide — must not throw the page away: only a change to a slide the page
+ * governs (its scope, or a slide it names), to the deck itself, or to which
+ * slides there are and in what order outdates it.
+ */
+export function compileStillHolds(compiled: Deck, now: Deck, file: AuthoredHtmlFile, slides: Slide[]): boolean {
+  if (now === compiled) return true;
+  const range = new Set([...(htmlSlideScope(file.contents) ?? []), ...slides.map((slide) => slide.id)]);
+  return diffDecks(compiled, now).every((op) => op.op !== 'deleteSlide' && op.op !== 'moveSlide'
+    && 'slideId' in op && !range.has(op.slideId));
 }
 
 export function fileName(path: string): string {
