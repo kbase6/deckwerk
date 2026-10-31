@@ -179,6 +179,139 @@ DeckWerk is an open-source Electron application under the MIT license.
 - [docs/RELEASING.md](docs/RELEASING.md) — how signed releases are cut
 - [AGENTS.md](AGENTS.md) — architecture, authoring model, and testing notes
 
+## Repository Blueprint
+
+The sections below are the repository's architectural contract: what each
+code folder exposes, what must stay true across folders, and what the system
+touches outside itself. Each folder's own `README.md` holds its detailed
+contract.
+
+### System Overview
+
+DeckWerk is one TypeScript codebase that runs in four places:
+
+- **Desktop app** (Electron): `src/main` owns the filesystem, ffmpeg and
+  windows; `src/preload` exposes it to the browser side as `window.api`;
+  `src/renderer` holds every browser surface (editor, presenter, print,
+  trim, raster).
+- **Collaboration server**: `src/server` hosts decks over HTTP and
+  WebSocket for the browser client in `src/renderer/collab`. It runs on its
+  own (`npm run collab`) or inside the desktop app.
+- **Agent CLI and bridge**: `src/cli` is `slide-agent` and the
+  `deckwerk-connect.mjs` bridge that mirrors a hosted deck into a local
+  folder.
+- **Web export**: `src/renderer/export` boots the shared player from a
+  static folder.
+
+All four share `src/shared` (deck schema, transactions, HTML authoring,
+themes) and `src/renderer/player` (the one slide renderer). Keynote and
+PowerPoint import runs as Python sidecar processes from `importers/`.
+
+### Local Interface & Invariants
+
+The root holds the build, packaging and test configuration:
+
+- `electron.vite.config.ts`: desktop build. Entries are
+  `src/main/index.ts`, `src/preload/index.ts` and six renderer pages
+  (editor, present, presenter, print, trim, raster). It writes `out/`.
+  Used by `npm run dev`, `build` and `start`.
+- `vite.collab.config.ts`: browser collaboration client
+  (`src/renderer/collab`). It empties and rewrites `dist/collab`, putting
+  assets under `app/` so they cannot clash with `/decks/<id>/assets`. Its
+  dev server proxies `/ws`, `/decks` and `/api` to `localhost:5800`.
+- `vite.bridge.config.ts`: bundles `src/cli/connectMain.ts` into
+  `dist/collab/deckwerk-connect.mjs`. Every dependency is inlined, so it
+  runs on bare Node 22+ with no `node_modules`. It must run after the
+  collab client build, because that build empties `dist/collab`.
+- `vite.export.config.ts`: builds `src/renderer/export/standalone.ts` as
+  one IIFE, `out/export/player.js` + `player.css`. The file names stay
+  fixed so an exported `index.html` runs from `file://`.
+- `vite.harness.config.ts`: dev-only server for `dev/harness` pages.
+- `vitest.config.ts` (unit), `vitest.browser.config.ts` (Electron, a few
+  workers), `vitest.serial.config.ts` (one worker),
+  `vitest.long.config.ts` (long and stress runs, not part of `npm test`):
+  the test tiers. `test/testTiers.ts` derives which file belongs to which
+  tier, and the tiers never overlap. `vitest.config.ts` is also the
+  `--config` for every `vite-node` script.
+- `electron-builder.config.cjs`: installers into `release/` (never
+  `dist/`, which is a packaging input). It packages `out/`, `dist/collab`
+  and `build/importers`. It refuses a missing or stale importer binary
+  (`scripts/assert-importer-fresh.cjs`). It signs only when the Apple or
+  Azure credentials are set in the environment.
+- `tsconfig.json`: type-check only (`npm run typecheck`). It covers
+  `src/` and `test/`, not `dev/` or `scripts/`. Every Vite and Vitest
+  config repeats its `@shared/*` to `src/shared/*` alias.
+
+### Subdirectories & System Boundaries
+
+- `src`: [./src/README.md](./src/README.md) - all application source:
+  Electron main process, preload bridge, renderer surfaces, collaboration
+  server, agent CLI and bridge, and the shared schema and core.
+- `importers`: [./importers/README.md](./importers/README.md) - Python
+  Keynote (`.key`) and PowerPoint (`.pptx`) importers. They print one JSON
+  document on stdout and progress on stderr, and they exit with 0, 1 or 2.
+- `scripts`: [./scripts/README.md](./scripts/README.md) - entry points for
+  npm scripts, electron-builder hooks, CI, Electron job scripts, evals and
+  benchmarks.
+- `packaging`: [./packaging/README.md](./packaging/README.md) - macOS
+  entitlements, Flatpak desktop files, and the systemd Chromium sandbox
+  drop-in for `deckwerk-collab.service`.
+- `dev`: [./dev/README.md](./dev/README.md) - hand-run developer tools:
+  browser harness pages for renderer UI and a video-loading benchmark.
+  Nothing else depends on it.
+- Folders with no code contract: `test/` (test suites and
+  `test/support` helpers), `bin/` (the `slide-agent` launcher), `docs/`,
+  `manual/`, `site/`, `flatpak/`, `resources/`, and `decks/`
+  (demo fixtures).
+
+### Global Invariants
+
+- `src/shared/deck.ts` (zod) is the single definition of `deck.json`.
+  Every importer output, transaction and save must pass `parseDeck`.
+  Nobody writes `deck.json` by hand. Agents change a deck through
+  `edit/*.html` or `slide-agent transaction apply`.
+- Browser code reaches Node only through `window.api` (preload) or, in the
+  collaboration client, through the server's HTTP and WebSocket API.
+- Every surface that shows a slide uses `src/renderer/player`: editor
+  previews, presentation, Speaker View, print, web export.
+- `line-height` is stored as a unitless ratio. Retired field names are
+  renamed only in `src/shared/fieldAliases.ts`.
+- Comments change only through `updateComments`. Undo, redo and History
+  never touch them.
+- Work on the collaboration server's event loop must not grow with deck
+  size. `test/collabStalls.test.ts` fails on any block longer than 30 ms.
+- A change to the agent loop (export, compile, sync, bridge, `./deck`)
+  adds a case to `test/agentCollaboration.test.ts`. A new interaction adds
+  an operation to the matching fuzz walk.
+- Media sources are never modified in place. Trim, crop, paint and
+  transcode write a new asset.
+
+### Global Side Effects
+
+- Deck folders on disk: `deck.json`, `theme.css`, `notes.md`, `AGENTS.md`,
+  `assets/`, `edit/`, `.versions/`. Hosted decks also get `history.jsonl`
+  and `chat.jsonl`.
+- Per-user state outside the deck: `~/.deckwerk/runtime/` (sidecars and
+  locks; `DECKWERK_STATE_DIR` overrides it), `~/.deckwerk/mirrors/`
+  (bridge mirrors), and poster and video-rendition caches.
+- Child processes: ffmpeg and ffprobe, the Python importers, and headless
+  Electron for compile, render and PDF jobs.
+- Network: the collaboration server (port 5800 by default, HTTP and
+  WebSocket), bridge connections to it, and `slide-agent preview` on
+  localhost.
+- Build outputs: `out/`, `dist/collab/`, `build/importers/`, `release/`,
+  and `.venv-import/` (made by `npm install` through
+  `scripts/setup-importers.mjs`).
+
+### System Verification
+
+- Run: `npm test` (unit, then browser, then serial tier; see `AGENTS.md`
+  for sandbox limits).
+- Targeted: `npx vitest run test/<name>.test.ts`, or
+  `npx vitest run --config vitest.browser.config.ts test/<name>.test.ts`
+  for an Electron suite.
+- Types: `npm run typecheck`.
+
 ## Name
 
 *DeckWerk* combines “deck,” as in a slide deck, with the German word *Werk*: a work, creation, or craft.
