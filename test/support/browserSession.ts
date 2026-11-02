@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import WebSocket from 'ws';
+import { electronChildEnv } from '../../src/cli/electronDisplay.js';
 
 /**
  * Shared plumbing for the production-browser tests: launch a hidden Electron
@@ -593,6 +594,11 @@ export class Cdp {
     if (end <= start) throw new Error(`cannot select empty range ${start}..${end}`);
     const from = await this.textGlyphPoint(selector, start, 0.15, `${label} start`);
     const to = await this.textGlyphPoint(selector, end - 1, 0.85, `${label} end`);
+    await this.selectBetween(from, to);
+  }
+
+  /** A click at `from` and a shift-click at `to`: the selection a person makes. */
+  async selectBetween(from: { x: number; y: number }, to: { x: number; y: number }): Promise<void> {
     await this.call('Input.dispatchMouseEvent', {
       type: 'mouseMoved', x: from.x, y: from.y, button: 'none', buttons: 0,
     });
@@ -927,7 +933,7 @@ export async function launchBrowser(
   ], {
     cwd: process.cwd(),
     stdio: ['ignore', 'pipe', 'pipe'],
-    env: { ...process.env, ELECTRON_DISABLE_SECURITY_WARNINGS: '1' },
+    env: electronChildEnv(),
   });
   const log = collectProcessOutput(child);
   return { process: child, log, ...await reportedPorts(child, electronArgs, log) };

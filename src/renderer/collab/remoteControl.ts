@@ -407,8 +407,8 @@ export class RemoteReceiver {
       this.leave();
       return;
     }
-    // A phone remote has no laser pointer.
-    if (command.type === 'swapDisplays' || command.type === 'toggleLaser' || command.type === 'laserMove') return;
+    // The phone protocol has neither a laser pointer nor video speed controls.
+    if (command.type === 'swapDisplays' || command.type === 'toggleLaser' || command.type === 'laserMove' || command.type === 'videoRate') return;
     const remote: RemoteCommand = command.type === 'goTo' ? { type: 'goTo', slide: command.slide } : { type: command.type };
     this.options.send({ kind: 'remote-command', to: this.presenter, command: remote });
     // A buzz confirms the press before the slide on the screen across the room moves.

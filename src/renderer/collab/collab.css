@@ -52,7 +52,7 @@ button.danger {
 }
 button.danger:hover:not(:disabled) {
   background: var(--dw-danger);
-  color: #fff;
+  color: var(--dw-on-danger, #fff);
   border-color: transparent;
 }
 
@@ -84,7 +84,7 @@ button.danger:hover:not(:disabled) {
 }
 #end-collaboration-popover h2 {
   margin: 0 0 5px;
-  color: #ff8279;
+  color: var(--dw-danger);
   font-size: 14px;
   line-height: 1.25;
 }
@@ -107,7 +107,7 @@ button.danger:hover:not(:disabled) {
 .end-collaboration-actions .end-collaboration-confirm {
   border-color: var(--dw-danger);
   background: var(--dw-danger);
-  color: #fff;
+  color: var(--dw-on-danger, #fff);
   font-weight: 650;
 }
 .end-collaboration-actions .end-collaboration-confirm:hover:not(:disabled) {
@@ -337,7 +337,7 @@ button.bar-person:focus-visible { outline: 2px solid var(--dw-accent); outline-o
 }
 .chat-message.agent .chat-dot { border-radius: 2px; }
 .chat-text { overflow-wrap: anywhere; }
-.chat-mention { color: var(--dw-accent); font-weight: 600; }
+.chat-mention { color: var(--dw-accent-text, var(--dw-accent)); font-weight: 600; }
 .chat-mention.is-me {
   padding: 0 2px;
   border-radius: 3px;
@@ -373,7 +373,8 @@ button.bar-person:focus-visible { outline: 2px solid var(--dw-accent); outline-o
   border: 0;
   border-radius: 6px;
   background: var(--dw-accent);
-  color: #fff;
+  color: var(--dw-on-accent, #fff);
+  font-weight: 600;
   padding: 6px 10px;
 }
 /* .comment-compose paints every button as its primary Send; the slide
@@ -400,7 +401,7 @@ button.bar-person:focus-visible { outline: 2px solid var(--dw-accent); outline-o
   overflow-y: auto;
 }
 .chat-completions[hidden] { display: none; }
-.chat-completions .shape-menu-item.is-active { background: var(--dw-accent); color: #fff; }
+.chat-completions .shape-menu-item.is-active { background: var(--dw-accent); color: var(--dw-on-accent, #fff); font-weight: 600; }
 .chat-bell {
   display: inline-flex;
   align-items: center;
@@ -408,7 +409,7 @@ button.bar-person:focus-visible { outline: 2px solid var(--dw-accent); outline-o
   padding: 4px 6px;
   color: var(--dw-muted);
 }
-.chat-bell[aria-pressed="true"] { color: var(--dw-accent); border-color: var(--dw-accent); }
+.chat-bell[aria-pressed="true"] { color: var(--dw-accent-text, var(--dw-accent)); border-color: var(--dw-accent); }
 /* The other tabs shorten first, so the unread count never disappears. */
 #side-tabs button[data-panel="chat"] { min-width: max-content; }
 #side-tabs button .chat-tab-badge {
@@ -427,5 +428,15 @@ button.bar-person:focus-visible { outline: 2px solid var(--dw-accent); outline-o
 #side-tabs button .chat-tab-badge.is-mention {
   background: var(--dw-accent);
   border-color: var(--dw-accent);
-  color: #fff;
+  color: var(--dw-on-accent, #fff);
+  font-weight: 600;
 }
+
+/*
+ * The copy of a deck kept in this browser, opened without the server: read-only
+ * until the server answers (main.ts, lockOfflineCopy). The side panels take no
+ * input and look it, as a disabled control does; the rail keeps navigating but
+ * offers nothing that edits.
+ */
+html[data-read-only-copy] #side { opacity: .4; }
+html[data-read-only-copy] .rail-actions { display: none; }

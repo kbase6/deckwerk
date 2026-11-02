@@ -70,7 +70,7 @@ import { exportDeck } from './exportDeck.js';
 import { writeExportThumbnail } from './exportThumbnail.js';
 import { probeMedia, runTrim } from './ffmpeg.js';
 import { attachRendererHealth } from './windowHealth.js';
-import { POSTER_HOST, posterFor } from './posterCache.js';
+import { POSTER_HOST, posterFor, printStillFor } from './posterCache.js';
 import { showOpenDialog, showSaveDialog } from './dialogs.js';
 import { importKeynote } from './keynoteImport.js';
 import { importPowerPoint } from './pptxImport.js';
@@ -78,6 +78,7 @@ import { loadDeckHistory, saveDeckHistory } from './deckHistoryStore.js';
 import { serializeSpeakerNotes, SPEAKER_NOTES_FILE } from '@shared/speakerNotes.js';
 import { originalDownloadName } from '@shared/media.js';
 import { copyFileStreamed } from './copyFileStreamed.js';
+import { closeRemoteDecks, registerRemoteDeckIpc, releaseRemoteMirror } from './remoteDeckIpc.js';
 import { HTML_EDIT_DIR, isAuthoringFileName, readSettledFile, writeHtmlScope } from './htmlAuthoring.js';
 import { AGENT_GUIDE_FILE, defaultLauncherPath, writeAgentGuide } from './agentGuide.js';
 import { replaceFileAtomically } from './agentRuntime.js';
@@ -117,6 +118,8 @@ import {
   shouldShowAudienceWindow,
   swappedPresentationDisplays,
 } from './presentationDisplays.js';
+import { registerDeckAssetIpc } from './deckAssetsIpc.js';
+import { registerUpdates } from './updates.js';
 
 /** Pick a loopback URL for the local bridge and a reachable URL for people. */
 function collaborationInviteUrl(urls: string[], deckId: string, agent = false): string | null {
@@ -320,6 +323,7 @@ function endBackgroundAgentSession(): Promise<void> {
 /** Give a window a document, and tell it which deck its assets now come from. */
 function setSession(state: DeckWindowState, dir: string, deck: Deck): DeckSession {
   const session: DeckSession = { dir, deck };
+  releaseRemoteMirror(state, dir);
   state.session = session;
   state.themeCss = null;
   state.lastSavedDeckJson = null;
@@ -419,6 +423,7 @@ function closeDocument(state: DeckWindowState): void {
     if (win && !win.isDestroyed()) win.close();
   }
   if (collabOwner === state) void endBackgroundAgentSession();
+  releaseRemoteMirror(state);
   forgetEditorWindow(state);
 }
 
@@ -652,6 +657,12 @@ app.whenReady().then(async () => {
   })));
   installAssetProtocol();
   registerHandlers();
+  registerUpdates({
+    editorWindows: () => editorStates().map((state) => state.editor),
+    presenting: () => editorStates().some((state) => state.present !== null && !state.present.isDestroyed()),
+    // A background agent session reconnects by itself; people do not.
+    sharing: () => collabServer !== null && collabMode !== 'agent-background',
+  });
 
   const initial = deckDirFromArgv();
   const deck = initial
@@ -707,7 +718,7 @@ app.on('will-quit', (event) => {
   shuttingDown = true;
   localAgents.close();
   // Renderers have saved before their windows closed; now finish server writes.
-  void Promise.all([agentSessionReturn, collabServer?.close()]).catch((error) => {
+  void Promise.all([agentSessionReturn, collabServer?.close(), closeRemoteDecks()]).catch((error) => {
     console.error('Could not finish collaboration shutdown:', error);
   }).finally(() => {
     shutdownComplete = true;
@@ -728,6 +739,9 @@ function registerHandlers(): void {
     else if (closing) state.editor.close();
     else state.editor.webContents.reloadIgnoringCache();
   });
+  // The Media library and remote decks share the desktop session.
+  registerDeckAssetIpc(requireSession);
+  registerRemoteDeckIpc({ requireOwner, requireSession, reportOperation, openDeckForRequester });
   ipcMain.handle(IPC.deckNew, async (event, operationId?: string): Promise<DeckSession | null> => {
     const res = await showSaveDialog({
       title: 'New deck',
@@ -1199,7 +1213,15 @@ function registerHandlers(): void {
       ? openSpeakerWindow(state, presenterDisplay.id, false)
       : null;
     audience.on('closed', () => {
-      if (state.present === audience) state.present = null;
+      if (state.present === audience) {
+        state.present = null;
+        // Leaving the show lands the editor where the show was, not where it
+        // started.
+        const ended = state.presentationState?.cursor.slide;
+        if (ended !== undefined && !state.editor.isDestroyed()) {
+          state.editor.webContents.send(IPC.presentEnded, ended);
+        }
+      }
       state.presentationDisplays = null;
       if (state.presenter && !state.presenter.isDestroyed()) state.presenter.close();
     });
@@ -1223,6 +1245,12 @@ function registerHandlers(): void {
     if (!state) return;
     state.presentationState = presentation;
     state.presenter?.webContents.send(IPC.presentState, presentation);
+  });
+  ipcMain.on(IPC.presentNotesEdit, (event, edit: { slideId: string; notes: string }) => {
+    const state = ownerOf(event.sender);
+    if (!state || event.sender !== state.presenter?.webContents) return;
+    if (typeof edit?.slideId !== 'string' || typeof edit.notes !== 'string') return;
+    if (!state.editor.isDestroyed()) state.editor.webContents.send(IPC.presentNotesEdit, edit);
   });
 
   ipcMain.handle(IPC.trimOpen, (event, payload: { src: string; elementId: string }) => {
@@ -1569,7 +1597,7 @@ function registerHandlers(): void {
   ipcMain.handle(IPC.videoPoster, async (event, req: VideoPosterRequest): Promise<VideoPosterResult> => {
     const s = requireSession(event);
     const input = resolveAsset(s.dir, req.src);
-    const name = await posterFor(input, req.time);
+    const name = await (req.print ? printStillFor : posterFor)(input, req.time);
     return { url: name ? `deck://${POSTER_HOST}/${encodeURIComponent(name)}` : null };
   });
 

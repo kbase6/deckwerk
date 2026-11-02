@@ -14,7 +14,6 @@ export const SIDE_PANELS: readonly SidePanel[] = [
   { id: 'inspector', label: 'Format', title: 'Settings for the selected object or slide' },
   { id: 'themePanel', label: 'Design', title: 'Theme and layouts for the whole deck' },
   { id: 'timeline', label: 'Animations', title: 'Build animations on this slide' },
-  { id: 'history', label: 'History', title: 'Earlier versions of this deck' },
 ];
 
 /** Fill `host` with one tab button per panel; clicking one calls `show(id)`. */

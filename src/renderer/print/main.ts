@@ -32,7 +32,13 @@ void (async () => {
     resolveSrc: window.api.assetUrl,
   });
   if (pages.length === 0) throw new Error('No slides to export. Select the slides again.');
-  await waitForPdfDocument(pages);
+  await waitForPdfDocument(pages, {
+    // Cut by ffmpeg in the main process, like the rail's posters, so the
+    // window never decodes every video in the deck at once.
+    stillFor: async (src, time) => (await window.api.videoPoster({ src, time, print: true })).url,
+    // A synced clip's length, from ffprobe in the main process.
+    durationFor: async (src) => (await window.api.probeAsset(src)).duration,
+  });
   document.documentElement.dataset.ready = 'true';
   window.api.pdfReady(jobId);
 })().catch((error) => {

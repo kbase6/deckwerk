@@ -415,7 +415,7 @@ function present(): void {
     toast('Presenting needs the server — waiting to reconnect.');
     return;
   }
-  startPresenting(
+  void startPresenting(
     deckId!,
     store.get().slideIndex,
     () => ({ deck: store.get().deck, themeCss, hostClientId: bridge.clientId }),

@@ -104,8 +104,8 @@ export function fittedImageBox(
   if (!painted || (Math.abs(painted.w - el.w) < 1 && Math.abs(painted.h - el.h) < 1)) return null;
   // The rotation centre moves with the frame; turn its shift back into slide
   // space so the picture does not.
-  const dx = painted.x + (painted.w - el.w) / 2;
-  const dy = painted.y + (painted.h - el.h) / 2;
+  const dx = (el.flipX ? -1 : 1) * (painted.x + (painted.w - el.w) / 2);
+  const dy = (el.flipY ? -1 : 1) * (painted.y + (painted.h - el.h) / 2);
   const radians = el.rot * Math.PI / 180;
   const w = Math.max(1, Math.round(painted.w));
   const h = Math.max(1, Math.round(painted.h));
@@ -165,12 +165,15 @@ export function cropWindow(
   base: MaskRect,
   rot: number,
   lockAspect = false,
+  flips: { flipX?: boolean; flipY?: boolean } = {},
 ): { x: number; y: number; w: number; h: number; sourceBox: MaskRect } {
+  const pictureX = flips.flipX ? origin.w - base.x - base.w : base.x;
+  const pictureY = flips.flipY ? origin.h - base.y - base.h : base.y;
   // Whole pixels, rounded inward so the window never shows past the picture.
-  const minX = Math.ceil(origin.x + Math.min(0, base.x) - 1e-6);
-  const minY = Math.ceil(origin.y + Math.min(0, base.y) - 1e-6);
-  const maxX = Math.floor(origin.x + Math.max(origin.w, base.x + base.w) + 1e-6);
-  const maxY = Math.floor(origin.y + Math.max(origin.h, base.y + base.h) + 1e-6);
+  const minX = Math.ceil(origin.x + Math.min(0, pictureX) - 1e-6);
+  const minY = Math.ceil(origin.y + Math.min(0, pictureY) - 1e-6);
+  const maxX = Math.floor(origin.x + Math.max(origin.w, pictureX + base.w) + 1e-6);
+  const maxY = Math.floor(origin.y + Math.max(origin.h, pictureY + base.h) + 1e-6);
   let { x, y, w, h } = rect;
   if (lockAspect && w > 0 && h > 0) {
     // Clamping each edge on its own would change the proportions, so shrink
@@ -207,7 +210,11 @@ export function cropWindow(
     y: Math.round(origin.y + (origin.h - height) / 2 + cx * Math.sin(radians) + cy * Math.cos(radians)),
     w: width,
     h: height,
-    sourceBox: { w: base.w, h: base.h, x: Math.round(base.x - dx), y: Math.round(base.y - dy) },
+    sourceBox: {
+      w: base.w, h: base.h,
+      x: Math.round(flips.flipX ? base.x + right - origin.x - origin.w : base.x - dx),
+      y: Math.round(flips.flipY ? base.y + bottom - origin.y - origin.h : base.y - dy),
+    },
   };
 }
 
@@ -231,8 +238,8 @@ export function resetCrop(el: MediaElement, natural: Size | null): boolean {
   // shift back into slide space and the picture stays put.
   const w = Math.max(1, Math.round(crop.w));
   const h = Math.max(1, Math.round(crop.h));
-  const cx = crop.x + (crop.w - el.w) / 2;
-  const cy = crop.y + (crop.h - el.h) / 2;
+  const cx = (el.flipX ? -1 : 1) * (crop.x + (crop.w - el.w) / 2);
+  const cy = (el.flipY ? -1 : 1) * (crop.y + (crop.h - el.h) / 2);
   const radians = el.rot * Math.PI / 180;
   el.x = Math.round(el.x + (el.w - w) / 2 + cx * Math.cos(radians) - cy * Math.sin(radians));
   el.y = Math.round(el.y + (el.h - h) / 2 + cx * Math.sin(radians) + cy * Math.cos(radians));

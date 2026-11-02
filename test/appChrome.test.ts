@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { convert } from '@asamuzakjp/css-color';
 
 const source = (path: string): string => readFileSync(join(process.cwd(), path), 'utf8');
 
@@ -64,7 +65,7 @@ describe('shared application chrome', () => {
       'src/renderer/collab/collab.css',
       'src/renderer/collab/mobile.css',
     ]) {
-      expect(source(stylesheet)).not.toMatch(/--dw-(?:bg|panel|panel-2|line|text|muted|accent|accent-soft|green|yellow|danger)\s*:/);
+      expect(css(stylesheet)).not.toMatch(/--dw-(?:bg|panel|panel-2|line|text|muted|accent|accent-soft|green|yellow|danger)\s*:/);
     }
   });
 
@@ -109,7 +110,7 @@ describe('shared application chrome', () => {
       // Drawn over the slide, which keeps its own colours in both themes:
       // selection, guides, builds and Morph, masks, grid dots, spelling.
       '#0a84ff', 'rgb(59 130 246)', '#ff2d55', '#f59e0b', 'rgb(245 158 11)', '#34d399', '#a78bfa',
-      'rgb(128 128 128)', 'rgb(140 140 140)', '#e5484d', '#3e8ef7',
+      'rgb(128 128 128)', 'rgb(140 140 140)', 'rgb(80 140 255)', '#e5484d', '#3e8ef7', '#0588ff',
       // The colour picker's checkerboard, hue ramp and CSS badge.
       '#c7c7c7', '#bbb', '#f00', '#ff0', '#0f0', '#0ff', '#00f', '#f0f', '#a86d00',
     ]);
@@ -131,9 +132,15 @@ describe('shared application chrome', () => {
     const dark = tokens(source('src/renderer/appChrome.css'), ':root');
     const light = { ...dark, ...tokens(source('src/renderer/lightTheme.css'), ':root[data-ui-theme="light"]') };
     for (const [theme, palette] of Object.entries({ dark, light })) {
+      const resolve = (key: string): string => palette[key].replace(/var\((--[\w-]+)\)/g, (_, name) => resolve(name));
+      const hex = (key: string): string => {
+        const value = convert.colorToHex(resolve(key));
+        if (!value) throw new Error(`Cannot read ${theme} ${key}`);
+        return value;
+      };
       for (const text of ['--dw-text', '--dw-muted']) {
         for (const surface of ['--dw-bg', '--dw-panel', '--dw-panel-2']) {
-          expect(contrast(palette[text], palette[surface]), `${theme} ${text} on ${surface}`)
+          expect(contrast(hex(text), hex(surface)), `${theme} ${text} on ${surface}`)
             .toBeGreaterThanOrEqual(4.5);
         }
       }

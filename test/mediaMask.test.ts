@@ -193,10 +193,10 @@ describe('mask fields in the deck format', () => {
 });
 
 /** Where a box-relative picture's centre lands on the slide, rotation included. */
-function pictureCentre(box: MaskRect, rot: number, picture: MaskRect): { x: number; y: number } {
+function pictureCentre(box: MaskRect, rot: number, picture: MaskRect, flips: { flipX?: boolean; flipY?: boolean } = {}): { x: number; y: number } {
   const r = (rot * Math.PI) / 180;
-  const lx = picture.x + picture.w / 2 - box.w / 2;
-  const ly = picture.y + picture.h / 2 - box.h / 2;
+  const lx = (flips.flipX ? -1 : 1) * (picture.x + picture.w / 2 - box.w / 2);
+  const ly = (flips.flipY ? -1 : 1) * (picture.y + picture.h / 2 - box.h / 2);
   return {
     x: box.x + box.w / 2 + lx * Math.cos(r) - ly * Math.sin(r),
     y: box.y + box.h / 2 + lx * Math.sin(r) + ly * Math.cos(r),
@@ -204,6 +204,35 @@ function pictureCentre(box: MaskRect, rot: number, picture: MaskRect): { x: numb
 }
 
 describe('fitting an uncropped picture frame to the picture', () => {
+  it('keeps flipped pictures in place when fitting, cropping and resetting their frames', () => {
+    const natural = { w: 1000, h: 1000 };
+    for (const flipX of [false, true]) for (const flipY of [false, true]) for (const rot of [0, 30, 90]) {
+      const flips = { flipX, flipY };
+      const el = image({ ...flips, rot, style: { 'object-position': 'left top' } });
+      const fitted = fittedImageBox(el, natural)!;
+      const original = pictureCentre(el, rot, paintedMediaBox(el, natural)!, flips);
+      const fittedCentre = pictureCentre(fitted, rot, { x: 0, y: 0, w: fitted.w, h: fitted.h }, flips);
+      expect(Math.abs(fittedCentre.x - original.x)).toBeLessThanOrEqual(0.5);
+      expect(Math.abs(fittedCentre.y - original.y)).toBeLessThanOrEqual(0.5);
+
+      const picture = { x: -120, y: -30, w: 700, h: 550 };
+      const before = pictureCentre(el, rot, picture, flips);
+      const cropped = cropWindow({ x: el.x + 60, y: el.y + 30, w: 500, h: 250 }, el, picture, rot, false, flips);
+      const after = pictureCentre(cropped, rot, cropped.sourceBox, flips);
+      expect(Math.abs(after.x - before.x)).toBeLessThanOrEqual(0.5);
+      expect(Math.abs(after.y - before.y)).toBeLessThanOrEqual(0.5);
+      const reset = image({ ...cropped, ...flips, rot });
+      resetCrop(reset, natural);
+      const resetCentre = pictureCentre(reset, rot, paintedMediaBox(reset, natural)!, flips);
+      expect(Math.abs(resetCentre.x - before.x)).toBeLessThanOrEqual(1);
+      expect(Math.abs(resetCentre.y - before.y)).toBeLessThanOrEqual(1);
+    }
+    const origin = { x: 100, y: 100, w: 400, h: 200 };
+    const picture = { x: -80, y: -30, w: 700, h: 320 };
+    expect(cropWindow({ x: -1000, y: -1000, w: 3000, h: 3000 }, origin, picture, 0, false, { flipX: true, flipY: true }))
+      .toEqual({ x: -120, y: 10, w: 700, h: 320, sourceBox: { x: 0, y: 0, w: 700, h: 320 } });
+  });
+
   it('shrinks a contain frame to the painted picture without moving it', () => {
     for (const rot of [0, 30, 90, 180]) {
       const el = image({ rot, style: { 'object-position': 'left top' } });

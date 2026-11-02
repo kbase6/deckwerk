@@ -16,29 +16,22 @@ DeckWerk is intended for research talks, lectures, demos, and other presentation
 
 ## Installing
 
-**macOS** — via [Homebrew](https://brew.sh):
+Download the installer for your system from [deckwerk.org](https://deckwerk.org/#install)
+or the [latest release](https://github.com/vsitzmann/deckwerk/releases/latest):
 
-```bash
-brew install --cask vsitzmann/tap/deckwerk
-```
+- **macOS** — the `.dmg` for Apple Silicon (`mac-arm64`) or Intel (`mac-x64`).
+  Open it and drag DeckWerk into Applications. Homebrew users can
+  `brew install --cask vsitzmann/tap/deckwerk` instead.
+- **Windows** — the `setup.exe`. It is not signed yet, so Windows may stop it
+  at first: choose *More info*, then *Run anyway*.
+- **Linux (x64)** — the `.AppImage` (allow it to run as a program, then
+  double-click it), the `.deb` for Debian and Ubuntu, or the `.tar.gz`.
 
-The app is not yet signed with an Apple Developer ID, so macOS will refuse to
-open it at first. Clear the quarantine flag once after installing:
-
-```bash
-xattr -dr com.apple.quarantine /Applications/DeckWerk.app
-```
-
-**Linux (x64)** — download the `.AppImage`, `.deb`, or `.tar.gz` from the
-[latest release](https://github.com/vsitzmann/deckwerk/releases/latest). On
-Debian and Ubuntu:
-
-```bash
-sudo apt install ./deckwerk_*_amd64.deb
-```
-
-**Windows** — download the `setup.exe` from the
-[latest release](https://github.com/vsitzmann/deckwerk/releases/latest).
+**Updating** — DeckWerk never updates, or even checks, on its own. Choose
+**DeckWerk menu → Check for Updates…**: if a newer release exists, the macOS,
+Windows and AppImage builds show what is new and update after you confirm,
+restarting when you say so. The `.deb` does not replace itself, and neither
+does a Flatpak: for those the menu item opens the release page.
 
 **From source** — you will need [Node.js](https://nodejs.org/) 22 or newer,
 Python 3.10 or newer, and Git:
@@ -100,6 +93,15 @@ feature-complete, collaborative deck editor in the browser, with no accounts
 and nothing to install for collaborators. Point it at a folder of
 presentations; everyone who opens the address gets a file picker, then the
 full editor, with live cursors, selections and edits from everyone else.
+
+> [!CAUTION]
+> **Run the headless server behind a tailnet. Never expose it to the internet.**
+> It has no passwords or user accounts: anyone who can reach its port can open,
+> edit and download every presentation it serves. Don't forward the port, open
+> it in a cloud firewall, put it behind a public reverse proxy, or publish it
+> with `tailscale funnel`. See [Setting up a
+> tailnet](manual/06-headless-server.md#setting-up-a-tailnet) for a step-by-step
+> setup.
 
 ![The presentation picker](docs/images/collab-picker.png)
 

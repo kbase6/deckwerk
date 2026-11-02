@@ -8,8 +8,8 @@ describe('the side panel tabs', () => {
     const shown: string[] = [];
     buildSidePanelTabs(host, SIDE_PANELS, (id) => shown.push(id));
     const buttons = [...host.querySelectorAll('button')];
-    expect(buttons.map((b) => b.textContent)).toEqual(['Format', 'Design', 'Animations', 'History']);
-    expect(buttons.map((b) => b.dataset.panel)).toEqual(['inspector', 'themePanel', 'timeline', 'history']);
+    expect(buttons.map((b) => b.textContent)).toEqual(['Format', 'Design', 'Animations']);
+    expect(buttons.map((b) => b.dataset.panel)).toEqual(['inspector', 'themePanel', 'timeline']);
     expect(buttons.filter((b) => !b.title).map((b) => b.textContent)).toEqual([]);
     buttons[2].click();
     expect(shown).toEqual(['timeline']);

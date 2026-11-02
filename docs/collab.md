@@ -89,6 +89,75 @@ is unrecoverable. Replacements are logged by id only. It rotates to
 is never mirrored, served or downloaded. `slide-agent history <deck folder>
 --deleted` reads it; the format is described in `AGENTS.md`.
 
+## Server decks on the desktop
+
+The desktop app edits decks that live on a standalone server, and keeps
+editing them when the connection drops.
+
+- **Connect.** Open → **+ Server…** (or the welcome screen's *Open from a
+  server*, or Open ▾ → *Connect to Server…*) takes an address:
+  `100.68.22.127` (port 5800 assumed), `host:port`, or an `https://` tailnet
+  URL. Servers are remembered per user (`remote-servers.json` in the app's
+  user data). Once one is known, **Open** shows one dialog with *This
+  computer* and a tab per server, browsing the server's folders like its web
+  picker; with none, Open goes straight to the folder picker as before.
+- **A mirror, not a window onto the server.** Opening a server deck makes (or
+  refreshes) an ordinary deck folder at
+  `~/.deckwerk/remote/<host>/<deck id>` (`DECKWERK_REMOTE_ROOT` overrides it)
+  and opens that in the ordinary editor, so offline editing, ffmpeg trims and a
+  local agent in `edit/` all work on it. `.deckwerk-remote/` beside the deck
+  records which server deck it mirrors and the **baseline**: the last server
+  state this machine saw (`base.json`, plus seq and theme in `sync.json`). The
+  editor writes the baseline right after the deck.json it belongs with, from
+  the same instant, so a crash never leaves a baseline newer than the deck.
+  Reopening the folder any way (Open, the command line) re-binds it. Files
+  come down six at a time — over a long route one stream is held to a
+  fraction of the line by the round trip — and a dropped connection is retried
+  per file, so one reset does not fail a 1.5 GB first open; an open that did
+  fail resumes, fetching only what is missing.
+- **Live.** The editor's own `CollabBridge` joins the room as an ordinary
+  peer, with live text sync on, presence and cursors. The editor's content
+  security policy only allows sockets to 127.0.0.1, so it connects through a
+  relay in the main process (`RemoteRelay` in `src/main/remoteDecks.ts`) that
+  only forwards to saved servers, behind a random token. The relay pings the
+  server every 10 s and drops the editor's socket when a beat goes unanswered,
+  so a route that died silently reads as offline in seconds. Files: the mirror
+  pulls what the server has (`/api/agent-mirror/files`, by sha256) and pushes
+  what lands in its own `assets/` (an import, a trim, a paint) — on open, on
+  every reconnect, and when `assets/` changes; a collaborator's new picture is
+  fetched when the deck that refers to it arrives, then redrawn.
+- **Offline.** The toolbar chip says *Offline · edits kept on this computer*;
+  editing continues and is saved to the mirror as usual. Clicking the chip
+  retries at once. A server that cannot be reached still has its tab in the
+  Open dialog: it lists the decks already copied to this computer
+  (`listMirrors`, from each mirror's `sync.json`), which open at once without
+  asking the server and connect when it is back. Online, the listing marks
+  those decks *on this computer*.
+- **Reconnect = three-way merge** (`src/shared/deckMerge.ts`) of the baseline,
+  the deck on screen and the server's deck. Per slide: changed on one side
+  only → that side; changed on both → merged object by object when the two
+  touched different objects (and different slide fields — notes, name,
+  builds…), otherwise a **conflict**; deleted on one side and changed on the
+  other → conflict; added on either side → kept, after its predecessor in its
+  own copy. Slide order is one item, a conflict only when both sides
+  rearranged differently. Deck settings and theme.css are one item each.
+  Comments always merge by id. With no conflict the merge is silent; with one,
+  the **Sync changes** dialog shows each conflicting slide as two miniatures,
+  *Your version* and *Server version*, to pick from (or *Keep all mine* /
+  *Take all from server*), and lists everything that merged automatically,
+  each still overridable to one side. The result goes up as one transaction
+  (`Synchronize offline edits`) on top of whatever the server holds by then.
+  If the link drops again while the dialog is open, the choice is kept and
+  sent on the next connection without asking again.
+- The **Collaborate** button is hidden for a server deck: it is already shared.
+
+Tests: `test/deckMerge.test.ts` (the merge, with a seeded property walk),
+`test/remoteDeckSync.test.ts` (an offline replica against a real server
+through a link it cuts, plus a seeded fuzz walk: `REMOTE_FUZZ_SEEDS`,
+`REMOTE_FUZZ_STEPS`), `test/remoteDecks.test.ts` (mirrors, files, the relay
+and its heartbeat) and `test/remoteDeckDesktopBrowser.test.ts` (the real
+desktop app end to end; `REMOTE_SHOTS=<dir>` keeps screenshots).
+
 ## Running a standalone server
 
 Build the browser client once (rebuild after pulling client changes):
@@ -189,7 +258,33 @@ open to anyone who can reach the port. For a standing multi-user deployment
 npm run collab -- path/to/decks --host 127.0.0.1 --access you@example.com
 ```
 
-and front it with `tailscale serve` (e.g. `tailscale serve --bg --https=443
+and publish it on the tailnet in one of two ways.
+
+**Recommended: DeckWerk terminates TLS itself on the tailnet address.**
+
+```bash
+sudo tailscale cert --cert-file /srv/deckwerk/tls/cert.pem \
+  --key-file /srv/deckwerk/tls/key.pem <machine>.<tailnet>.ts.net
+npm run collab -- path/to/decks --host 127.0.0.1 --access you@example.com \
+  --tls-host <machine's 100.x.y.z> --tls-port 9443 \
+  --tls-cert /srv/deckwerk/tls/cert.pem --tls-key /srv/deckwerk/tls/key.pem
+```
+
+Each HTTPS connection's identity is tailscaled's `whois` for the peer
+address, asked over its LocalAPI socket (`--tailscale-socket`, default
+`/run/tailscale/tailscaled.sock`), which needs no privileges. It comes from
+the WireGuard key the connection arrived under, so identity headers a peer
+sends on this listener are ignored. Renew the certificate with the same
+`tailscale cert` command on a timer; the server re-reads the files within the
+hour. The loopback listener keeps working for the machine itself.
+
+Why not `tailscale serve`: it accepts connections in tailscaled's userspace
+TCP stack, which over a real round trip moves a fraction of what the tunnel
+carries. Measured on one lab server, the same laptop pulled 0.5–2 MB/s
+through serve and 14–17 MB/s over the kernel's TCP on the tailnet address;
+a deck's images and clips crossed the wire ten times slower than they had to.
+
+**Or** front it with `tailscale serve` (e.g. `tailscale serve --bg --https=443
 http://127.0.0.1:5800`). Identity comes from the `Tailscale-User-Login` /
 `Tailscale-User-Name` headers serve injects, trusted **only** on loopback
 sockets — so bind `127.0.0.1`; any other interface refuses all requests. A
@@ -358,9 +453,11 @@ the participant id.
   folder's `index.html` in any browser, with or without DeckWerk installed.
   The live session is flushed first, so the bundle is what everyone currently
   sees. The server's own build (`npm run build:collab`, run by `npm run
-  collab` before it starts) builds the export player too; a server started
-  some other way without it (`npm run build:export`) says so instead of
-  downloading a broken archive.
+  collab` before it starts) builds the export player too, stamped with the
+  sources it came from; a server running from a checkout whose player is
+  missing or stamped with other sources builds a current one first
+  (src/main/exportPlayer.ts), and a built server without one says so
+  instead of downloading a broken archive.
 - **Save As… → Lossy export → PDF…** — opens a print tab (`print.html?deck=…&mode=…`) that
   builds the same `.pdf-page` document the desktop exporter renders — one page
   per slide, or per build stage when "Include each stage of builds" is ticked —
@@ -381,7 +478,10 @@ the participant id.
 - **Present → Present in Speaker View** — opens the audience in a second
   browser window and turns this tab into Speaker View: current and next slide,
   build position, presentation and slide timers, wall clock, and
-  previous/blank/next/end. Move the audience window to the projector and press
+  previous/blank/next/end. **Slides** (or `O`) opens a scrollable thumbnail
+  rail beside the current slide; **All slides** (or `G`) opens a full grid.
+  Hidden slides appear dimmed and marked Hidden in both views, and clicking one
+  can show it directly. Move the audience window to the projector and press
   `F` there for fullscreen. The two surfaces are the same page in different
   roles, and they talk over a `BroadcastChannel` scoped to the deck rather than
   through the server — presenter commands stay private to the presenter and
@@ -392,9 +492,20 @@ the participant id.
   surface ends the show on both. Speaker View needs pop-ups allowed for the
   site; if the second window is refused, Present falls back to presenting in
   this tab and says why.
+- **Present with a second screen** (Chrome and Edge, through the Window
+  Management API) — when `screen.isExtended` says another screen is attached,
+  Present (plain or Speaker View) sends this tab's presentation fullscreen to
+  that screen as the audience and opens Speaker View in a pop-up filling the
+  screen the editor is on, from the one click, like the desktop app. Press `F`
+  in Speaker View to make it fullscreen too. The first time, the browser asks
+  to allow window management; if that takes longer than the click lasts,
+  nothing starts and the status line says to press Present again. Refused, no
+  API (Safari, Firefox) or one screen: Present behaves as described above. The
+  choice of screen is `src/renderer/collab/presentScreens.ts`.
 - **Sidebar tabs** — Format, Design (the full preset gallery + adoption
-  controls, shared code with the desktop app), Animations, History. Restoring a
-  history snapshot broadcasts as an ordinary transaction.
+  controls, shared code with the desktop app), Animations. History opens from
+  the toolbar button beside the deck name. Restoring a history snapshot
+  broadcasts as an ordinary transaction.
 
 ## Local development
 

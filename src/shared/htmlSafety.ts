@@ -24,6 +24,9 @@ export function sanitizeAuthoredHtml(source: string): {
   };
 
   for (const node of document.querySelectorAll('script, object, embed, iframe')) {
+    // A section's timeline block is JSON in a script of a type no browser
+    // runs: data the compile reads, kept only in exactly that form.
+    if (isTimelineBlock(node)) continue;
     report.removedScripts += 1;
     node.remove();
   }
@@ -73,6 +76,32 @@ export function sanitizeAuthoredHtml(source: string): {
 
   const doctype = document.doctype ? '<!doctype html>\n' : '';
   return { html: doctype + document.documentElement.outerHTML, report };
+}
+
+/**
+ * The textual counterpart of `sanitizeAuthoredHtml`'s script removal, for
+ * the collab server, which has no DOM: every script goes except a timeline
+ * block in exactly its exported form. The export writes `<` inside the block
+ * as `\u003c`, so a block holding any `<` is refused — a browser also ends a
+ * script at `</script/` or `</script ` where this match does not, and
+ * whatever followed such an early close would otherwise survive inside it.
+ */
+export function stripScriptsKeepingTimeline(source: string): string {
+  const open = '<script type="application/deckwerk-timeline">';
+  return source.replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, (script) => (
+    script.startsWith(open) && !script.slice(open.length, script.lastIndexOf('</')).includes('<') ? script : ''
+  ));
+}
+
+/**
+ * `<script type="application/deckwerk-timeline">` and nothing else on the
+ * tag: a section's timeline as JSON (`htmlSlides.ts`), which no browser
+ * executes.
+ */
+function isTimelineBlock(node: Element): boolean {
+  return node.tagName.toLowerCase() === 'script'
+    && node.attributes.length === 1
+    && node.getAttribute('type') === 'application/deckwerk-timeline';
 }
 
 /**
@@ -153,6 +182,9 @@ const TAG_FORMAT_STYLES: Record<string, Array<[string, string]>> = {
   I: [['font-style', 'italic']],
   EM: [['font-style', 'italic']],
   U: [['text-decoration-line', 'underline']],
+  S: [['text-decoration-line', 'line-through']],
+  STRIKE: [['text-decoration-line', 'line-through']],
+  DEL: [['text-decoration-line', 'line-through']],
   // A superscript is raised *and* shrunk. Keeping only the baseline shift
   // would paste a full-size character sitting above the line, which reads as
   // a layout bug rather than as a superscript.
@@ -419,7 +451,7 @@ export function sanitizePastedTextHtml(html: string): string {
   // (<strong><span style="font-weight:400">…) that no toggle could clean up.
   // Convert the tag dialect to the span dialect on the way in.
   for (const node of [...root.querySelectorAll<HTMLElement>(
-    'b, strong, i, em, u, sup, sub',
+    'b, strong, i, em, u, s, strike, del, sup, sub',
   )].reverse()) {
     const declarations = TAG_FORMAT_STYLES[node.tagName]!;
     const span = document.createElement('span');
@@ -431,6 +463,22 @@ export function sanitizePastedTextHtml(html: string): string {
     }
     span.append(...node.childNodes);
     node.replaceWith(span);
+  }
+  // `<u><s>both</s></u>` paints both lines, but as two spans the inner one's
+  // `text-decoration-line` would win once the editor merges nested runs, and
+  // one line would be lost. A run carries every line painted around it.
+  for (const node of root.querySelectorAll<HTMLElement>('[style*="text-decoration-line"]')) {
+    const own = node.style.getPropertyValue('text-decoration-line');
+    if (!own || own === 'none') continue;
+    const lines = new Set(own.split(/\s+/));
+    for (let parent = node.parentElement; parent; parent = parent.parentElement) {
+      const painted = parent.style.getPropertyValue('text-decoration-line')
+        || parent.style.getPropertyValue('text-decoration');
+      for (const word of painted.split(/\s+/)) {
+        if (/^(?:underline|overline|line-through)$/.test(word)) lines.add(word);
+      }
+    }
+    node.style.setProperty('text-decoration-line', [...lines].join(' '));
   }
   // Word's pseudo-lists arrive as MsoListParagraph paragraphs whose "bullet"
   // is a literal glyph in the text. Strip the fake marker and the vendor

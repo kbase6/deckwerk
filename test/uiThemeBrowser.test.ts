@@ -25,7 +25,8 @@ import { launchWebEditor, type WebEditorSession } from './support/webEditorSessi
  * Appearance → Light in the DeckWerk menu turns the chrome light (the slide
  * keeps its own theme), the menu then ticks Light, and the choice survives a
  * reload. In the desktop app the native parts — dialogs, menus, the window
- * behind the page — follow the same choice rather than the OS.
+ * behind the page — follow the same choice rather than the OS. Headings use
+ * plain text and one accent marks what is active.
  */
 const DECK_ID = 'light';
 
@@ -78,6 +79,17 @@ describe.skipIf(!electronBinary)('light mode', () => {
     // System follows the machine's appearance, so pin Dark first.
     await choose('Dark');
     expect(await editor.evaluate<string>('document.documentElement.dataset.uiTheme')).toBe('dark');
+    // Dark is neutral too: near-white headings, one blue for what is active,
+    // and white labels on its fills.
+    const colour = (selector: string) =>
+      editor!.evaluate<string>(`getComputedStyle(document.querySelector(${JSON.stringify(selector)})).color`);
+    await eventually(async () => colour('#inspector .insp-title'), 'no inspector title',
+      (value) => value === 'oklch(0.92 0.004 286.32)');
+    expect(await colour('body')).toBe('oklch(0.92 0.004 286.32)');
+    expect(await colour('#side-tabs button.active')).toBe('oklch(0.75 0.13 254.26)');
+    expect(await editor.evaluate<string>(
+      `getComputedStyle(document.documentElement).getPropertyValue('--dw-on-accent').trim()`,
+    )).toBe('white');
     await choose('Light');
     expect(await editor.evaluate<string>('document.documentElement.dataset.uiTheme')).toBe('light');
     await editor.click('.brand-button', 'the DeckWerk menu');
@@ -85,9 +97,14 @@ describe.skipIf(!electronBinary)('light mode', () => {
       `[...document.querySelectorAll('[role="menuitemradio"]')].find((i) => i.textContent === 'Light').getAttribute('aria-checked')`,
     )).toBe('true');
     expect(await editor.evaluate<string>('getComputedStyle(document.getElementById("toolbar")).backgroundColor'))
-      .toBe('rgb(248, 249, 251)');
+      .toBe('oklch(0.985 0 0)');
     expect(await editor.evaluate<string>('getComputedStyle(document.querySelector(".canvas-host")).backgroundColor'))
-      .toBe('rgb(223, 226, 232)');
+      .toBe('oklch(0.92 0.004 286.32)');
+    const text = 'oklch(0.21 0.006 285.885)';
+    const accentText = 'oklch(0.5324 0.191 254.26)';
+    expect(await colour('body')).toBe(text);
+    expect(await colour('#inspector .insp-title')).toBe(text);
+    expect(await colour('#side-tabs button.active')).toBe(accentText);
 
     await editor.evaluate('location.reload()');
     await eventually(async () => editor!.evaluate<string | undefined>('document.documentElement.dataset.uiTheme'),
@@ -166,8 +183,8 @@ describe.skipIf(!electronBinary)('light mode', () => {
     const page = session.cdp;
     const read = (expression: string): Promise<string> => page.evaluate<string>(expression);
     for (const [theme, chrome] of Object.entries({
-      dark: { background: 'rgb(22, 22, 30)', color: 'rgb(200, 208, 245)' },
-      light: { background: 'rgb(236, 238, 242)', color: 'rgb(31, 35, 48)' },
+      dark: { background: 'oklch(0.141 0.005 285.823)', color: 'oklch(0.92 0.004 286.32)' },
+      light: { background: 'oklch(0.967 0.001 286.375)', color: 'oklch(0.21 0.006 285.885)' },
     })) {
       await page.click('.brand-button', 'the DeckWerk menu');
       await page.evaluate(`[...document.querySelectorAll('[role="menuitemradio"]')]

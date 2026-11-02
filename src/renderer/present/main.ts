@@ -9,6 +9,7 @@ import {
 import { bindPresentKeys } from '../player/keys.js';
 import { createLaserPointer, validLaserPoint, type LaserPointer } from '../player/laserPointer.js';
 import { Player } from '../player/player.js';
+import { hideCursorWhenIdle } from '../player/idleCursor.js';
 import { eventOnInteractiveWeb, slideLinkFromEvent } from '../player/links.js';
 import { selectionPreventsAdvance } from '../player/presentationPointer.js';
 import { rewriteCssAssetUrls } from '../player/render.js';
@@ -21,6 +22,7 @@ import { rewriteCssAssetUrls } from '../player/render.js';
 
 const root = document.getElementById('root');
 if (!root) throw new Error('missing #root');
+hideCursorWhenIdle(document.body);
 
 let player: Player | null = null;
 let session: DeckSession | null = null;
@@ -177,6 +179,7 @@ window.api.onPresentCommand((command: PresentationCommand) => {
     player.goToSlide(target, { play: true });
   }
   else if (command.type === 'toggleBlank') toggleBlank();
+  else if (command.type === 'videoRate') player.changeVideoRate(command.change);
   else handleLaser(command);
 });
 

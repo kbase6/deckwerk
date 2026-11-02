@@ -130,7 +130,12 @@ describe.skipIf(!electronBinary)('cropping a picture whose size is not known yet
 
     // Hold the picture's request open and open the deck again: it is now a
     // picture still loading, with no size of its own yet.
-    await cdp.call('Fetch.enable', { patterns: [{ urlPattern: '*slow.png*', requestStage: 'Request' }] });
+    const imageUrl = await cdp.evaluate<string>(
+      `document.querySelector('#canvas [data-element-id="slow"] img').src`,
+    );
+    await cdp.call('Network.setBypassServiceWorker', { bypass: true });
+    await cdp.call('Network.setCacheDisabled', { cacheDisabled: true });
+    await cdp.call('Fetch.enable', { patterns: [{ urlPattern: imageUrl, requestStage: 'Request' }] });
     await cdp.call('Page.reload', { ignoreCache: true });
     await eventually(() => cdp.evaluate<boolean>(`(() => {
       const img = document.querySelector('#canvas [data-element-id="slow"] img');

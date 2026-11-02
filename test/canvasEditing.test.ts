@@ -647,6 +647,41 @@ describe('inline text editing', () => {
       .toBe('<p>gammadelta<span style="font-size: 20px;">authored</span></p>');
   });
 
+  it('does not store the fitted size a join copies when typing replaces a selection into a sub-item', () => {
+    // Found by the nightly list fuzz (seed 2026103001): typing over a
+    // selection from an item into its own sub-item is an insertText that
+    // Chromium carries out, and its join wraps the moved text in the box's
+    // fitted size just as Backspace does.
+    const { store, canvas, host } = setup();
+    store.select(['text-1']);
+    store.updateSelected((el) => {
+      if (el.type === 'text') {
+        el.html = '<ul><li>gamma<ul><li>delta</li></ul></li></ul>';
+        el.autoFit = true;
+      }
+    });
+    canvas.beginTextEdit('text-1');
+    const body = bodyOf(host, 'text-1');
+    body.style.fontSize = '13.8px';
+    body.dataset.fittedFontSize = '13.8';
+    const [outer, inner] = [...body.querySelectorAll('li')].map((item) => item.firstChild!);
+    const range = document.createRange();
+    range.setStart(outer, 2);
+    range.setEnd(inner, 2);
+    window.getSelection()!.removeAllRanges();
+    window.getSelection()!.addRange(range);
+    const typing = new InputEvent('beforeinput', { inputType: 'insertText', data: 'x', bubbles: true, cancelable: true });
+    body.dispatchEvent(typing);
+    // The editor leaves this join to Chromium; what Chromium's join leaves.
+    expect(typing.defaultPrevented).toBe(false);
+    body.innerHTML = '<ul><li>gax<span style="font-size: 13.8px;">lta</span></li></ul>';
+    body.dispatchEvent(new InputEvent('input', { inputType: 'insertText', data: 'x', bubbles: true }));
+    body.dispatchEvent(new FocusEvent('blur'));
+
+    const saved = store.slide!.elements.find((element) => element.id === 'text-1')!;
+    expect(saved.type === 'text' && saved.html).toBe('<ul><li>gaxlta</li></ul>');
+  });
+
   it('does not store the fitted size a cut carried to the clipboard', () => {
     // Found by the list fuzz's short auto-fit box: text cut while the box was
     // fitted to 13.2px reached the clipboard wearing 13.2px, and pasted back
@@ -2802,8 +2837,8 @@ describe('native line endpoint editing', () => {
     const inspectorHost = document.createElement('aside');
     document.body.appendChild(inspectorHost);
     new Inspector(inspectorHost, store);
-    const arrowStyle = [...inspectorHost.querySelectorAll<HTMLElement>('.insp-group')]
-      .find((section) => section.querySelector('h4')?.textContent === 'Arrow style')!;
+    const arrowStyle = [...inspectorHost.querySelectorAll<HTMLElement>('.insp-option-section')]
+      .find((section) => section.querySelector('h4')?.textContent === 'Line')!;
     const widthField = [...arrowStyle.querySelectorAll<HTMLLabelElement>('label')]
       .find((label) => label.querySelector('span')?.textContent === 'Width')!;
     const width = widthField.querySelector<HTMLInputElement>('input')!;
@@ -2896,18 +2931,20 @@ describe('same-kind multi-selection properties', () => {
     expect(optionSections.map((section) => section.querySelector('h4')?.textContent))
       .toEqual([
         'Playback',
+        'Compare',
         'Fit',
         'Crop & corners',
         'Border',
         'Effects',
       ]);
     expect(optionSections[0].querySelectorAll('.video-checkbox-grid > .field-check')).toHaveLength(4);
-    expect(optionSections[1].querySelector('select[aria-label="Fit"]')).not.toBeNull();
-    expect(optionSections[2].textContent).toContain('Corner radius');
-    expect(optionSections[2].textContent).toContain('Crop to circle');
-    expect(optionSections[3].textContent).toContain('Color');
-    expect(optionSections[3].textContent).toContain('Width');
-    expect(optionSections[3].textContent).not.toContain('Corner radius');
+    expect(optionSections[1].textContent).toContain('Arrange as wipe');
+    expect(optionSections[2].querySelector('select[aria-label="Fit"]')).not.toBeNull();
+    expect(optionSections[3].textContent).toContain('Corner radius');
+    expect(optionSections[3].textContent).toContain('Crop to circle');
+    expect(optionSections[4].textContent).toContain('Color');
+    expect(optionSections[4].textContent).toContain('Width');
+    expect(optionSections[4].textContent).not.toContain('Corner radius');
     const autoplay = [...videoGroup.querySelectorAll<HTMLLabelElement>('label')]
       .find((label) => label.querySelector('span')?.textContent === 'Autoplay')!
       .querySelector<HTMLInputElement>('input')!;
@@ -3175,7 +3212,7 @@ describe('object creation and manipulation', () => {
     trigger.focus();
     trigger.click();
     const item = [...wrap.querySelectorAll<HTMLButtonElement>('.shape-menu-item')].find(
-      (el) => el.textContent === 'Curved arrow',
+      (el) => el.textContent === 'Arrow',
     )!;
     item.click();
 
@@ -3184,7 +3221,7 @@ describe('object creation and manipulation', () => {
     const [id] = [...store.get().selection];
     expect(store.slide!.elements.find((el) => el.id === id)).toMatchObject({
       shape: 'arrow',
-      control: expect.any(Object),
+      arrowEnd: true,
     });
     store.deleteSelection();
     expect(store.slide!.elements.some((el) => el.id === id)).toBe(false);

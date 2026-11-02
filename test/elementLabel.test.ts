@@ -31,9 +31,19 @@ describe('element labels', () => {
     expect(elementTypeName(shape({ shape: 'path' }))).toBe('Shape');
     expect(named({ type: 'image', src: 'assets/a.png' })).toBe('Image');
     expect(named({ type: 'video', src: 'assets/a.mp4' })).toBe('Video');
+    expect(named({ type: 'code' })).toBe('Code');
     expect(named({ type: 'web', src: 'assets/web/a.html' })).toBe('Web page');
     expect(named({ type: 'html', html: '<b>x</b>' })).toBe('HTML block');
     expect(named({ type: 'unsupported' })).toBe('Unconverted object');
+  });
+
+  it('names lines as one family: an arrowhead makes an arrow, an open path is a line', () => {
+    expect(describeElement(shape({ shape: 'line', arrowEnd: true, stroke: '#000' }))).toBe('arrow, black');
+    expect(describeElement(shape({ shape: 'arrow', endCap: 'dot', arrowStart: true }))).toBe('arrow');
+    const pen = { shape: 'path' as const, path: 'M 0 0 L 10 10', pathSize: { w: 10, h: 10 }, stroke: '#000' };
+    expect(describeElement(shape(pen))).toBe('line, black');
+    expect(describeElement(shape({ ...pen, arrowEnd: true }))).toBe('arrow, black');
+    expect(describeElement(shape({ ...pen, path: 'M 0 0 L 10 10 L 0 10 Z', fill: '#f00' }))).toBe('shape, red');
   });
 
   it('parses hex, shorthand, rgb and keyword colours', () => {

@@ -20,7 +20,8 @@ import { PlayerPaintReadiness } from './playerReadiness.js';
 import { createPresentationBus, type PresentationRole } from './presentationBus.js';
 import { mediaVariantsSnapshot, pinMediaVariant, setMediaVariants } from './mediaVariants.js';
 import { trackVideoLoading } from '../player/videoLoadingProgress.js';
-import { VideoBlobCache } from '../player/videoBlobCache.js';
+import { MediaBlobCache } from '../player/mediaBlobCache.js';
+import { fetchAfterOfflineCopy } from './offlineCopy.js';
 import { eventOnInteractiveWeb, slideLinkFromEvent } from '../player/links.js';
 import { selectionPreventsAdvance } from '../player/presentationPointer.js';
 import type { PresenceState, RemoteCommand, RemoteState } from '@shared/collab.js';
@@ -120,13 +121,42 @@ let role: PresentationRole = params.get('role') === 'speaker' ? 'speaker' : 'aud
 const bus = agentViewer ? null : createPresentationBus(deckId);
 
 /**
- * The talk's clips, downloaded once and played from memory. Safari keeps no
- * media bytes from one <video> to the next, so without this every visit to a
- * slide fetched its clips again (videoBlobCache.ts). Page-owned rather than
- * Player-owned, so a role swap hands the audience over with its clips. An
- * agent viewer takes screenshots, not a talk, and streams as before.
+ * The talk's clips and pictures, downloaded once and shown from memory.
+ * Safari keeps no media bytes from one <video> to the next, so without this
+ * every visit to a slide fetched its clips again; and a picture shown from
+ * the network is one the next reshow asks the server about again
+ * (mediaBlobCache.ts). Page-owned rather than Player-owned, so a role swap
+ * hands the audience over with its media. An agent viewer takes
+ * screenshots, not a talk, and streams as before.
  */
-const videoBlobs = agentViewer ? undefined : new VideoBlobCache();
+const mediaBlobs = agentViewer ? undefined : new MediaBlobCache({
+  borrow: borrowFromEditor(),
+  // A file the editor's offline copy is downloading is waited for and then
+  // read from that copy (the service worker answers), not fetched again.
+  ...(embedded ? { fetch: fetchAfterOfflineCopy(() => window.parent) } : {}),
+});
+
+declare global {
+  interface Window {
+    /** Whether this presentation holds its whole talk in memory (see `mediaBlobs`). */
+    deckwerkPresentationMemory?: { holdsAll(): boolean };
+  }
+}
+// Read by whoever needs to know the talk can go on without the server (the
+// media budget suite cuts the link once it is true).
+if (mediaBlobs) window.deckwerkPresentationMemory = { holdsAll: () => mediaBlobs.holdsAll() };
+
+/**
+ * The editor tab that embeds this presentation may already hold the talk's
+ * clips in memory (editorVideoMemory.ts, in Safari): its `blob:` URLs are this
+ * origin's too, so the presentation plays those rather than downloading the
+ * clips a second time.
+ */
+function borrowFromEditor(): ((url: string) => string | undefined) | undefined {
+  if (!embedded) return undefined;
+  // Both pages build a clip's URL the same way (pinMediaVariant).
+  return (url) => window.parent.deckwerkVideoMemory?.objectUrl(url);
+}
 
 const stageHost = document.getElementById('stage')!;
 const speakerHost = document.getElementById('speaker')!;
@@ -164,6 +194,16 @@ function announceExit(): void {
   if (announcedExit) return;
   announcedExit = true;
   bus?.post({ kind: 'bye' });
+}
+
+/**
+ * Tell the editor tab which slide is showing, so ending the show — by any
+ * route, Escape out of fullscreen included — lands the editor there.
+ */
+function reportShownSlide(): void {
+  if (!embedded) return;
+  const slideId = deck?.slides[lastState.cursor.slide]?.id;
+  if (slideId) window.parent.postMessage({ type: 'present-at', slideId }, location.origin);
 }
 
 function exitPresentation(): void {
@@ -209,6 +249,7 @@ function publishState(cursor: Cursor, steps: number): void {
   };
   bus?.post({ kind: 'state', state: lastState });
   remotes?.publish();
+  reportShownSlide();
 }
 
 function advance(): void {
@@ -261,7 +302,7 @@ function mountAudience(): void {
     container: stageHost,
     resolveSrc,
     onCursor: publishState,
-    videoBlobs,
+    mediaBlobs,
   });
   // Opening on a slide's first step plays what runs on arriving there, as
   // starting the show does; opening mid-slide resolves to that step.
@@ -291,7 +332,7 @@ function unmountAudience(): void {
   player?.destroy();
   player = null;
   // Speaker View plays nothing: keep what is in memory, fetch nothing more.
-  videoBlobs?.want([]);
+  mediaBlobs?.want([]);
   stageHost.replaceChildren();
   stageHost.hidden = true;
 }
@@ -328,6 +369,13 @@ function mountSpeaker(): void {
     host: speakerHost,
     resolveSrc,
     onCommand: sendCommand,
+    onNotesChange: (slideId, notes) => {
+      if (!deck) return;
+      const slides = deck.slides.map((slide) => slide.id === slideId ? { ...slide, notes } : slide);
+      const nextDeck = { ...deck, slides };
+      bridge.localEdit(deck, nextDeck, 'Edit speaker notes');
+      applyDeck(nextDeck, null, 'session');
+    },
     // The browser cannot place a window on a display, so this swaps which
     // surface plays which role instead of moving either of them.
     swapLabel: 'Switch views',
@@ -337,7 +385,7 @@ function mountSpeaker(): void {
   if (themeCss) speaker.setTheme(themeCss);
   if (deck) speaker.setDeck(deck);
   speaker.setState(lastState);
-  unbindSpeakerKeys = bindSpeakerKeys(window, sendCommand);
+  unbindSpeakerKeys = bindSpeakerKeys(window, sendCommand, speaker);
   retitle();
   // Announce, so an audience surface that is already running answers with the
   // deck and the live cursor rather than leaving this one blank until the next
@@ -431,6 +479,7 @@ bus?.subscribe((message) => {
     lastState = message.state;
     speaker?.setState(message.state);
     remotes?.publish();
+    reportShownSlide();
     return;
   }
   if (message.kind === 'swap') {
