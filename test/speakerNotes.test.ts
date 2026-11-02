@@ -100,6 +100,29 @@ describe('speaker notes markdown', () => {
     ]);
   });
 
+  it('accepts blank lines between generated headings and anchors without duplicating them on save', () => {
+    const deck = deckWith(['old first', 'old second']);
+    const file = [
+      '## 1 · Second', '', '<!-- slide: slide-2 -->', '',
+      '## My own heading', 'second', '', 'another paragraph',
+      '---',
+      '<!-- slide: slide-1 -->', '', ' \t', '## 2 · First', '', 'first',
+    ].join('\n');
+    expect(parseSpeakerNotes(file)).toEqual([
+      { id: 'slide-2', text: '## My own heading\nsecond\n\nanother paragraph' },
+      { id: 'slide-1', text: 'first' },
+    ]);
+
+    const applied = applySpeakerNotes(deck, file);
+    expect(applied.deck.slides.map((slide) => slide.notes)).toEqual([
+      'first', '## My own heading\nsecond\n\nanother paragraph',
+    ]);
+    const saved = serializeSpeakerNotes(applied.deck);
+    expect(saved.match(/<!-- slide:/g)).toHaveLength(2);
+    const reformatted = saved.replace(/^(##[^\n]*\n)(?=<!-- slide:)/gm, '$1\n');
+    expect(applySpeakerNotes(applied.deck, reformatted).changed).toBe(false);
+  });
+
   it('follows the anchors when the file order no longer matches the deck', () => {
     const deck = deckWith(['a', 'b', 'c']);
     const file = [

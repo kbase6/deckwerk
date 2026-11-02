@@ -124,6 +124,7 @@ function readSection(lines: string[]): SpeakerNotesSection {
     } else {
       break;
     }
+    while (start < lines.length && lines[start].trim() === '') start++;
   }
   return { id, text: normalizeNote(lines.slice(start).join('\n')) };
 }
