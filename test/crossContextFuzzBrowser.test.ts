@@ -166,7 +166,7 @@ type OpName =
   | 'cmd+a' | 'click with stray hover' | 'rail multi-delete' | 'stack key' | 'spelling fix'
   | 'size from sidebar' | 'viewport gesture' | 'line ends' | 'slide numbers' | 'gridlines'
   | 'crop edge drag' | 'shift resize image' | 'reset crop' | 'theme pick' | 'geometry from sidebar'
-  | 'crop pan' | 'crop toggle from panel' | 'escape during crop' | 'circle toggle' | 'abandon gesture' | 'text fit' | 'slide colors light/dark' | 'theme draft' | 'set fit'
+  | 'crop pan' | 'crop toggle from panel' | 'escape during crop' | 'circle toggle' | 'abandon gesture' | 'text fit' | 'slide colors light/dark' | 'theme draft' | 'layout editor keys' | 'set fit'
   | 'flip from sidebar' | 'pen abandoned' | 'pen line undone' | 'pencil stroke undone' | 'line bent and undone';
 
 interface Violation { seed: number; step: number; op: OpName; oracle: string; detail: string }
@@ -546,6 +546,7 @@ function chooseOp(next: () => number, pre: CrossState): OpName {
   if (targets.some((id) => id !== IMAGE)) add('text fit', 2);
   add('slide colors light/dark', 1);
   add('theme draft', 1);
+  add('layout editor keys', 1);
   if (pre.editing === null) {
     add('pen abandoned', 1);
     add('pen line undone', 1);
@@ -919,6 +920,9 @@ async function performOp(
       return 'same';
     case 'theme draft':
       await themeDraft(next, pre, flag);
+      return 'same';
+    case 'layout editor keys':
+      await layoutEditorKeys(next, flag);
       return 'same';
     case 'set fit':
       await setFit(next, flag);
@@ -1527,6 +1531,57 @@ async function slideColors(
   } finally {
     if (withChooser) {
       await cdp.clickByText('#themePanel .theme-chooser-header button', 'Close', 'close the theme chooser');
+      await wait(80);
+    }
+    await cdp.click('#side-tabs button[data-panel="inspector"]', 'the Props tab');
+    await wait(80);
+  }
+}
+
+/**
+ * Open the layout editor over whatever the deck has selected and use its
+ * keys: Delete and undo with nothing picked, then on a text box added there.
+ * They act on the layout, never on the slide hidden behind it (Delete there
+ * once removed the deck's own selection). Cancel leaves the deck as it was.
+ */
+async function layoutEditorKeys(
+  next: () => number,
+  flag: (oracle: 'routing' | 'census', detail: string) => void,
+): Promise<void> {
+  const { cdp } = session;
+  const masterObjects = () => cdp.evaluate<number>(
+    `document.querySelectorAll('.layout-editor-canvas .element[data-element-id]').length`);
+  const before = await session.deckSnapshot();
+  await cdp.click('#side-tabs button[data-panel="themePanel"]', 'the Design tab');
+  await wait(80);
+  try {
+    const layout = pick(next, ['Freeform', 'Title + body', 'Title slide']);
+    await cdp.click(`#themePanel .design-master[aria-label="Edit ${layout} layout"]`, `Edit ${layout} layout`);
+    await wait(150);
+    const start = await masterObjects();
+    await session.key('Delete', 46);
+    await session.chord('z', 'KeyZ', 90, MOD);
+    await wait(120);
+    if (await session.deckSnapshot() !== before) flag('routing', 'Delete or undo in the layout editor changed the deck behind it');
+    await cdp.clickByText('.layout-editor-tools button', 'Text');
+    await wait(120);
+    // Leave the new box's text without Escape, which cancels the editor.
+    await cdp.click('.layout-editor-header strong', 'the layout editor title');
+    await wait(120);
+    const added = await masterObjects();
+    if (added !== start + 1) flag('census', `Text took the layout from ${start} to ${added} objects`);
+    await session.key(next() < 0.5 ? 'Delete' : 'Backspace', next() < 0.5 ? 46 : 8);
+    await wait(120);
+    if (await masterObjects() !== start) flag('routing', 'Delete in the layout editor left the added text box');
+    await session.chord('z', 'KeyZ', 90, MOD);
+    await wait(120);
+    if (await masterObjects() !== start + 1) flag('routing', 'undo in the layout editor did not bring the text box back');
+    await cdp.clickByText('.layout-editor-actions button', 'Cancel');
+    await wait(120);
+    if (await session.deckSnapshot() !== before) flag('census', 'Cancel in the layout editor left the deck changed');
+  } finally {
+    if (await cdp.evaluate<boolean>(`Boolean(document.querySelector('.layout-editor-overlay'))`)) {
+      await cdp.clickByText('.layout-editor-actions button', 'Cancel');
       await wait(80);
     }
     await cdp.click('#side-tabs button[data-panel="inspector"]', 'the Props tab');

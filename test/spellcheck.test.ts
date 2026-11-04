@@ -1,11 +1,16 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from 'vitest';
 import { LocalLinter } from 'harper.js';
-import { binaryInlined } from 'harper.js/binaryInlined';
+import { binary } from 'harper.js/binary';
 import {
   maskNonProse, proseOf, rangeFor, rawLint, toSpellingLints,
   type RawLint, type SpellcheckReply, type SpellcheckRequest,
 } from '../src/renderer/editor/spellcheck.js';
+
+// Harper's Node loader misreads paths with spaces; the browser suite tests the real file.
+vi.mock('harper.js/binary', async () => ({
+  binary: (await import('harper.js/binaryInlined')).binaryInlined,
+}));
 
 function box(html: string): HTMLElement {
   const el = document.createElement('div');
@@ -71,7 +76,7 @@ describe('spellcheck lint mapping', () => {
   });
 
   it('flags a real misspelling end to end with Harper', async () => {
-    const linter = new LocalLinter({ binary: binaryInlined });
+    const linter = new LocalLinter({ binary });
     await linter.setup();
     const prose = proseOf(box('<p>We propsoe a method for $f(x)$.</p>'));
     const lints = toSpellingLints(prose.text, await linter.lint(prose.text, { language: 'plaintext' }) as unknown as RawLint[]);

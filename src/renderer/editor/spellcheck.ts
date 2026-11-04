@@ -227,11 +227,11 @@ function loadLinter(): Promise<HarperLinter> {
     if (typeof Worker === 'function') {
       linter = workerLinter();
     } else {
-      const [{ LocalLinter, Dialect }, { binaryInlined }] = await Promise.all([
+      const [{ LocalLinter, Dialect }, { binary }] = await Promise.all([
         import('harper.js'),
-        import('harper.js/binaryInlined'),
+        import('harper.js/binary'),
       ]);
-      const local = new LocalLinter({ binary: binaryInlined, dialect: Dialect.American });
+      const local = new LocalLinter({ binary, dialect: Dialect.American });
       await local.setup();
       linter = local as unknown as HarperLinter;
     }

@@ -238,6 +238,10 @@ export class DesignWorkspace {
 
     const overlay = document.createElement('div');
     overlay.className = 'layout-editor-overlay';
+    // Modal: the editor's own shortcuts bail on aria-modal (shellWiring.ts),
+    // so Delete and undo here cannot reach the deck hidden behind it.
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
     const top = document.createElement('header');
     top.className = 'layout-editor-header';
     const heading = document.createElement('div');
@@ -313,7 +317,22 @@ export class DesignWorkspace {
     masterStore.subscribe(renderRail);
     renderRail();
 
+    const onKey = (e: KeyboardEvent): void => {
+      const t = e.target instanceof HTMLElement ? e.target : null;
+      if (masterCanvas.isEditing() || t?.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t?.tagName ?? '')) return;
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        e.preventDefault();
+        deleteUnlocked(masterStore);
+      } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') {
+        e.preventDefault();
+        if (e.shiftKey) masterStore.redo();
+        else masterStore.undo();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+
     const close = (save: boolean): void => {
+      window.removeEventListener('keydown', onKey);
       if (save) {
         const edited = mastersFromEditingDeck(masterStore.get().deck);
         this.deps.store.commit((deck) => {

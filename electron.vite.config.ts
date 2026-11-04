@@ -1,5 +1,6 @@
 import { resolve } from 'node:path';
 import { defineConfig } from 'electron-vite';
+import { browserChunk, browserDependencies } from './src/browserBuild.js';
 
 const shared = resolve(__dirname, 'src/shared');
 
@@ -26,8 +27,12 @@ export default defineConfig({
   },
   renderer: {
     root: resolve(__dirname, 'src/renderer'),
+    plugins: [browserDependencies()],
+    optimizeDeps: { exclude: ['harper.js'] },
     build: {
+      minify: true,
       rollupOptions: {
+        output: { manualChunks: browserChunk },
         input: {
           editor: resolve(__dirname, 'src/renderer/editor/index.html'),
           present: resolve(__dirname, 'src/renderer/present/index.html'),
@@ -40,7 +45,7 @@ export default defineConfig({
     },
     // The spellchecker's worker (spellcheckWorker.ts) code-splits, which
     // only module workers can.
-    worker: { format: 'es' },
+    worker: { format: 'es', plugins: () => [browserDependencies()] },
     resolve: { alias: { '@shared': shared } },
   },
 });

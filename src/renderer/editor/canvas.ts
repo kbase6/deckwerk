@@ -2469,7 +2469,9 @@ export class EditorCanvas {
         return;
       }
       if (ev.metaKey || ev.ctrlKey || ev.altKey || this.editingId) return;
-      if (document.querySelector('[aria-modal="true"]')) return;
+      // A modal owns Space, unless this canvas is inside it (the layout editor).
+      const modal = document.querySelector('[aria-modal="true"]');
+      if (modal && !modal.contains(this.host)) return;
       // The canvas, or nothing in particular (a canvas click blurs whatever
       // had focus). A focused button or field keeps its own Space.
       const target = ev.target instanceof Element ? ev.target : null;

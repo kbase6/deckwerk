@@ -49,7 +49,7 @@ export function createLaserPointer(options: {
   style.textContent = `
     .deckwerk-laser-surface { position: absolute; inset: 0; z-index: 2147483646; overflow: hidden; cursor: none; touch-action: none; outline: none; }
     .deckwerk-laser-surface[hidden], .deckwerk-laser-dot[hidden] { display: none; }
-    .deckwerk-laser-dot { position: absolute; box-sizing: border-box; border: 2px solid white; border-radius: 50%; background: #ff243e; box-shadow: 0 0 0 1px #540016, 0 0 9px 3px #ff243e99; transform: translate(-50%, -50%); pointer-events: none; }
+    .deckwerk-laser-dot { position: absolute; border-radius: 50%; background: radial-gradient(circle closest-side, #ffe3e6 0, #ff3a4f 9%, #ff1f37 19%, #ff243e80 27%, #ff243e2e 50%, #ff243e0d 75%, #ff243e00 100%); transform: translate(-50%, -50%); pointer-events: none; }
   `;
   document.head.appendChild(style);
   const previousPosition = host.style.position;
@@ -96,7 +96,8 @@ export function createLaserPointer(options: {
     const bounds = host.getBoundingClientRect();
     dot.style.left = `${rect.left - bounds.left + state.point.x * rect.width}px`;
     dot.style.top = `${rect.top - bounds.top + state.point.y * rect.height}px`;
-    dot.style.width = dot.style.height = `${Math.max(8, rect.width * 0.0075)}px`;
+    // The box is the glow; the bright core is its middle fifth.
+    dot.style.width = dot.style.height = `${Math.max(40, rect.width * 0.03)}px`;
   }
 
   function hide(): void {

@@ -168,7 +168,15 @@ export function syncSlideWithLayoutMaster(
   slide: Slide,
   layout: FixedLayout,
   master: LayoutMaster,
-  options: { forceBackground?: boolean; replaceStyle?: boolean } = {},
+  options: {
+    forceBackground?: boolean;
+    replaceStyle?: boolean;
+    /**
+     * Create a title or body box the slide lacks (default). Off when a master
+     * edit propagates: a box the author deleted stays deleted.
+     */
+    addMissing?: boolean;
+  } = {},
 ): void {
   slide.layout = layout;
   const retiredCopies = new Map(slide.elements
@@ -180,6 +188,7 @@ export function syncSlideWithLayoutMaster(
     if (source.type !== 'text' || !source.layoutPlaceholder) continue;
     let target = textForSlot(slide, source.layoutPlaceholder);
     if (!target) {
+      if (options.addMissing === false) continue;
       target = structuredClone(source);
       target.id = `text-${slide.id}-${source.layoutPlaceholder}`;
       target.html = source.layoutPlaceholder === 'title' ? 'Slide title' : 'Body text';
@@ -350,7 +359,7 @@ export function syncDeckWithLayoutMasters(deck: Deck): void {
   if (!deck.layoutMasters) return;
   for (const slide of deck.slides) {
     const layout = (slide.layout ?? 'freeform') as FixedLayout;
-    syncSlideWithLayoutMaster(slide, layout, deck.layoutMasters[layout]);
+    syncSlideWithLayoutMaster(slide, layout, deck.layoutMasters[layout], { addMissing: false });
   }
 }
 

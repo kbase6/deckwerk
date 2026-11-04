@@ -9,7 +9,7 @@
  * and what crosses back is plain data.
  */
 import { Dialect, LocalLinter } from 'harper.js';
-import { binaryInlined } from 'harper.js/binaryInlined';
+import { binary } from 'harper.js/binary';
 import type { PlainLint, SpellcheckReply, SpellcheckRequest } from './spellcheck.js';
 
 const scope = self as unknown as {
@@ -21,7 +21,7 @@ let linter: Promise<LocalLinter> | null = null;
 
 function ready(): Promise<LocalLinter> {
   linter ??= (async () => {
-    const local = new LocalLinter({ binary: binaryInlined, dialect: Dialect.American });
+    const local = new LocalLinter({ binary, dialect: Dialect.American });
     await local.setup();
     return local;
   })();

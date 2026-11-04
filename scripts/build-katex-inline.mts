@@ -1,5 +1,5 @@
 /**
- * Generate `src/shared/katexInline.ts` from the installed KaTeX package.
+ * Generate `src/shared/katexInline*.ts` from the installed KaTeX package.
  *
  * The exported authoring page must render maths the way the player does, in
  * every browser it might be opened in — the author's, the editor's offscreen
@@ -47,13 +47,15 @@ const escapeForTemplate = (text: string): string =>
   text.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$\{/g, '\\${');
 
 const out = `${header}
+export { KATEX_CSS } from './katexInlineCss.js';
+
 export const KATEX_JS = \`${escapeForTemplate(js)}\`;
 
 export const KATEX_AUTO_RENDER_JS = \`${escapeForTemplate(autoRender)}\`;
-
-export const KATEX_CSS = \`${escapeForTemplate(css)}\`;
 `;
 
 const target = join(dirname(fileURLToPath(import.meta.url)), '../src/shared/katexInline.ts');
 writeFileSync(target, out, 'utf8');
+// Fonts and scripts stay separate in app bundles; exported pages still inline both.
+writeFileSync(join(dirname(target), 'katexInlineCss.ts'), `${header}\nexport const KATEX_CSS = \`${escapeForTemplate(css)}\`;\n`, 'utf8');
 console.log(`wrote ${target} (${(out.length / 1024).toFixed(0)} KB)`);

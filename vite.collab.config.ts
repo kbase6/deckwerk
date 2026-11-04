@@ -3,8 +3,9 @@ import { resolve } from 'node:path';
 // esbuild ships with vite; the worker is bundled with it on its own (below).
 import { build as esbuild } from 'esbuild';
 import { defineConfig, type Plugin } from 'vite';
+import { browserChunk, browserDependencies } from './src/browserBuild.js';
 
-/** Larger bundle files are fetched on first use, not precached: the grammar checker's 21 MB of WASM. */
+/** Larger bundle files, including the grammar checker's WASM, are cached on first use. */
 const PRECACHE_MAX_BYTES = 2 * 1024 * 1024;
 
 /**
@@ -67,10 +68,11 @@ export default defineConfig({
   root: resolve(__dirname, 'src/renderer/collab'),
   base: './',
   resolve: { alias: { '@shared': resolve(__dirname, 'src/shared') } },
-  plugins: [serviceWorker()],
+  plugins: [browserDependencies(), serviceWorker()],
+  optimizeDeps: { exclude: ['harper.js'] },
   // The spellchecker's worker (spellcheckWorker.ts) code-splits, which
   // only module workers can.
-  worker: { format: 'es' },
+  worker: { format: 'es', plugins: () => [browserDependencies()] },
   build: {
     outDir: resolve(__dirname, 'dist/collab'),
     emptyOutDir: true,
@@ -78,6 +80,7 @@ export default defineConfig({
     // client's own JS/CSS clearly separate avoids any route ambiguity.
     assetsDir: 'app',
     rollupOptions: {
+      output: { manualChunks: browserChunk },
       input: {
         index: resolve(__dirname, 'src/renderer/collab/index.html'),
         mobile: resolve(__dirname, 'src/renderer/collab/mobile.html'),

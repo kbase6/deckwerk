@@ -273,6 +273,51 @@ describe('leaving the layout editor', () => {
     expect(titleOf(store).style['font-size']).toBeUndefined();
   });
 
+  it('does not bring back a title or body box a slide deleted', () => {
+    const deck = authoredDeck();
+    deck.slides[0].elements = deck.slides[0].elements.filter((element) => !(
+      element.type === 'text' && element.layoutPlaceholder === 'body'
+    ));
+    const { workspace, store } = build(deck);
+    workspace.openLayoutEditor('standard');
+    clickInOverlay('.layout-editor-actions', 'Done');
+
+    const texts = store.get().deck.slides[0].elements.filter((element) => element.type === 'text');
+    expect(texts.map((element) => element.type === 'text' && element.html)).toEqual(['Authored title']);
+  });
+
+  /**
+   * The editor's own shortcuts act on the deck behind the overlay; they bail
+   * on `aria-modal` (shellWiring.ts). Delete there removed whatever was still
+   * selected on the hidden slide, and did nothing to the layout.
+   */
+  it('owns Delete and undo while open, as a modal', () => {
+    const { workspace, store } = build(authoredDeck());
+    const before = JSON.stringify(store.get().deck);
+    workspace.openLayoutEditor('standard');
+    expect(document.querySelector('.layout-editor-overlay')?.getAttribute('aria-modal')).toBe('true');
+    const masterTexts = () => document.querySelectorAll('.layout-editor-canvas .element-text').length;
+    const placeholders = masterTexts();
+    clickInOverlay('.layout-editor-tools', 'Text');
+    expect(masterTexts()).toBe(placeholders + 1);
+
+    // While typing, Delete edits the text instead.
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true }));
+    expect(masterTexts()).toBe(placeholders + 1);
+    const editing = [...document.querySelectorAll<HTMLElement>('.layout-editor-canvas .text-content')]
+      .find((body) => body.contentEditable === 'true');
+    if (!editing) throw new Error('the new text box is not being edited');
+    editing.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true }));
+    expect(masterTexts()).toBe(placeholders);
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', metaKey: true, bubbles: true }));
+    expect(masterTexts()).toBe(placeholders + 1);
+
+    clickInOverlay('.layout-editor-actions', 'Cancel');
+    expect(JSON.stringify(store.get().deck)).toBe(before);
+  });
+
   it('leaves the deck untouched on Cancel', () => {
     const { workspace, store, save } = build(authoredDeck());
     const before = JSON.stringify(store.get().deck);
