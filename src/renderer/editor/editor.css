@@ -395,7 +395,8 @@ body.panel-resizing iframe { pointer-events: none; }
   box-shadow: inset 0 0 0 1px var(--dw-accent);
 }
 
-.zoom-controls .rulers-toggle {
+.zoom-controls .rulers-toggle,
+.zoom-controls .zoom-gridlines {
   display: grid;
   place-items: center;
 }
@@ -463,7 +464,8 @@ body.panel-resizing iframe { pointer-events: none; }
 .light-table-card.drop-before .light-table-thumb { box-shadow: -4px 0 0 var(--dw-accent), 0 0 0 1px var(--dw-line); }
 .light-table-card.drop-after .light-table-thumb { box-shadow: 4px 0 0 var(--dw-accent), 0 0 0 1px var(--dw-line); }
 
-.zoom-controls .rulers-toggle.active {
+.zoom-controls .rulers-toggle.active,
+.zoom-controls .zoom-gridlines.active {
   background: var(--dw-accent-soft);
   color: var(--dw-accent);
 }
@@ -1883,8 +1885,7 @@ input[type="range"] { accent-color: var(--dw-accent); padding: 0; background: tr
    crowding the narrower six-across row. */
 .text-format-superscript,
 .text-format-subscript { letter-spacing: -0.02em; }
-.text-format-buttons button[aria-pressed="true"],
-.zoom-controls .zoom-gridlines[aria-pressed="true"] {
+.text-format-buttons button[aria-pressed="true"] {
   border-color: var(--dw-accent);
   background: color-mix(in srgb, var(--dw-accent) 24%, var(--dw-panel-2));
   color: var(--dw-text);
@@ -5323,9 +5324,9 @@ button.ghost:hover:not(:disabled) { color: var(--dw-text); background: transpare
 .mask-edge-e { right: calc(-5px * var(--inv)); }
 .mask-edge-w { left: calc(-5px * var(--inv)); }
 
-/* Gridlines: one dot where every 40-slide-pixel grid line crosses another,
-   with the step doubled when zooming out would crowd them
-   (--editor-grid-step, set by the canvas); editor chrome only. Dotted lines
+/* Gridlines: one dot where grid lines cross, on the rulers' finest readable
+   ticks (--editor-grid-step, set by rulers.ts), and a dashed cross through
+   the slide's centre, one screen pixel wide; editor chrome only. Dotted lines
    ran alongside any box edge near them and threaded through text; crossings
    alone keep the grid readable without tracing anything. Painted on the
    slide's ground, first in its paint order, so objects, their outlines and
@@ -5339,11 +5340,19 @@ button.ghost:hover:not(:disabled) { color: var(--dw-text); background: transpare
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background-image: radial-gradient(circle, rgb(128 128 128 / 50%) var(--grid-dot), transparent calc(var(--grid-dot) + 0.3px * var(--editor-inv-scale, 1)));
-  background-size: var(--editor-grid-step, 40px) var(--editor-grid-step, 40px);
-  background-position: calc(var(--editor-grid-step, 40px) / -2) calc(var(--editor-grid-step, 40px) / -2);
+  --grid-line: calc(1px * var(--editor-inv-scale, 1));
+  --grid-dash: calc(8px * var(--editor-inv-scale, 1));
+  background-image:
+    linear-gradient(rgb(128 128 128 / 60%) 50%, transparent 0),
+    linear-gradient(90deg, rgb(128 128 128 / 60%) 50%, transparent 0),
+    radial-gradient(circle, rgb(128 128 128 / 50%) var(--grid-dot), transparent calc(var(--grid-dot) + 0.3px * var(--editor-inv-scale, 1)));
+  background-size:
+    var(--grid-line) var(--grid-dash),
+    var(--grid-dash) var(--grid-line),
+    var(--editor-grid-step, 40px) var(--editor-grid-step, 40px);
+  background-position: 50% 0, 0 50%, calc(var(--editor-grid-step, 40px) / -2) calc(var(--editor-grid-step, 40px) / -2);
+  background-repeat: repeat-y, repeat-x, repeat;
 }
-.zoom-controls .zoom-gridlines { width: auto; padding: 0 10px; }
 
 /* --- object list --- */
 

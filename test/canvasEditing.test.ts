@@ -213,22 +213,14 @@ describe('canvas zoom viewport', () => {
   beforeEach(() => document.body.replaceChildren());
 
   it('offers compact buttons and accepts a directly edited percentage', () => {
-    const { canvas, host, store } = setupViewport();
+    const { canvas, host } = setupViewport();
     const input = host.querySelector<HTMLInputElement>('.zoom-value')!;
     const buttons = [...host.querySelectorAll<HTMLButtonElement>('.zoom-button')];
 
     expect(input.value).toBe('100%');
     expect(buttons.map((button) => button.getAttribute('aria-label'))).toEqual([
-      'Zoom out', 'Zoom in', 'Re-center slide', 'Gridlines',
+      'Zoom out', 'Zoom in', 'Re-center slide',
     ]);
-    // Gridlines are editor chrome: a class on the host, never deck data.
-    const deckBefore = JSON.stringify(store.get().deck);
-    buttons[3].click();
-    expect(host.classList.contains('show-gridlines')).toBe(true);
-    expect(buttons[3].getAttribute('aria-pressed')).toBe('true');
-    buttons[3].click();
-    expect(host.classList.contains('show-gridlines')).toBe(false);
-    expect(JSON.stringify(store.get().deck)).toBe(deckBefore);
 
     input.value = '175%';
     input.dispatchEvent(new Event('change', { bubbles: true }));

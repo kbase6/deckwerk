@@ -1406,6 +1406,8 @@ async function slideNumbers(
  * deck, the slide and the selection are exactly as they were, and the button
  * says what the canvas shows. Like every zoom-bar button (Zoom in, Re-center
  * slide), a click on it ends a text edit, so the edit itself is not compared.
+ * Gridlines on are turned off with Cmd/Ctrl+' instead of a click, so both
+ * ways in run without drawing from the walk's random stream.
  */
 async function gridlines(flag: (oracle: 'routing' | 'census', detail: string) => void): Promise<void> {
   const { cdp } = session;
@@ -1423,10 +1425,11 @@ async function gridlines(flag: (oracle: 'routing' | 'census', detail: string) =>
   })`);
   const before = await snapshot();
   const was = await view();
-  await cdp.click('#canvas .zoom-gridlines', 'the Gridlines toggle');
+  if (was.shown) await session.chord("'", 'Quote', 222, MOD);
+  else await cdp.click('#canvas .zoom-gridlines', 'the Gridlines toggle');
   await wait(120);
   const now = await view();
-  if (now.shown === was.shown) flag('routing', `the Gridlines toggle left the gridlines ${now.shown ? 'on' : 'off'}`);
+  if (now.shown === was.shown) flag('routing', `${was.shown ? "Cmd/Ctrl+'" : 'the Gridlines toggle'} left the gridlines ${now.shown ? 'on' : 'off'}`);
   if (now.pressed !== String(now.shown)) flag('routing', `Gridlines shows aria-pressed=${now.pressed} with gridlines ${now.shown ? 'on' : 'off'}`);
   const after = await snapshot();
   if (after !== before) flag('census', `the Gridlines toggle changed the deck, the slide or the selection; diff: ${firstDiff(before, after)}`);

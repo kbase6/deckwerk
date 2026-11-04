@@ -26,8 +26,9 @@ import { isEditorTarget, launchDesktopApp, materializeDesktopApp } from './suppo
 
 const FOOTER = '.slide-number:not([data-element-id])';
 const USER_NUMBER = '[data-element-id="my-number"]';
-const BOLD_TEXT = '[data-element-id="bold-text"]';
 const GRIDLINES = '.zoom-controls .zoom-gridlines';
+const RULERS = '.zoom-controls .rulers-toggle';
+const MOD = process.platform === 'darwin' ? 4 : 2;
 
 let workDir = '';
 let deckDir = '';
@@ -263,22 +264,17 @@ describe.skipIf(!electronBinary)('presenter keys, slide numbers, web export and 
     await eventually(deckOnDisk, 'the deck was not saved numbered', (disk) => disk.showSlideNumbers);
   });
 
-  it('toggles Gridlines as editor chrome, pressed like the app\'s other toggles', { timeout: 60_000 }, async () => {
+  it('toggles Gridlines as editor chrome, by click or Cmd/Ctrl+\', pressed like the rulers beside it', { timeout: 60_000 }, async () => {
     await onSlide2();
-    // A pressed inspector toggle to compare with: Bold, on a bold text box.
-    const box = await editor!.evaluate<{ x: number; y: number }>(`(() => {
-      const r = document.querySelector('#canvas ${BOLD_TEXT}').getBoundingClientRect();
-      return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
-    })()`);
-    await editor!.clickAt(box.x, box.y);
-    await eventually(async () => editor!.evaluate<boolean>(
-      `Boolean(document.querySelector('#inspector .text-format-buttons button.text-format-bold[aria-pressed="true"]'))`),
-    'selecting the bold box did not show a pressed Bold button');
     const look = (selector: string) => editor!.evaluate<{ background: string; border: string; color: string }>(`(() => {
       const style = getComputedStyle(document.querySelector(${JSON.stringify(selector)}));
       return { background: style.backgroundColor, border: style.borderTopColor, color: style.color };
     })()`);
-    const pressedBold = await look('#inspector .text-format-buttons button[aria-pressed="true"]');
+    // The pressed neighbour to compare with: the rulers toggle, read un-hovered.
+    await editor!.click(RULERS, 'Rulers');
+    await editor!.call('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 2, y: 2 });
+    const pressedRulers = await look(RULERS);
+    await editor!.click(RULERS, 'Rulers');
 
     await wait(1_500); // let any pending autosave land before the baseline
     const diskBefore = (await deckOnDisk()).raw;
@@ -293,11 +289,16 @@ describe.skipIf(!electronBinary)('presenter keys, slide numbers, web export and 
 
     await editor!.click(GRIDLINES, 'Gridlines');
     expect(await state()).toEqual({ pressed: 'true', shown: true });
-    // Read it un-hovered, as the Bold button was.
+    // Read it un-hovered, as the rulers toggle was.
     await editor!.call('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 2, y: 2 });
-    expect(await look(GRIDLINES)).toEqual(pressedBold);
+    expect(await look(GRIDLINES)).toEqual(pressedRulers);
 
     await editor!.click(GRIDLINES, 'Gridlines');
+    expect(await state()).toEqual({ pressed: 'false', shown: false });
+
+    await editor!.chord("'", 'Quote', 222, MOD);
+    expect(await state()).toEqual({ pressed: 'true', shown: true });
+    await editor!.chord("'", 'Quote', 222, MOD);
     expect(await state()).toEqual({ pressed: 'false', shown: false });
 
     await wait(1_500); // longer than the 800 ms autosave delay
@@ -306,7 +307,7 @@ describe.skipIf(!electronBinary)('presenter keys, slide numbers, web export and 
   });
 
   it('advances on Space and Enter after a footer click, without re-pressing the button', { timeout: 90_000 }, async () => {
-    await editor!.key('Escape', 27); // leave the box selection from the gridlines case
+    await editor!.key('Escape', 27); // start from no selection
     await onSlide2(true);
     await editor!.click('#toolbar .toolbar-split-menu[aria-label="Presentation options"]', 'Presentation options');
     await editor!.clickByText('.shape-menu-item', 'Present in Speaker View');

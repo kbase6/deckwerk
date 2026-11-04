@@ -794,10 +794,6 @@ function normalizeInlineStyleSpans(root: HTMLElement): void {
 const MIN_ZOOM = 0.25;
 const MAX_ZOOM = 8;
 const ZOOM_STEP = 0.25;
-/** The gridlines' unit, in slide pixels; zooming out doubles it (see `rescale`). */
-const GRID_STEP = 40;
-/** The closest the gridline dots may sit on screen, in CSS pixels. */
-const GRID_MIN_GAP = 16;
 /** Zoom ratio of one mouse-wheel notch with Ctrl/Cmd held, in either direction. */
 const WHEEL_NOTCH_ZOOM = 1.1;
 /**
@@ -2113,12 +2109,6 @@ export class EditorCanvas {
     setStyle(this.stage, 'height', `${deck.canvas.h}px`);
     setStyle(this.stage, 'transform', `scale(${scale})`);
     setStyle(this.stage, '--editor-inv-scale', String(1 / scale));
-    // The grid's dots keep their on-screen size, so zooming out would pack
-    // them into noise; instead every other line drops out, which keeps each
-    // dot on the same 40-pixel grid.
-    let gridStep = GRID_STEP;
-    while (gridStep * scale < GRID_MIN_GAP) gridStep *= 2;
-    setStyle(this.stage, '--editor-grid-step', `${gridStep}px`);
     setStyle(this.stage, 'transform-origin', 'top left');
     // The viewport starts below and right of the rulers, when they are shown.
     this.stageOrigin = {
@@ -2153,7 +2143,7 @@ export class EditorCanvas {
     return () => this.viewportListeners.delete(listener);
   }
 
-  /** Put a view control (the rulers toggle) at the start of the zoom pill. */
+  /** Put a view control (the rulers or gridlines toggle) at the start of the zoom pill. */
   addViewControl(control: HTMLElement): void {
     this.zoomControls.prepend(control);
   }
@@ -2303,33 +2293,8 @@ export class EditorCanvas {
       input,
       button('+', 'Zoom in', () => this.stepZoom(1)),
       button('⌖', 'Re-center slide', () => this.recenter()),
-      this.createGridlinesToggle(button),
     );
     return controls;
-  }
-
-  /**
-   * An alignment grid drawn on the slide, behind its objects, in the editor
-   * only: it is editor chrome, never deck data, so presenting and exporting
-   * never see it. The
-   * choice is remembered per browser.
-   */
-  private createGridlinesToggle(button: (text: string, label: string, action: () => void) => HTMLButtonElement): HTMLButtonElement {
-    const KEY = 'deckwerk.gridlines';
-    const show = (shown: boolean) => {
-      this.host.classList.toggle('show-gridlines', shown);
-      toggle.setAttribute('aria-pressed', String(shown));
-    };
-    const toggle = button('Gridlines', 'Gridlines', () => {
-      const shown = !this.host.classList.contains('show-gridlines');
-      show(shown);
-      try { window.localStorage.setItem(KEY, String(shown)); } catch { /* private window */ }
-    });
-    toggle.classList.add('zoom-gridlines');
-    let stored: string | null = null;
-    try { stored = window.localStorage.getItem(KEY); } catch { /* private window */ }
-    show(stored === 'true');
-    return toggle;
   }
 
   /**
