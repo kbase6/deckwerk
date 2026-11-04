@@ -14,12 +14,21 @@ import type { EditorStore } from './store.js';
  * like the comment highlights: it carries across sessions and decks and never
  * touches deck.json. The toggle sits at the start of the canvas's zoom pill,
  * beside the other controls for how the slide is viewed.
+ *
+ * The gridlines live here too, because they are drawn from the rulers' own
+ * marks: a dot on the finest ticks that stay readable, so every dot sits on a
+ * ruler tick at every zoom, plus a dashed cross through the slide's centre.
+ * Their toggle sits next to the rulers', with Cmd/Ctrl+' as in design apps'
+ * Show Grid.
  */
 
 /** Thickness of each ruler, in screen pixels. */
 export const RULER_SIZE = 20;
 
 const STORAGE_KEY = 'deckwerk.editor.rulers';
+const GRID_STORAGE_KEY = 'deckwerk.gridlines';
+/** The closest gridline dots may sit on screen, in CSS pixels. */
+const GRID_MIN_GAP = 16;
 /** Labelled ticks closer than this, in screen pixels, would crowd their numbers. */
 const MIN_LABEL_GAP = 56;
 /** Unlabelled ticks closer than this read as a grey smear. */
@@ -80,6 +89,14 @@ export function isRulersShortcut(e: KeyboardEvent): boolean {
   return (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'r';
 }
 
+/**
+ * Cmd/Ctrl+' shows and hides the gridlines. Shift is not checked, so a layout
+ * that types ' with Shift (JIS) reaches it too; Cmd+Shift+' on US types ".
+ */
+export function isGridlinesShortcut(e: KeyboardEvent): boolean {
+  return (e.metaKey || e.ctrlKey) && !e.altKey && e.key === "'";
+}
+
 /* --- tick layout ------------------------------------------------------------ */
 
 export interface RulerSpacing {
@@ -104,6 +121,16 @@ export function rulerSpacing(scale: number): RulerSpacing {
       return { major, minor: fits ? major / fits : major };
     }
   }
+}
+
+/**
+ * Slide units between gridline dots at `scale`: the finest of the ruler's
+ * marks (minor, mid, major) at least `GRID_MIN_GAP` screen pixels apart.
+ */
+export function gridStep(scale: number): number {
+  const { major, minor } = rulerSpacing(scale);
+  const marks = Math.round(major / minor) % 2 === 0 ? [minor, major / 2, major] : [minor, major];
+  return marks.find((step) => step * scale >= GRID_MIN_GAP) ?? major;
 }
 
 export interface RulerTick {
@@ -166,8 +193,14 @@ export interface CanvasRulersOptions {
   shortcutHint?: string;
 }
 
+const GRIDLINES_ICON =
+  '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" fill="currentColor">'
+  + [3, 8, 13].flatMap((y) => [3, 8, 13].map((x) => `<circle cx="${x}" cy="${y}" r="1.2"/>`)).join('')
+  + '</svg>';
+
 export class CanvasRulers {
   readonly toggleButton: HTMLButtonElement;
+  readonly gridlinesButton: HTMLButtonElement;
   private readonly top: Ruler;
   private readonly left: Ruler;
   private readonly corner: HTMLElement;
@@ -198,6 +231,27 @@ export class CanvasRulers {
     // live text edit, and looking at the rulers is not a reason to stop typing.
     this.toggleButton.addEventListener('pointerdown', (event) => event.preventDefault());
     this.toggleButton.addEventListener('click', () => toggleRulers());
+
+    this.gridlinesButton = document.createElement('button');
+    this.gridlinesButton.type = 'button';
+    this.gridlinesButton.className = 'zoom-button zoom-gridlines';
+    this.gridlinesButton.innerHTML = GRIDLINES_ICON;
+    this.gridlinesButton.title = "Gridlines (Cmd/Ctrl+')";
+    this.gridlinesButton.setAttribute('aria-label', 'Gridlines');
+    this.gridlinesButton.addEventListener('pointerdown', (event) => event.preventDefault());
+    this.gridlinesButton.addEventListener('click', () => this.toggleGridlines());
+    let stored: string | null = null;
+    try { stored = localStorage.getItem(GRID_STORAGE_KEY); } catch { /* private window */ }
+    this.showGridlines(stored === 'true');
+    // Capture phase, like Cmd/Ctrl+R: a text box being edited keeps its keys.
+    window.addEventListener('keydown', (event) => {
+      if (!isGridlinesShortcut(event)) return;
+      event.preventDefault();
+      if (!event.repeat) this.toggleGridlines();
+    }, true);
+
+    // Each prepends, so the rulers' toggle lands first, the gridlines' beside it.
+    canvas.addViewControl(this.gridlinesButton);
     canvas.addViewControl(this.toggleButton);
 
     canvas.addViewportListener(() => this.draw());
@@ -209,6 +263,18 @@ export class CanvasRulers {
       this.drawPointer();
     });
     this.sync();
+  }
+
+  toggleGridlines(): void {
+    const shown = !this.host.classList.contains('show-gridlines');
+    this.showGridlines(shown);
+    try { localStorage.setItem(GRID_STORAGE_KEY, String(shown)); } catch { /* private window */ }
+  }
+
+  private showGridlines(shown: boolean): void {
+    this.host.classList.toggle('show-gridlines', shown);
+    this.gridlinesButton.classList.toggle('active', shown);
+    this.gridlinesButton.setAttribute('aria-pressed', String(shown));
   }
 
   /** Show or hide the rulers to match the preference. */
@@ -230,8 +296,13 @@ export class CanvasRulers {
   }
 
   private draw(): void {
-    if (!rulersShown()) return;
     const { left, top, scale } = this.canvas.stagePlacement();
+    // The gridlines follow the ticks whether or not the rulers are shown.
+    const step = `${gridStep(scale)}px`;
+    if (this.host.style.getPropertyValue('--editor-grid-step') !== step) {
+      this.host.style.setProperty('--editor-grid-step', step);
+    }
+    if (!rulersShown()) return;
     const width = Math.max(0, this.host.clientWidth - RULER_SIZE);
     const height = Math.max(0, this.host.clientHeight - RULER_SIZE);
     const { w, h } = this.store.get().deck.canvas;

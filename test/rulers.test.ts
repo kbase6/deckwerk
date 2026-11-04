@@ -5,6 +5,8 @@ import { EditorCanvas } from '../src/renderer/editor/canvas.js';
 import {
   CanvasRulers,
   RULER_SIZE,
+  gridStep,
+  isGridlinesShortcut,
   isRulersShortcut,
   rulerSpacing,
   rulerTicks,
@@ -135,6 +137,32 @@ describe('ruler ticks', () => {
     expect(key({ key: 'r', metaKey: true, altKey: true })).toBe(false);
     expect(key({ key: 'r' })).toBe(false);
   });
+
+  it('spaces gridline dots on the finest ruler marks that stay 16 px apart', () => {
+    expect(gridStep(1)).toBe(50); // minor 10 is too close; the mid tick
+    expect(gridStep(0.5)).toBe(100);
+    expect(gridStep(0.35)).toBe(100);
+    expect(gridStep(0.25)).toBe(250);
+    expect(gridStep(4)).toBe(10);
+    for (const scale of [0.05, 0.13, 0.25, 0.35, 0.4, 0.52, 1, 1.7, 4.2, 9]) {
+      const { major, minor } = rulerSpacing(scale);
+      const step = gridStep(scale);
+      expect(step * scale).toBeGreaterThanOrEqual(16);
+      // Every dot is on a ruler tick, and every labelled tick on a dot.
+      expect(Number.isInteger(Math.round((step / minor) * 1e6) / 1e6)).toBe(true);
+      expect(Number.isInteger(Math.round((major / step) * 1e6) / 1e6)).toBe(true);
+    }
+  });
+
+  it("answers Cmd/Ctrl+' for the gridlines, Shift or not (JIS types ' with Shift)", () => {
+    const key = (init: KeyboardEventInit) => isGridlinesShortcut(new KeyboardEvent('keydown', init));
+    expect(key({ key: "'", metaKey: true })).toBe(true);
+    expect(key({ key: "'", ctrlKey: true })).toBe(true);
+    expect(key({ key: "'", metaKey: true, shiftKey: true })).toBe(true);
+    expect(key({ key: '"', metaKey: true, shiftKey: true })).toBe(false);
+    expect(key({ key: "'", metaKey: true, altKey: true })).toBe(false);
+    expect(key({ key: "'" })).toBe(false);
+  });
 });
 
 describe('canvas rulers', () => {
@@ -250,6 +278,33 @@ describe('canvas rulers', () => {
     host.dispatchEvent(new PointerEvent('pointerleave'));
     expect(marker(top).hasAttribute('hidden')).toBe(true);
     expect(marker(left).hasAttribute('hidden')).toBe(true);
+  });
+
+  it('toggles gridlines beside the rulers, by click or Cmd/Ctrl+\', as chrome only', () => {
+    const { host, store, canvas } = setup();
+    const toggle = host.querySelector<HTMLButtonElement>('.zoom-controls > .zoom-gridlines')!;
+    expect(toggle.previousElementSibling!.classList.contains('rulers-toggle')).toBe(true);
+    expect(toggle.title).toBe("Gridlines (Cmd/Ctrl+')");
+    expect(toggle.getAttribute('aria-pressed')).toBe('false');
+    const deckBefore = JSON.stringify(store.get().deck);
+
+    toggle.click();
+    expect(host.classList.contains('show-gridlines')).toBe(true);
+    expect(toggle.getAttribute('aria-pressed')).toBe('true');
+    expect(toggle.classList.contains('active')).toBe(true);
+    expect(localStorage.getItem('deckwerk.gridlines')).toBe('true');
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: "'", metaKey: true }));
+    expect(host.classList.contains('show-gridlines')).toBe(false);
+    expect(toggle.getAttribute('aria-pressed')).toBe('false');
+    expect(localStorage.getItem('deckwerk.gridlines')).toBe('false');
+    expect(JSON.stringify(store.get().deck)).toBe(deckBefore);
+
+    // The dot step follows the ruler's ticks through zoom.
+    const step = () => px(host.style.getPropertyValue('--editor-grid-step'));
+    expect(step()).toBe(gridStep(canvas.stagePlacement().scale));
+    canvas.setZoomPercent(300);
+    expect(step()).toBe(gridStep(canvas.stagePlacement().scale));
   });
 
   it('remembers the choice for the next session', async () => {
