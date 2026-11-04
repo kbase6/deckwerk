@@ -1116,3 +1116,33 @@ requires Accessibility permission for the terminal app (System Settings >
 Privacy & Security > Accessibility); once opted in, a missing permission is a
 loud actionable failure, never a silent skip. Expect it to steal keyboard and
 focus while it runs.
+
+## Branches, commits and change records
+
+These rules apply when you change this repository's source. They do not apply
+when you author slides in a deck folder.
+
+**Branches.** Name each branch `<type>/<issue>-<short-description>` in
+kebab-case. Leave out `<issue>` when there is none.
+
+- Types: `feature/`, `fix/`, `refactor/`, `docs/`.
+- Examples: `fix/42-crop-escape-exit`, `docs/agent-guide-rules`.
+
+**Commits.** One line: `<type>: <imperative verb> <what changed>`. Start
+lowercase, no trailing period, at most 72 characters. One change per commit.
+
+- Types: `feat`, `fix`, `perf`, `refactor`, `test`, `docs`, `build`, `chore`,
+  `style` (formatting only, never a visual change).
+- Good: `fix: restore the crop box when Escape exits crop mode`
+- Bad: `fix: layout and laser pointer` (no verb, two changes)
+
+**Change records.** Each branch adds exactly one file,
+`docs/changes/<yyyymmdd>-<kebab-title>.md`, dated the day the work starts.
+Update that file as the work changes; never add a second one. Skip it for
+typo-only or formatting-only changes. Use these headings:
+
+    # <Title>
+    ## What changed
+    ## Why
+    ## Options considered
+    ## Decision and trade-offs
